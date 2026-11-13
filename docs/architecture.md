@@ -62,6 +62,8 @@ O primeiro scanner determinístico está disponível em `scripts/scan-media.mjs`
 npm run scan -- "E:\\Filmes" --limit 20
 ```
 
+O schema inicial está em `database/schema.sql`. Ele separa a origem física (`media_sources`) do catálogo (`media_items`) e das relações de série (`shows`, `seasons`, `episodes`). Assim, remover o SSD altera o estado da fonte para `offline`, sem apagar o catálogo, o progresso ou as capas.
+
 ## Importação assistida
 
 A organização terá três níveis, nesta ordem:
