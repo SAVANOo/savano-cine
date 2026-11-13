@@ -66,12 +66,37 @@ function App() {
   const selectedEpisodes =
     selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
 
+  const openShow = (show: LibraryItem) => {
+    setSelectedShow(show)
+    setSelectedSeason(show.seasons?.[0]?.number ?? 1)
+    window.history.pushState({}, '', `/series/${encodeURIComponent(show.id)}`)
+  }
+
+  const closeShow = () => {
+    setSelectedShow(null)
+    window.history.pushState({}, '', '/inicio')
+  }
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const match = window.location.pathname.match(/^\/series\/(.+)$/)
+      const showId = match ? decodeURIComponent(match[1]) : null
+      const show = showId ? catalog.find((item) => item.id === showId && item.kind === 'Série') : null
+      setSelectedShow(show ?? null)
+      if (show) setSelectedSeason(show.seasons?.[0]?.number ?? 1)
+    }
+
+    syncRoute()
+    window.addEventListener('popstate', syncRoute)
+    return () => window.removeEventListener('popstate', syncRoute)
+  }, [catalog])
+
   if (selectedShow) {
     return (
       <div className="app-shell">
         <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} />
         <main className="content">
-          <button className="back-button" type="button" onClick={() => setSelectedShow(null)}>
+          <button className="back-button" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
           <ShowHeader show={selectedShow} />
@@ -134,7 +159,10 @@ function App() {
             <span className="hero-label">CONTINUE ASSISTINDO</span>
             <h2>South Park</h2>
             <p>Temporada 1 · Episódio 6 · 13:24 de 22:00</p>
-            <button className="primary-button" type="button" onClick={() => setSelectedShow(catalog.find((item) => item.kind === 'Série') ?? mockLibrary[0])}>
+            <button className="primary-button" type="button" onClick={() => {
+              const southPark = catalog.find((item) => item.title.toLocaleLowerCase() === 'south park' && item.kind === 'Série')
+              if (southPark) openShow(southPark)
+            }}>
               <span>▶</span> Continuar
             </button>
           </div>
@@ -165,7 +193,7 @@ function App() {
           </div>
           <div className="media-grid">
             {visibleItems.map((item) => (
-              <MediaCard item={item} key={item.id} onOpen={setSelectedShow} onPlay={setSelectedMedia} />
+              <MediaCard item={item} key={item.id} onOpen={openShow} onPlay={setSelectedMedia} />
             ))}
           </div>
           {visibleItems.length === 0 && (
@@ -373,7 +401,7 @@ function ShowHeader({ show }: { show: LibraryItem }) {
     <section className="show-header">
       <div className={`show-poster poster ${show.posterClass}`}>
         {show.artwork.posterUrl && <img className="poster-image" src={show.artwork.posterUrl} alt="" />}
-        <strong>South<br />Park</strong>
+        {!show.artwork.posterUrl && <strong>{show.title}</strong>}
       </div>
       <div className="show-copy">
         <p className="eyebrow">SÉRIE</p>
