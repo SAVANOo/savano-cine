@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS shows (
   overview TEXT
 );
 
+CREATE TABLE IF NOT EXISTS profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  avatar_key TEXT NOT NULL,
+  is_kids INTEGER NOT NULL DEFAULT 0 CHECK (is_kids IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS seasons (
   id TEXT PRIMARY KEY,
   show_id TEXT NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
@@ -90,23 +98,26 @@ CREATE TABLE IF NOT EXISTS subtitle_tracks (
 );
 
 CREATE TABLE IF NOT EXISTS watch_progress (
-  media_item_id TEXT PRIMARY KEY REFERENCES media_items(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
   position_seconds INTEGER NOT NULL DEFAULT 0 CHECK (position_seconds >= 0),
   duration_seconds INTEGER,
   watched INTEGER NOT NULL DEFAULT 0 CHECK (watched IN (0, 1)),
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (profile_id, media_item_id)
 );
 
 CREATE TABLE IF NOT EXISTS ratings (
   id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   media_item_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
   show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
   score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
   review TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK ((media_item_id IS NULL) != (show_id IS NULL)),
-  UNIQUE(media_item_id),
-  UNIQUE(show_id)
+  UNIQUE(profile_id, media_item_id),
+  UNIQUE(profile_id, show_id)
 );
 
 CREATE TABLE IF NOT EXISTS import_jobs (

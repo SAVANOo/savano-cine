@@ -13,6 +13,13 @@ export type Rating = {
   review?: string
 }
 
+export type Profile = {
+  id: string
+  name: string
+  avatarKey: 'cartman' | 'south-park' | 'ben-10' | 'savino'
+  isKids?: boolean
+}
+
 export type SubtitleTrack = {
   language: string
   label: string

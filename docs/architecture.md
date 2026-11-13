@@ -75,7 +75,9 @@ O catálogo não tratará todo arquivo de vídeo como filme:
 | Coleção/curso | caminho com curso, módulo ou coleção conhecida | revisão |
 | Promocional/outro | trailer, uploader, propaganda ou arquivo auxiliar | revisão |
 
-Itens com baixa certeza não serão forçados para filme. Eles entram como `other` com `classification_status = review`, preservando o caminho para decisão manual ou sugestão da IA.
+Itens com baixa certeza não serão forçados para filme. Eles entram como `other` com `classification_status = review`, preservando o caminho para decisão manual ou sugestão da IA. Conteúdos em pastas `Curtas` seguem essa regra como especiais: ficam fora da biblioteca principal, mas continuam vinculados ao caminho original para uma futura tela de extras.
+
+O scanner aceita temporadas numéricas (`Season 01`, `1ª Temporada`) e ordinais em português (`Primeira Temporada`, `Segunda Temporada`). Também reconhece identificadores de episódio `S01E01`, `S1EP01`, `1x01` e `01.01`.
 
 ## Rating e controle remoto
 

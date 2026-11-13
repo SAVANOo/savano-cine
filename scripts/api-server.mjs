@@ -36,6 +36,16 @@ createServer((request, response) => {
     return send(response, 200, sources)
   }
 
+  if (requestUrl.pathname === '/api/profiles') {
+    const profiles = database.prepare(`
+      SELECT id, name, avatar_key AS avatarKey, is_kids AS isKids
+      FROM profiles
+      ORDER BY created_at
+    `).all()
+
+    return send(response, 200, profiles)
+  }
+
   if (requestUrl.pathname === '/api/library') {
     return send(response, 200, buildLibrary())
   }
@@ -66,6 +76,12 @@ function buildLibrary() {
   const shows = database.prepare(`
     SELECT id, title
     FROM shows
+    WHERE EXISTS (
+      SELECT 1
+      FROM seasons s
+      JOIN episodes e ON e.season_id = s.id
+      WHERE s.show_id = shows.id
+    )
     ORDER BY title COLLATE NOCASE
   `).all()
 

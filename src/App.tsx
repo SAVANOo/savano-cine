@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
-import type { Episode, LibraryItem, MediaKind, MediaSource } from './domain/catalog'
+import { profiles as mockProfiles } from './data/mockCatalog'
+import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './domain/catalog'
 import './App.css'
 
 type LibraryFilter = 'Tudo' | MediaKind
@@ -12,14 +13,18 @@ function App() {
   const [selectedSeason, setSelectedSeason] = useState(1)
   const [catalog, setCatalog] = useState<LibraryItem[]>(mockLibrary)
   const [sources, setSources] = useState(mockSources)
+  const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
+  const [activeProfileId, setActiveProfileId] = useState('profile-savio')
 
   useEffect(() => {
     Promise.all([
       fetch('/api/library').then((response) => response.ok ? response.json() : Promise.reject(response)),
       fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)),
-    ]).then(([remoteLibrary, remoteSources]) => {
+      fetch('/api/profiles').then((response) => response.ok ? response.json() : Promise.reject(response)),
+    ]).then(([remoteLibrary, remoteSources, remoteProfiles]) => {
       setCatalog(remoteLibrary)
       setSources(remoteSources)
+      setProfiles(remoteProfiles)
     }).catch(() => {
       console.warn('API local indisponível; usando o catálogo de demonstração.')
     })
@@ -62,7 +67,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} />
         <main className="content">
           <button className="back-button" type="button" onClick={() => setSelectedShow(null)}>
             ← Voltar para biblioteca
@@ -101,7 +106,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -184,8 +189,19 @@ function OfflineSourceNotice({ source }: { source?: MediaSource }) {
   )
 }
 
-function Sidebar({ sources }: { sources: typeof mockSources }) {
+function Sidebar({
+  sources,
+  profiles,
+  activeProfileId,
+  onProfileChange,
+}: {
+  sources: typeof mockSources
+  profiles: Profile[]
+  activeProfileId: string
+  onProfileChange: (id: string) => void
+}) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
+  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
 
   return (
     <aside className="sidebar">
@@ -193,6 +209,7 @@ function Sidebar({ sources }: { sources: typeof mockSources }) {
         <span className="brand-mark">S</span>
         <span>Savano Cine</span>
       </div>
+      <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onProfileChange={onProfileChange} />
       <nav className="main-nav" aria-label="Navegação principal">
         <a className="nav-item active controller-focus" href="#inicio"><span>⌂</span> Início</a>
         <a className="nav-item controller-focus" href="#filmes"><span>▶</span> Filmes</a>
@@ -207,6 +224,48 @@ function Sidebar({ sources }: { sources: typeof mockSources }) {
         <button className="settings-button" type="button">⚙ Configurações</button>
       </div>
     </aside>
+  )
+}
+
+function ProfileSwitcher({
+  profiles,
+  activeProfile,
+  onProfileChange,
+}: {
+  profiles: Profile[]
+  activeProfile?: Profile
+  onProfileChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (!activeProfile) return null
+
+  return (
+    <div className="profile-switcher">
+      <button className="profile-button controller-focus" type="button" onClick={() => setOpen(!open)}>
+        <span className={`profile-avatar avatar-${activeProfile.avatarKey}`}>{activeProfile.avatarKey === 'cartman' ? 'C' : activeProfile.name[0]}</span>
+        <span><strong>{activeProfile.name}</strong><small>Trocar perfil</small></span>
+        <span className="profile-chevron">{open ? '⌃' : '⌄'}</span>
+      </button>
+      {open && (
+        <div className="profile-menu">
+          <p>Quem está assistindo?</p>
+          {profiles.map((profile) => (
+            <button
+              className="profile-option controller-focus"
+              type="button"
+              key={profile.id}
+              onClick={() => { onProfileChange(profile.id); setOpen(false) }}
+            >
+              <span className={`profile-avatar avatar-${profile.avatarKey}`}>{profile.avatarKey === 'cartman' ? 'C' : profile.name[0]}</span>
+              <span>{profile.name}</span>
+              {profile.id === activeProfile.id && <b>✓</b>}
+            </button>
+          ))}
+          <button className="profile-add controller-focus" type="button">＋ Criar perfil</button>
+        </div>
+      )}
+    </div>
   )
 }
 

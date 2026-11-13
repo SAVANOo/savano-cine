@@ -17,6 +17,11 @@ await mkdir(path.dirname(databasePath), { recursive: true })
 const database = new DatabaseSync(databasePath)
 const schema = await readFile(path.resolve('database/schema.sql'), 'utf8')
 database.exec(schema)
+database.prepare(`
+  INSERT INTO profiles (id, name, avatar_key)
+  VALUES (?, ?, ?)
+  ON CONFLICT(id) DO NOTHING
+`).run('profile-savio', 'Savio', 'cartman')
 
 const sourceId = `source-${slugify(sourcePath)}`
 const sourceName = path.basename(sourcePath) || sourcePath
@@ -74,6 +79,7 @@ try {
   for (const file of files) {
     const item = classifyMedia(file, sourcePath)
     const itemId = `media-${slugify(`${sourceId}-${item.caminho}`)}`
+    deleteEpisodeForMediaItem.run(itemId)
     const kind = item.tipo === 'serie' ? 'episode' : item.tipo === 'outro' ? 'other' : 'movie'
     const classificationStatus = item.tipo === 'outro' ? 'review' : 'auto'
     insertMovie.run(
@@ -91,7 +97,6 @@ try {
       const showTitle = item.pastaSerie || path.basename(path.dirname(file))
       const showId = `show-${slugify(showTitle)}`
       const seasonId = `${showId}-season-${item.temporada}`
-      deleteEpisodeForMediaItem.run(itemId)
       insertShow.run(showId, showTitle, normalize(showTitle))
       insertSeason.run(seasonId, showId, item.temporada)
       insertEpisode.run(

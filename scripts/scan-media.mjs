@@ -68,6 +68,16 @@ function classifyMedia(filePath, sourceRoot) {
     const normalizedPath = normalizeSegment(relativePath)
     const normalizedFilename = normalizeSegment(filename)
 
+    if (/(^|[\\/])curtas([\\/]|$)/i.test(normalizedPath)) {
+      return {
+        tipo: 'outro',
+        titulo: cleanTitle(filename),
+        formato: path.extname(filename).slice(1).toLowerCase(),
+        caminho: relativePath,
+        motivo: 'special',
+      }
+    }
+
     if (/(^|[\\/])(a energia do homem|curso|modulo|módulo)([\\/]|$)/i.test(normalizedPath)) {
       return {
         tipo: 'outro',
@@ -104,7 +114,7 @@ function classifyMedia(filePath, sourceRoot) {
 
 function findEpisodePattern(filename) {
   const patterns = [
-    { regex: /(?:^|[\s._-])S(\d{1,2})E(\d{1,3})(?:[\s._-]|$)/i, offset: 0 },
+    { regex: /(?:^|[\s._-])S(\d{1,2})E(?:P)?(\d{1,3})(?:[\s._-]|$)/i, offset: 0 },
     { regex: /(?:^|[\s._-])(\d{1,2})x(\d{1,3})(?:[\s._-]|$)/i, offset: 0 },
     { regex: /(?:^|[\s_-])(\d{1,2})\.(\d{1,3})(?:\s*[-:]|\s+)/, offset: 0 },
   ]
@@ -125,14 +135,17 @@ function findEpisodePattern(filename) {
 }
 
 function findEpisodeFromSeasonFolder(filename, relativePath) {
-  const seasonMatch = relativePath.match(/(?:^|[\\/])[^\\/]*?(\d{1,2})[ªº°]?[.\s_-]*Temporada[^\\/]*(?:[\\/]|$)/i)
-    ?? relativePath.match(/(?:^|[\\/])[^\\/]*?Season[\s._-]*(\d{1,2})[^\\/]*(?:[\\/]|$)/i)
+  const segments = relativePath.split(path.sep)
+  const seasonSegment = segments.find((segment) => parseSeasonNumber(segment) !== null)
   const episodeMatch = /^(\d{1,3})[\s._-]+/.exec(filename)
 
-  if (!seasonMatch || !episodeMatch) return null
+  if (!seasonSegment || !episodeMatch) return null
+
+  const season = parseSeasonNumber(seasonSegment)
+  if (!season) return null
 
   return {
-    season: Number(seasonMatch[1]),
+    season,
     number: Number(episodeMatch[1]),
     index: episodeMatch[0].length,
     prefixEnd: 0,
@@ -141,7 +154,7 @@ function findEpisodeFromSeasonFolder(filename, relativePath) {
 
 function inferSeriesFolder(relativePath) {
   const segments = relativePath.split(path.sep)
-  const seasonIndex = segments.findIndex((segment) => /(?:\d{1,2}[ªº°]?\s*Temporada|Season[\s._-]*\d{1,2})/i.test(segment))
+  const seasonIndex = segments.findIndex((segment) => parseSeasonNumber(segment) !== null)
 
   if (seasonIndex > 0) {
     const categoryNames = new Set(['animações', 'animacoes', 'filmes', 'series', 'séries'])
@@ -150,6 +163,27 @@ function inferSeriesFolder(relativePath) {
   }
 
   return segments[0]
+}
+
+function parseSeasonNumber(segment) {
+  const numeric = segment.match(/(\d{1,2})[ªº°]?[.\s_-]*Temporada/i)
+    ?? segment.match(/Season[\s._-]*(\d{1,2})/i)
+  if (numeric) return Number(numeric[1])
+
+  const ordinal = {
+    primeira: 1,
+    segunda: 2,
+    terceira: 3,
+    quarta: 4,
+    quinta: 5,
+    sexta: 6,
+    setima: 7,
+    oitava: 8,
+    nona: 9,
+    decima: 10,
+  }
+  const word = segment.match(/(primeira|segunda|terceira|quarta|quinta|sexta|s[ée]tima|oitava|nona|d[ée]cima)\s+temporada/i)
+  return word ? ordinal[normalizeSegment(word[1])] ?? null : null
 }
 
 function normalizeSegment(value) {
