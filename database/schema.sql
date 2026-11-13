@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS artwork (
   id TEXT PRIMARY KEY,
   movie_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
   show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
-  poster_url TEXT,
+  remote_url TEXT,
+  local_path TEXT,
+  provider TEXT,
+  provider_id TEXT,
   source TEXT NOT NULL CHECK (source IN ('local', 'tmdb', 'generated', 'none')),
   verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
   CHECK ((movie_id IS NULL) != (show_id IS NULL))
@@ -74,8 +77,13 @@ CREATE TABLE IF NOT EXISTS subtitle_tracks (
   media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
   language TEXT NOT NULL,
   label TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'manual'
+    CHECK (provider IN ('embedded', 'opensubtitles', 'manual', 'none')),
+  remote_id TEXT,
+  remote_url TEXT,
   relative_path TEXT,
-  embedded INTEGER NOT NULL DEFAULT 0 CHECK (embedded IN (0, 1))
+  embedded INTEGER NOT NULL DEFAULT 0 CHECK (embedded IN (0, 1)),
+  hearing_impaired INTEGER NOT NULL DEFAULT 0 CHECK (hearing_impaired IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS watch_progress (

@@ -96,6 +96,20 @@ Cada item terá uma referência de arte independente do arquivo de vídeo:
 
 O catálogo guarda a origem e se a capa foi validada. A interface nunca deve assumir que uma capa pública ou gerada está correta sem permitir revisão manual.
 
+Quando uma capa for aprovada, o arquivo poderá ser salvo ao lado da mídia, por exemplo `poster.jpg`, e o SQLite guardará `local_path`, `remote_url`, `provider` e `provider_id`. O vídeo original não será alterado. O caminho local será relativo à fonte para continuar funcionando quando a letra do SSD mudar.
+
+## Legendas
+
+A estratégia recomendada é:
+
+1. detectar faixas embutidas no arquivo;
+2. procurar arquivos locais com o mesmo nome (`.srt`, `.ass`, `.vtt`);
+3. consultar OpenSubtitles por hash e, depois, por título/temporada/episódio;
+4. mostrar os resultados com idioma, qualidade e provedor para confirmação;
+5. baixar a faixa escolhida ao lado do vídeo e registrar o caminho relativo no SQLite.
+
+OpenSubtitles é a primeira opção para integração porque possui busca por arquivo e catálogo de filmes/séries, mas requer conta/chave e deve ser usado respeitando seus termos e limites. A aplicação não deve baixar legendas automaticamente sem aprovação. A tabela `subtitle_tracks` já separa provedor, identificador remoto, URL e caminho local.
+
 ## Por que SQLite em vez de CSV/TXT
 
 CSV e TXT podem ser úteis para exportação ou backup legível, mas não são adequados como fonte principal porque não lidam bem com relações entre série, temporada, episódio, arquivo, legendas e progresso. SQLite mantém tudo em um único arquivo local, permite consultas, transações e migrações, sem exigir um servidor.
