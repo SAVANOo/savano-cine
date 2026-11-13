@@ -33,9 +33,10 @@ database.prepare(`
 
 const insertMovie = database.prepare(`
   INSERT INTO media_items (id, source_id, relative_path, title, kind, extension, exists_on_disk)
-  VALUES (?, ?, ?, ?, 'movie', ?, 1)
+  VALUES (?, ?, ?, ?, ?, ?, 1)
   ON CONFLICT(source_id, relative_path) DO UPDATE SET
     title = excluded.title,
+    kind = excluded.kind,
     extension = excluded.extension,
     exists_on_disk = 1,
     updated_at = CURRENT_TIMESTAMP
@@ -65,7 +66,14 @@ try {
   for (const file of files) {
     const item = classifyMedia(file, sourcePath)
     const itemId = `media-${slugify(`${sourceId}-${item.caminho}`)}`
-    insertMovie.run(itemId, sourceId, item.caminho, item.titulo, path.extname(file).slice(1).toLowerCase())
+    insertMovie.run(
+      itemId,
+      sourceId,
+      item.caminho,
+      item.titulo,
+      item.tipo === 'serie' ? 'episode' : 'movie',
+      path.extname(file).slice(1).toLowerCase(),
+    )
 
     if (item.tipo === 'serie' && item.temporada > 0 && item.episodio > 0) {
       const showTitle = item.pastaSerie || path.basename(path.dirname(file))
