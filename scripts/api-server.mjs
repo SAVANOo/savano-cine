@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -85,6 +85,16 @@ createServer(async (request, response) => {
     return streamMedia(mediaMatch[1], request, response)
   }
 
+  const subtitleListMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles$/)
+  if (subtitleListMatch) {
+    return send(response, 200, findSubtitleTracks(subtitleListMatch[1]))
+  }
+
+  const subtitleMatch = requestUrl.pathname.match(/^\/api\/subtitle\/([^/]+)$/)
+  if (subtitleMatch) {
+    return streamSubtitle(subtitleMatch[1], response)
+  }
+
   const artworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/([^/]+)\/(poster|banner)$/)
   if (artworkMatch) {
     return streamArtwork(artworkMatch[1], artworkMatch[2], response)
@@ -112,6 +122,7 @@ async function buildLibrary() {
     detail: item.relativePath,
     posterClass: 'poster-default',
     mediaUrl: `/api/media/${item.id}`,
+    subtitleUrl: `/api/media/${item.id}/subtitles`,
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
   }))
@@ -153,6 +164,7 @@ async function buildLibrary() {
         duration: 'Duração não analisada',
         subtitles: [{ language: 'pt-BR', label: 'Nenhuma faixa cadastrada', available: false }],
         mediaUrl: `/api/media/${episode.mediaId}`,
+        subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
       })),
     }))
 
@@ -238,6 +250,66 @@ function streamArtwork(showId, artworkType, response) {
   } catch {
     return send(response, 404, { error: 'Arquivo de arte indisponível.' })
   }
+}
+
+function findSubtitleTracks(mediaId) {
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ?
+  `).get(mediaId)
+  if (!media) return []
+
+  const directory = path.dirname(path.resolve(media.rootPath, media.relativePath))
+  const basename = path.basename(media.relativePath, path.extname(media.relativePath)).toLowerCase()
+  let names
+  try {
+    names = readdirSync(directory)
+  } catch {
+    return []
+  }
+
+  return names
+    .filter((name) => /\.(srt|vtt)$/i.test(name) && name.toLowerCase().startsWith(basename))
+    .map((name) => ({
+      label: name.match(/\.([a-z]{2}(?:-[a-z]{2})?)\./i)?.[1]?.toUpperCase() || 'Original',
+      url: `/api/subtitle/${encodeURIComponent(Buffer.from(JSON.stringify({ mediaId, name })).toString('base64url'))}`,
+    }))
+}
+
+function streamSubtitle(token, response) {
+  let subtitle
+  try {
+    subtitle = JSON.parse(Buffer.from(decodeURIComponent(token), 'base64url').toString('utf8'))
+  } catch {
+    return send(response, 400, { error: 'Legenda inválida.' })
+  }
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ?
+  `).get(subtitle.mediaId)
+  if (!media || typeof subtitle.name !== 'string' || path.basename(subtitle.name) !== subtitle.name) {
+    return send(response, 400, { error: 'Legenda inválida.' })
+  }
+  const directory = path.dirname(path.resolve(media.rootPath, media.relativePath))
+  const filePath = path.resolve(directory, subtitle.name)
+  if (!filePath.startsWith(`${directory}${path.sep}`)) return send(response, 400, { error: 'Legenda inválida.' })
+  try {
+    const extension = path.extname(filePath).toLowerCase()
+    const content = readFileSync(filePath, 'utf8')
+    const body = extension === '.srt' ? srtToVtt(content) : content
+    response.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8' })
+    return response.end(body)
+  } catch {
+    return send(response, 404, { error: 'Legenda indisponível.' })
+  }
+}
+
+function srtToVtt(content) {
+  return `WEBVTT\n\n${content.replace(/\r?\n/g, '\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`
 }
 
 function streamMedia(mediaId, request, response) {

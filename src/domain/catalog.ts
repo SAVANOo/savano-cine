@@ -40,6 +40,7 @@ export type Episode = {
   position?: string
   subtitles: SubtitleTrack[]
   mediaUrl?: string
+  subtitleUrl?: string
 }
 
 export type Season = {
@@ -60,6 +61,7 @@ export type LibraryItem = {
   progress?: number
   seasons?: Season[]
   mediaUrl?: string
+  subtitleUrl?: string
 }
 
 export type MediaSource = {

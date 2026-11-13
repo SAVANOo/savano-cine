@@ -16,11 +16,7 @@ function App() {
   const [sources, setSources] = useState(mockSources)
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
-  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string } | null>(null)
-
-  useEffect(() => {
-    document.title = selectedShow ? `SC - ${selectedShow.title}` : messages.appName
-  }, [selectedShow])
+  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string } | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -38,6 +34,11 @@ function App() {
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedMedia) {
+        setSelectedMedia(null)
+        return
+      }
+
       if (event.key === 'Escape' && selectedShow) {
         setSelectedShow(null)
         return
@@ -51,7 +52,15 @@ function App() {
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [selectedShow])
+  }, [selectedMedia, selectedShow])
+
+  useEffect(() => {
+    document.title = selectedMedia
+      ? `▶ ${selectedMedia.title} · ${messages.appName}`
+      : selectedShow
+        ? `SC - ${selectedShow.title}`
+        : messages.appName
+  }, [selectedMedia, selectedShow])
 
   useGamepadNavigation()
 
@@ -421,12 +430,12 @@ function ShowHeader({ show }: { show: LibraryItem }) {
   )
 }
 
-function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item: LibraryItem) => void; onPlay: (media: { title: string; url: string }) => void }) {
+function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item: LibraryItem) => void; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
   const openItem = () => {
     if (item.kind === 'Série') {
       onOpen(item)
     } else if (item.mediaUrl) {
-      onPlay({ title: item.title, url: item.mediaUrl })
+      onPlay({ title: item.title, url: item.mediaUrl, subtitleUrl: item.subtitleUrl })
     }
   }
 
@@ -453,7 +462,7 @@ function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item:
   )
 }
 
-function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string }) => void }) {
+function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
   const watched = episode.progress !== undefined
 
   return (
@@ -472,18 +481,68 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
         </div>
         {watched && <span className="episode-progress"><span style={{ width: `${episode.progress}%` }} /></span>}
       </div>
-      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl })}>{watched ? 'Continuar' : 'Assistir'}</button>
+      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl, subtitleUrl: episode.subtitleUrl })}>{watched ? 'Continuar' : 'Assistir'}</button>
     </article>
   )
 }
 
-function VideoPlayer({ media, onClose }: { media: { title: string; url: string }; onClose: () => void }) {
+function VideoPlayer({ media, onClose }: { media: { title: string; url: string; subtitleUrl?: string }; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
+  const [subtitleUrl, setSubtitleUrl] = useState('')
+  const [rate, setRate] = useState(1)
+  const [volume, setVolume] = useState(1)
+
+  useEffect(() => {
+    if (!media.subtitleUrl) return
+    fetch(media.subtitleUrl)
+      .then((response) => response.ok ? response.json() : [])
+      .then((tracks) => setSubtitleTracks(tracks))
+      .catch(() => setSubtitleTracks([]))
+  }, [media.subtitleUrl])
+
+  const seek = (seconds: number) => {
+    if (videoRef.current) videoRef.current.currentTime += seconds
+  }
+
+  const changeRate = (value: number) => {
+    setRate(value)
+    if (videoRef.current) videoRef.current.playbackRate = value
+  }
+
+  const changeVolume = (value: number) => {
+    setVolume(value)
+    if (videoRef.current) videoRef.current.volume = value
+  }
+
+  const toggleFullscreen = () => {
+    void videoRef.current?.requestFullscreen()
+  }
+
   return (
-    <div className="player-backdrop">
-      <section className="player-modal" role="dialog" aria-label={`Reproduzindo ${media.title}`}>
-        <div className="player-heading"><strong>{media.title}</strong><button type="button" onClick={onClose}>Fechar</button></div>
-        <video className="video-player" src={media.url} controls autoPlay playsInline />
-        <small>Se o formato não for suportado pelo navegador, o player nativo será substituído por FFmpeg/VLC na próxima etapa.</small>
+    <div className="player-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="player-modal" role="dialog" aria-modal="true" aria-label={`Reproduzindo ${media.title}`} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="player-heading">
+          <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
+          <button className="player-close" type="button" aria-label="Fechar player" onClick={onClose}>×</button>
+        </div>
+        <video ref={videoRef} className="video-player" src={media.url} controls autoPlay playsInline>
+          {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
+        </video>
+        <div className="player-controls">
+          <button type="button" onClick={() => seek(-10)}>↶ 10s</button>
+          <button type="button" onClick={() => seek(10)}>10s ↷</button>
+          <label>Velocidade<select value={rate} onChange={(event) => changeRate(Number(event.target.value))}>
+            {[0.75, 1, 1.25, 1.5, 2].map((value) => <option value={value} key={value}>{value}x</option>)}
+          </select></label>
+          <label>Volume<input type="range" min="0" max="1" step="0.05" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} /></label>
+          {subtitleTracks.length > 0 && <label>Legenda<select value={subtitleUrl} onChange={(event) => setSubtitleUrl(event.target.value)}>
+            <option value="">Sem legenda</option>
+            {subtitleTracks.map((track) => <option value={track.url} key={track.url}>{track.label}</option>)}
+          </select></label>}
+          <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
+        </div>
+        <small>Áudio: o navegador usa a faixa padrão do arquivo. Seleção de múltiplas faixas e conversão de formatos serão adicionadas com FFmpeg/VLC.</small>
       </section>
     </div>
   )
