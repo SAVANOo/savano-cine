@@ -50,6 +50,7 @@ function buildLibrary() {
     SELECT id, title, extension, relative_path AS relativePath
     FROM media_items
     WHERE kind = 'movie'
+      AND classification_status IN ('auto', 'approved')
     ORDER BY title COLLATE NOCASE
     LIMIT 500
   `).all().map((item) => ({

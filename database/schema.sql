@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS media_items (
   source_id TEXT NOT NULL REFERENCES media_sources(id) ON DELETE CASCADE,
   relative_path TEXT NOT NULL,
   title TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('movie', 'episode')),
+  kind TEXT NOT NULL CHECK (kind IN ('movie', 'episode', 'collection', 'other')),
+  classification_status TEXT NOT NULL DEFAULT 'review'
+    CHECK (classification_status IN ('auto', 'review', 'approved', 'ignored')),
+  classification_reason TEXT,
   year INTEGER,
   extension TEXT NOT NULL,
   file_size INTEGER,

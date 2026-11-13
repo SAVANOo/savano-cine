@@ -34,6 +34,7 @@ O protótipo atual mantém a tela principal em `src/App.tsx` para validar a expe
 - IA local será opcional e só poderá sugerir alterações; a confirmação final continuará sendo do usuário.
 - Capas serão tratadas como metadado substituível: primeiro arquivo local, depois fonte pública e, por último, geração por IA.
 - Legendas serão priorizadas nesta ordem: embutidas, arquivos locais, OpenSubtitles e seleção manual.
+- A biblioteca principal só exibe filmes e séries aprovados; cursos, coleções e arquivos promocionais ficam em revisão.
 
 ## Desenvolvimento
 

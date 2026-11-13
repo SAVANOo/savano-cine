@@ -64,6 +64,19 @@ npm run scan -- "E:\\Filmes" --limit 20
 
 Além dos padrões `S01E01`, `1x01` e `01.01`, o scanner reconhece episódios numerados dentro de pastas como `1ª Temporada`, `1ª. Temporada` e `Season 01`. Isso cobre coleções antigas como Ben 10 sem exigir renomeação imediata.
 
+## Contrato de classificação
+
+O catálogo não tratará todo arquivo de vídeo como filme:
+
+| Categoria | Regra inicial | Biblioteca principal |
+| --- | --- | --- |
+| Filme | arquivo isolado sem contexto de episódio | sim |
+| Episódio | padrão de episódio ou número dentro de pasta de temporada | dentro da série |
+| Coleção/curso | caminho com curso, módulo ou coleção conhecida | revisão |
+| Promocional/outro | trailer, uploader, propaganda ou arquivo auxiliar | revisão |
+
+Itens com baixa certeza não serão forçados para filme. Eles entram como `other` com `classification_status = review`, preservando o caminho para decisão manual ou sugestão da IA.
+
 O schema inicial está em `database/schema.sql`. Ele separa a origem física (`media_sources`) do catálogo (`media_items`) e das relações de série (`shows`, `seasons`, `episodes`). Assim, remover o SSD altera o estado da fonte para `offline`, sem apagar o catálogo, o progresso ou as capas.
 
 O comando `npm run import -- "E:\\Filmes"` já executa essa primeira persistência local. Duplicidades de temporada/episódio não apagam arquivos: o primeiro vínculo é mantido e os demais continuam registrados como `media_items` para a futura revisão.

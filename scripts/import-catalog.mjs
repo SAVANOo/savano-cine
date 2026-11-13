@@ -32,11 +32,16 @@ database.prepare(`
 `).run(sourceId, sourceName, sourcePath, /^[A-Z]:\\/i.test(sourcePath) && sourcePath[0].toUpperCase() !== 'C' ? 1 : 0, 'online')
 
 const insertMovie = database.prepare(`
-  INSERT INTO media_items (id, source_id, relative_path, title, kind, extension, exists_on_disk)
-  VALUES (?, ?, ?, ?, ?, ?, 1)
+  INSERT INTO media_items (
+    id, source_id, relative_path, title, kind, classification_status, classification_reason,
+    extension, exists_on_disk
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
   ON CONFLICT(source_id, relative_path) DO UPDATE SET
     title = excluded.title,
     kind = excluded.kind,
+    classification_status = excluded.classification_status,
+    classification_reason = excluded.classification_reason,
     extension = excluded.extension,
     exists_on_disk = 1,
     updated_at = CURRENT_TIMESTAMP
@@ -69,12 +74,16 @@ try {
   for (const file of files) {
     const item = classifyMedia(file, sourcePath)
     const itemId = `media-${slugify(`${sourceId}-${item.caminho}`)}`
+    const kind = item.tipo === 'serie' ? 'episode' : item.tipo === 'outro' ? 'other' : 'movie'
+    const classificationStatus = item.tipo === 'outro' ? 'review' : 'auto'
     insertMovie.run(
       itemId,
       sourceId,
       item.caminho,
       item.titulo,
-      item.tipo === 'serie' ? 'episode' : 'movie',
+      kind,
+      classificationStatus,
+      item.motivo || null,
       path.extname(file).slice(1).toLowerCase(),
     )
 

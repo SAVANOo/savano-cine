@@ -47,6 +47,10 @@ function classifyMedia(filePath, sourceRoot) {
   const relativePath = path.relative(sourceRoot, filePath)
   const extension = path.extname(filePath).toLowerCase()
   const basename = path.basename(filePath, extension)
+  const specialClassification = classifySpecialMedia(basename, relativePath)
+
+  if (specialClassification) return specialClassification
+
   const episode = findEpisodePattern(basename) ?? findEpisodeFromSeasonFolder(basename, relativePath)
 
   if (!episode) {
@@ -58,6 +62,33 @@ function classifyMedia(filePath, sourceRoot) {
       formato: extension.slice(1),
       caminho: relativePath,
     }
+  }
+
+  function classifySpecialMedia(filename, relativePath) {
+    const normalizedPath = normalizeSegment(relativePath)
+    const normalizedFilename = normalizeSegment(filename)
+
+    if (/(^|[\\/])(a energia do homem|curso|modulo|módulo)([\\/]|$)/i.test(normalizedPath)) {
+      return {
+        tipo: 'outro',
+        titulo: cleanTitle(filename),
+        formato: path.extname(filename).slice(1).toLowerCase(),
+        caminho: relativePath,
+        motivo: 'collection',
+      }
+    }
+
+    if (/^(1xbet|bludv|comando|trailer|lucas firmo|www\.)/i.test(normalizedFilename)) {
+      return {
+        tipo: 'outro',
+        titulo: cleanTitle(filename),
+        formato: path.extname(filename).slice(1).toLowerCase(),
+        caminho: relativePath,
+        motivo: 'promotional',
+      }
+    }
+
+    return null
   }
 
   return {
