@@ -77,6 +77,12 @@ O catálogo não tratará todo arquivo de vídeo como filme:
 
 Itens com baixa certeza não serão forçados para filme. Eles entram como `other` com `classification_status = review`, preservando o caminho para decisão manual ou sugestão da IA.
 
+## Rating e controle remoto
+
+Avaliações são pessoais e ficam separadas dos metadados externos, com nota de 0 a 10 e comentário opcional. O schema já possui a tabela `ratings` para filmes e séries.
+
+A interface deve ser operável sem mouse: elementos importantes usam foco visível, `Escape` volta para a biblioteca, `/` leva à busca e a Gamepad API permite mover o foco e selecionar. O mapeamento será refinado junto com o player real, mantendo teclado como fallback confiável.
+
 O schema inicial está em `database/schema.sql`. Ele separa a origem física (`media_sources`) do catálogo (`media_items`) e das relações de série (`shows`, `seasons`, `episodes`). Assim, remover o SSD altera o estado da fonte para `offline`, sem apagar o catálogo, o progresso ou as capas.
 
 O comando `npm run import -- "E:\\Filmes"` já executa essa primeira persistência local. Duplicidades de temporada/episódio não apagam arquivos: o primeiro vínculo é mantido e os demais continuam registrados como `media_items` para a futura revisão.

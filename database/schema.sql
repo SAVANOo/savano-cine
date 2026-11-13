@@ -97,6 +97,18 @@ CREATE TABLE IF NOT EXISTS watch_progress (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS ratings (
+  id TEXT PRIMARY KEY,
+  media_item_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
+  show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  review TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK ((media_item_id IS NULL) != (show_id IS NULL)),
+  UNIQUE(media_item_id),
+  UNIQUE(show_id)
+);
+
 CREATE TABLE IF NOT EXISTS import_jobs (
   id TEXT PRIMARY KEY,
   source_id TEXT REFERENCES media_sources(id) ON DELETE SET NULL,

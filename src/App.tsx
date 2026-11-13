@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource } from './domain/catalog'
 import './App.css'
@@ -24,6 +24,25 @@ function App() {
       console.warn('API local indisponível; usando o catálogo de demonstração.')
     })
   }, [])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedShow) {
+        setSelectedShow(null)
+        return
+      }
+
+      if (event.key === '/' && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT') {
+        event.preventDefault()
+        document.querySelector<HTMLInputElement>('.search-box input')?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [selectedShow])
+
+  useGamepadNavigation()
 
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -175,9 +194,9 @@ function Sidebar({ sources }: { sources: typeof mockSources }) {
         <span>Savano Cine</span>
       </div>
       <nav className="main-nav" aria-label="Navegação principal">
-        <a className="nav-item active" href="#inicio"><span>⌂</span> Início</a>
-        <a className="nav-item" href="#filmes"><span>▶</span> Filmes</a>
-        <a className="nav-item" href="#series"><span>▦</span> Séries</a>
+        <a className="nav-item active controller-focus" href="#inicio"><span>⌂</span> Início</a>
+        <a className="nav-item controller-focus" href="#filmes"><span>▶</span> Filmes</a>
+        <a className="nav-item controller-focus" href="#series"><span>▦</span> Séries</a>
       </nav>
       <div className="sidebar-bottom">
         <div className="source-status">
@@ -215,7 +234,7 @@ function ShowHeader({ show }: { show: LibraryItem }) {
 function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: LibraryItem) => void }) {
   return (
     <article className="media-card">
-      <button className={`poster ${item.posterClass}`} type="button" onClick={() => item.kind === 'Série' && onOpen(item)}>
+      <button className={`poster ${item.posterClass} controller-focus`} type="button" onClick={() => item.kind === 'Série' && onOpen(item)}>
         {item.artwork.posterUrl && <img className="poster-image" src={item.artwork.posterUrl} alt="" />}
         <span className="poster-kind">{item.kind}</span>
         {item.id === 'south-park' && <strong>South<br />Park</strong>}
@@ -251,9 +270,54 @@ function EpisodeRow({ episode }: { episode: Episode }) {
         </div>
         {watched && <span className="episode-progress"><span style={{ width: `${episode.progress}%` }} /></span>}
       </div>
-      <button className="episode-play" type="button">{watched ? 'Continuar' : 'Assistir'}</button>
+      <button className="episode-play controller-focus" type="button">{watched ? 'Continuar' : 'Assistir'}</button>
     </article>
   )
+}
+
+function useGamepadNavigation() {
+  const previousButtons = useRef<boolean[]>([])
+  const previousAxes = useRef<ReadonlyArray<number>>([])
+
+  useEffect(() => {
+    if (!navigator.getGamepads) return
+
+    const timer = window.setInterval(() => {
+      const gamepad = Array.from(navigator.getGamepads()).find(Boolean)
+      if (!gamepad) return
+
+      const buttons = gamepad.buttons.map((button) => button.pressed)
+      const previous = previousButtons.current
+      const pressed = (index: number) => buttons[index] && !previous[index]
+      const focusable = Array.from(document.querySelectorAll<HTMLElement>('.controller-focus'))
+      const currentIndex = focusable.indexOf(document.activeElement as HTMLElement)
+
+      if (pressed(0)) {
+        const active = document.activeElement as HTMLElement | null
+        active?.click()
+      }
+
+      if (pressed(1)) {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      }
+
+      const horizontalAxis = gamepad.axes[0] ?? 0
+      const wasHorizontal = previousAxes.current[0] ?? 0
+
+      if (horizontalAxis > 0.6 && wasHorizontal <= 0.6) {
+        focusable[Math.min(currentIndex + 1, focusable.length - 1)]?.focus()
+      }
+
+      if (horizontalAxis < -0.6 && wasHorizontal >= -0.6) {
+        focusable[Math.max(currentIndex - 1, 0)]?.focus()
+      }
+
+      previousButtons.current = buttons
+      previousAxes.current = gamepad.axes
+    }, 100)
+
+    return () => window.clearInterval(timer)
+  }, [])
 }
 
 export default App

@@ -8,6 +8,11 @@ export type Artwork = {
   verified: boolean
 }
 
+export type Rating = {
+  score: number
+  review?: string
+}
+
 export type SubtitleTrack = {
   language: string
   label: string
@@ -41,6 +46,7 @@ export type LibraryItem = {
   detail: string
   posterClass: string
   artwork: Artwork
+  rating?: Rating
   progress?: number
   seasons?: Season[]
 }
