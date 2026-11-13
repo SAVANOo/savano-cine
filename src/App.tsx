@@ -180,7 +180,10 @@ function Sidebar() {
 function ShowHeader({ show }: { show: LibraryItem }) {
   return (
     <section className="show-header">
-      <div className={`show-poster poster ${show.posterClass}`}><strong>South<br />Park</strong></div>
+      <div className={`show-poster poster ${show.posterClass}`}>
+        {show.artwork.posterUrl && <img className="poster-image" src={show.artwork.posterUrl} alt="" />}
+        <strong>South<br />Park</strong>
+      </div>
       <div className="show-copy">
         <p className="eyebrow">SÉRIE</p>
         <h1>{show.title}</h1>
@@ -199,6 +202,7 @@ function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: Library
   return (
     <article className="media-card">
       <button className={`poster ${item.posterClass}`} type="button" onClick={() => item.kind === 'Série' && onOpen(item)}>
+        {item.artwork.posterUrl && <img className="poster-image" src={item.artwork.posterUrl} alt="" />}
         <span className="poster-kind">{item.kind}</span>
         {item.id === 'south-park' && <strong>South<br />Park</strong>}
         {item.id === 'marighella' && <strong>MARIGHELLA</strong>}

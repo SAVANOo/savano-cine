@@ -108,6 +108,7 @@ export const library: LibraryItem[] = [
     meta: '15 temporadas',
     detail: '216 episódios encontrados',
     posterClass: 'poster-south-park',
+    artwork: { source: 'none', verified: false },
     progress: 42,
     seasons: [{ number: 1, episodes: southParkEpisodes }],
   },
@@ -118,6 +119,7 @@ export const library: LibraryItem[] = [
     meta: '2019 · 1080p',
     detail: 'MKV · 3,8 GB',
     posterClass: 'poster-marighella',
+    artwork: { source: 'none', verified: false },
   },
   {
     id: 'a-fuga-do-planeta-terra',
@@ -126,5 +128,6 @@ export const library: LibraryItem[] = [
     meta: '2013 · 720p',
     detail: 'MP4 · 724 MB',
     posterClass: 'poster-fuga',
+    artwork: { source: 'none', verified: false },
   },
 ]

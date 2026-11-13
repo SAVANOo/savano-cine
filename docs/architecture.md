@@ -77,6 +77,17 @@ Adicionar arquivo/pasta
 
 Uma integração local com Ollama pode ser adicionada depois. O modelo não terá permissão para mover, apagar ou renomear arquivos sozinho; ele retornará uma sugestão estruturada para a aplicação validar.
 
+## Capas e metadados visuais
+
+Cada item terá uma referência de arte independente do arquivo de vídeo:
+
+1. capa encontrada na própria pasta;
+2. capa obtida de uma fonte pública configurada;
+3. capa gerada por IA, explicitamente marcada como gerada;
+4. fallback visual sem imagem.
+
+O catálogo guarda a origem e se a capa foi validada. A interface nunca deve assumir que uma capa pública ou gerada está correta sem permitir revisão manual.
+
 ## Por que SQLite em vez de CSV/TXT
 
 CSV e TXT podem ser úteis para exportação ou backup legível, mas não são adequados como fonte principal porque não lidam bem com relações entre série, temporada, episódio, arquivo, legendas e progresso. SQLite mantém tudo em um único arquivo local, permite consultas, transações e migrações, sem exigir um servidor.

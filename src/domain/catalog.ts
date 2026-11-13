@@ -1,5 +1,11 @@
 export type MediaKind = 'Filme' | 'Série'
 
+export type Artwork = {
+  posterUrl?: string
+  source: 'local' | 'tmdb' | 'generated' | 'none'
+  verified: boolean
+}
+
 export type SubtitleTrack = {
   language: string
   label: string
@@ -30,6 +36,7 @@ export type LibraryItem = {
   meta: string
   detail: string
   posterClass: string
+  artwork: Artwork
   progress?: number
   seasons?: Season[]
 }
