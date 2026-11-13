@@ -13,10 +13,10 @@ export const mediaSources: MediaSource[] = [
     id: 'ssd-filmes',
     name: 'SSD externo',
     path: 'E:\\Filmes',
-    status: 'offline',
+    status: 'online',
     removable: true,
     itemCount: 0,
-    volumeLabel: 'SAVANO_MEDIA',
+    volumeLabel: 'Extends',
   },
 ]
 
