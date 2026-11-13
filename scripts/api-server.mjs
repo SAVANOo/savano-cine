@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -71,7 +71,12 @@ createServer(async (request, response) => {
   }
 
   if (requestUrl.pathname === '/api/library') {
-    return send(response, 200, buildLibrary())
+    return send(response, 200, await buildLibrary())
+  }
+
+  const mediaMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)$/)
+  if (mediaMatch) {
+    return streamMedia(mediaMatch[1], request, response)
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
@@ -79,7 +84,7 @@ createServer(async (request, response) => {
   console.log(`Savano Cine API em http://127.0.0.1:${port}`)
 })
 
-function buildLibrary() {
+async function buildLibrary() {
   const items = database.prepare(`
     SELECT id, title, extension, relative_path AS relativePath
     FROM media_items
@@ -94,6 +99,7 @@ function buildLibrary() {
     meta: item.extension.toUpperCase(),
     detail: item.relativePath,
     posterClass: 'poster-default',
+    mediaUrl: `/api/media/${item.id}`,
     artwork: { source: 'none', verified: false },
   }))
 
@@ -109,7 +115,9 @@ function buildLibrary() {
     ORDER BY title COLLATE NOCASE
   `).all()
 
-  for (const show of shows) {
+  const showArtworks = await Promise.all(shows.map((show) => fetchShowArtwork(show.title)))
+
+  for (const [index, show] of shows.entries()) {
     const seasons = database.prepare(`
       SELECT id, season_number AS number
       FROM seasons
@@ -118,7 +126,7 @@ function buildLibrary() {
     `).all(show.id).map((season) => ({
       number: season.number,
       episodes: database.prepare(`
-        SELECT e.id, e.episode_number AS number, e.title, m.relative_path AS filename
+        SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename
         FROM episodes e
         JOIN media_items m ON m.id = e.media_item_id
         WHERE e.season_id = ?
@@ -131,6 +139,7 @@ function buildLibrary() {
         filename: episode.filename,
         duration: 'Duração não analisada',
         subtitles: [{ language: 'pt-BR', label: 'Nenhuma faixa cadastrada', available: false }],
+        mediaUrl: `/api/media/${episode.mediaId}`,
       })),
     }))
 
@@ -142,9 +151,23 @@ function buildLibrary() {
       meta: `${seasons.length} temporadas`,
       detail: `${episodeCount} episódios catalogados`,
       posterClass: show.title.toLocaleLowerCase().includes('south park') ? 'poster-south-park' : 'poster-default',
-      artwork: { source: 'none', verified: false },
+      artwork: showArtworks[index],
       seasons,
     })
+  }
+
+  async function fetchShowArtwork(title) {
+    try {
+      const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(title)}`)
+      if (!response.ok) throw new Error(`TVMaze ${response.status}`)
+      const show = await response.json()
+      const posterUrl = show.image?.original || show.image?.medium
+      return posterUrl
+        ? { source: 'tvmaze', posterUrl, providerId: String(show.id), verified: true }
+        : { source: 'none', verified: false }
+    } catch {
+      return { source: 'none', verified: false }
+    }
   }
 
   return items
@@ -153,6 +176,63 @@ function buildLibrary() {
 function send(response, status, body) {
   response.writeHead(status)
   response.end(JSON.stringify(body))
+}
+
+function streamMedia(mediaId, request, response) {
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, m.extension, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ?
+  `).get(mediaId)
+
+  if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const filePath = path.resolve(media.rootPath, media.relativePath)
+  const rootPath = path.resolve(media.rootPath)
+  if (filePath !== rootPath && !filePath.startsWith(`${rootPath}${path.sep}`)) {
+    return send(response, 400, { error: 'Caminho de mídia inválido.' })
+  }
+
+  let fileSize
+  try {
+    fileSize = statSync(filePath).size
+  } catch {
+    return send(response, 404, { error: 'Arquivo indisponível.' })
+  }
+
+  const contentType = {
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    mov: 'video/quicktime',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+  }[media.extension.toLowerCase()] || 'application/octet-stream'
+  const range = request.headers.range
+
+  if (!range) {
+    response.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+    })
+    return createReadStream(filePath).pipe(response)
+  }
+
+  const match = /bytes=(\d*)-(\d*)/.exec(range)
+  if (!match) return send(response, 416, { error: 'Faixa inválida.' })
+  const start = match[1] ? Number(match[1]) : Math.max(fileSize - Number(match[2]), 0)
+  const end = match[2] ? Number(match[2]) : fileSize - 1
+  if (start >= fileSize || start > end) return send(response, 416, { error: 'Faixa fora do arquivo.' })
+
+  response.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+    'Content-Length': end - start + 1,
+    'Content-Type': contentType,
+    'Accept-Ranges': 'bytes',
+  })
+  return createReadStream(filePath, { start, end }).pipe(response)
 }
 
 function readJson(request) {

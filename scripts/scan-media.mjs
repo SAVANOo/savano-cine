@@ -139,6 +139,17 @@ function findEpisodeFromSeasonFolder(filename, relativePath) {
   const seasonSegment = segments.find((segment) => parseSeasonNumber(segment) !== null)
   const episodeMatch = /^(\d{1,3})[\s._-]+/.exec(filename)
 
+  const numericSeasonSegment = segments.find((segment) => /^\d{1,2}$/.test(segment))
+  const compactEpisodeMatch = /^(\d{1,2})(\d{2,3})[\s._-]+/.exec(filename)
+  if (numericSeasonSegment && compactEpisodeMatch && Number(compactEpisodeMatch[1]) === Number(numericSeasonSegment)) {
+    return {
+      season: Number(compactEpisodeMatch[1]),
+      number: Number(compactEpisodeMatch[2]),
+      index: compactEpisodeMatch[0].length,
+      prefixEnd: 0,
+    }
+  }
+
   if (!seasonSegment || !episodeMatch) return null
 
   const season = parseSeasonNumber(seasonSegment)
@@ -154,7 +165,8 @@ function findEpisodeFromSeasonFolder(filename, relativePath) {
 
 function inferSeriesFolder(relativePath) {
   const segments = relativePath.split(path.sep)
-  const seasonIndex = segments.findIndex((segment) => parseSeasonNumber(segment) !== null)
+  const seasonIndex = segments.findIndex((segment, index) =>
+    parseSeasonNumber(segment) !== null || (index > 0 && /^\d{1,2}$/.test(segment)))
 
   if (seasonIndex > 0) {
     const categoryNames = new Set(['animações', 'animacoes', 'filmes', 'series', 'séries'])

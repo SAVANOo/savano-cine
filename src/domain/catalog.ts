@@ -4,7 +4,7 @@ export type Artwork = {
   posterUrl?: string
   localPath?: string
   providerId?: string
-  source: 'local' | 'tmdb' | 'generated' | 'none'
+  source: 'local' | 'tmdb' | 'tvmaze' | 'generated' | 'none'
   verified: boolean
 }
 
@@ -38,6 +38,7 @@ export type Episode = {
   progress?: number
   position?: string
   subtitles: SubtitleTrack[]
+  mediaUrl?: string
 }
 
 export type Season = {
@@ -56,6 +57,7 @@ export type LibraryItem = {
   rating?: Rating
   progress?: number
   seasons?: Season[]
+  mediaUrl?: string
 }
 
 export type MediaSource = {

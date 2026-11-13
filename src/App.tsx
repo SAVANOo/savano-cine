@@ -16,6 +16,7 @@ function App() {
   const [sources, setSources] = useState(mockSources)
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
+  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string } | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -96,11 +97,12 @@ function App() {
             </div>
             <div className="episode-list">
               {selectedEpisodes.map((episode) => (
-                <EpisodeRow episode={episode} key={episode.id} />
+                <EpisodeRow episode={episode} key={episode.id} onPlay={setSelectedMedia} />
               ))}
             </div>
           </section>
         </main>
+        {selectedMedia && <VideoPlayer media={selectedMedia} onClose={() => setSelectedMedia(null)} />}
       </div>
     )
   }
@@ -163,7 +165,7 @@ function App() {
           </div>
           <div className="media-grid">
             {visibleItems.map((item) => (
-              <MediaCard item={item} key={item.id} onOpen={setSelectedShow} />
+              <MediaCard item={item} key={item.id} onOpen={setSelectedShow} onPlay={setSelectedMedia} />
             ))}
           </div>
           {visibleItems.length === 0 && (
@@ -171,6 +173,7 @@ function App() {
           )}
         </section>
       </main>
+      {selectedMedia && <VideoPlayer media={selectedMedia} onClose={() => setSelectedMedia(null)} />}
     </div>
   )
 }
@@ -386,10 +389,18 @@ function ShowHeader({ show }: { show: LibraryItem }) {
   )
 }
 
-function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: LibraryItem) => void }) {
+function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item: LibraryItem) => void; onPlay: (media: { title: string; url: string }) => void }) {
+  const openItem = () => {
+    if (item.kind === 'Série') {
+      onOpen(item)
+    } else if (item.mediaUrl) {
+      onPlay({ title: item.title, url: item.mediaUrl })
+    }
+  }
+
   return (
     <article className="media-card">
-      <button className={`poster ${item.posterClass} controller-focus`} type="button" onClick={() => item.kind === 'Série' && onOpen(item)}>
+      <button className={`poster ${item.posterClass} controller-focus`} type="button" aria-label={`Abrir ${item.title}`} onClick={openItem}>
         {item.artwork.posterUrl && <img className="poster-image" src={item.artwork.posterUrl} alt="" />}
         <span className="poster-kind">{item.kind}</span>
         {item.id === 'south-park' && <strong>South<br />Park</strong>}
@@ -398,15 +409,18 @@ function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: Library
         {item.progress && <span className="progress-track"><span style={{ width: `${item.progress}%` }} /></span>}
       </button>
       <div className="card-copy">
-        <div><h3>{item.title}</h3><p>{item.meta}</p></div>
-        <span className="more-button">···</span>
+        <div>
+          <button className="card-title-button controller-focus" type="button" onClick={openItem}>{item.title}</button>
+          <p>{item.meta}</p>
+        </div>
+        <span className="more-button" aria-hidden="true">···</span>
       </div>
       <small className="card-detail">{item.detail}</small>
     </article>
   )
 }
 
-function EpisodeRow({ episode }: { episode: Episode }) {
+function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string }) => void }) {
   const watched = episode.progress !== undefined
 
   return (
@@ -425,8 +439,20 @@ function EpisodeRow({ episode }: { episode: Episode }) {
         </div>
         {watched && <span className="episode-progress"><span style={{ width: `${episode.progress}%` }} /></span>}
       </div>
-      <button className="episode-play controller-focus" type="button">{watched ? 'Continuar' : 'Assistir'}</button>
+      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl })}>{watched ? 'Continuar' : 'Assistir'}</button>
     </article>
+  )
+}
+
+function VideoPlayer({ media, onClose }: { media: { title: string; url: string }; onClose: () => void }) {
+  return (
+    <div className="player-backdrop">
+      <section className="player-modal" role="dialog" aria-label={`Reproduzindo ${media.title}`}>
+        <div className="player-heading"><strong>{media.title}</strong><button type="button" onClick={onClose}>Fechar</button></div>
+        <video className="video-player" src={media.url} controls autoPlay playsInline />
+        <small>Se o formato não for suportado pelo navegador, o player nativo será substituído por FFmpeg/VLC na próxima etapa.</small>
+      </section>
+    </div>
   )
 }
 
