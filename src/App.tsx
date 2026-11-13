@@ -82,7 +82,7 @@ function App() {
   const openShow = (show: LibraryItem) => {
     setSelectedShow(show)
     setSelectedSeason(show.seasons?.[0]?.number ?? 1)
-    window.history.pushState({}, '', `/series/${encodeURIComponent(show.id)}`)
+    window.history.pushState({}, '', `/${show.kind === 'Série' ? 'series' : 'filmes'}/${encodeURIComponent(show.id)}`)
   }
 
   const closeShow = () => {
@@ -92,9 +92,9 @@ function App() {
 
   useEffect(() => {
     const syncRoute = () => {
-      const match = window.location.pathname.match(/^\/series\/(.+)$/)
-      const showId = match ? decodeURIComponent(match[1]) : null
-      const show = showId ? catalog.find((item) => item.id === showId && item.kind === 'Série') : null
+      const match = window.location.pathname.match(/^\/(series|filmes)\/(.+)$/)
+      const itemId = match ? decodeURIComponent(match[2]) : null
+      const show = itemId ? catalog.find((item) => item.id === itemId) : null
       setSelectedShow(show ?? null)
       if (show) setSelectedSeason(show.seasons?.[0]?.number ?? 1)
     }
@@ -112,8 +112,8 @@ function App() {
           <button className="back-button" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
-          <ShowHeader show={selectedShow} />
-          <section className="episodes-section">
+          <ShowHeader show={selectedShow} onPlay={setSelectedMedia} />
+          {selectedShow.kind === 'Série' && <section className="episodes-section">
             <div className="season-header">
               <div>
                 <p className="eyebrow">EPISÓDIOS</p>
@@ -138,7 +138,7 @@ function App() {
                 <EpisodeRow episode={episode} key={episode.id} onPlay={setSelectedMedia} />
               ))}
             </div>
-          </section>
+          </section>}
         </main>
         {selectedMedia && <VideoPlayer media={selectedMedia} onClose={() => setSelectedMedia(null)} />}
       </div>
@@ -206,7 +206,7 @@ function App() {
           </div>
           <div className="media-grid">
             {visibleItems.map((item) => (
-              <MediaCard item={item} key={item.id} onOpen={openShow} onPlay={setSelectedMedia} />
+              <MediaCard item={item} key={item.id} onOpen={openShow} />
             ))}
           </div>
           {visibleItems.length === 0 && (
@@ -409,7 +409,7 @@ function ProfileEditor({
   )
 }
 
-function ShowHeader({ show }: { show: LibraryItem }) {
+function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
   return (
     <section className="show-header">
       <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
@@ -417,27 +417,23 @@ function ShowHeader({ show }: { show: LibraryItem }) {
         {!show.artwork.posterUrl && <strong>{show.title}</strong>}
       </div>
       <div className="show-copy">
-        <p className="eyebrow">SÉRIE</p>
+        <p className="eyebrow">{show.kind.toUpperCase()}</p>
         <h1>{show.title}</h1>
-        <p className="show-description">Sua coleção local, organizada por temporada e episódio.</p>
+        <p className="show-description">{show.overview || 'Descrição ainda não cadastrada para este título.'}</p>
         <div className="show-stats">
+          {show.year && <span>{show.year}</span>}
           <span>{show.meta}</span>
           <span>{show.detail}</span>
-          <span>Legenda: PT-BR disponível</span>
+          {show.genres?.map((genre) => <span key={genre}>{genre}</span>)}
         </div>
+        {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl })}>▶ Assistir</button>}
       </div>
     </section>
   )
 }
 
-function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item: LibraryItem) => void; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
-  const openItem = () => {
-    if (item.kind === 'Série') {
-      onOpen(item)
-    } else if (item.mediaUrl) {
-      onPlay({ title: item.title, url: item.mediaUrl, subtitleUrl: item.subtitleUrl })
-    }
-  }
+function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: LibraryItem) => void }) {
+  const openItem = () => onOpen(item)
 
   return (
     <article className="media-card">

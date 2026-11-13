@@ -8,8 +8,14 @@ const database = new DatabaseSync(databasePath)
 
 await mkdir(path.join(artworkRoot, 'shows'), { recursive: true })
 ensureColumn('artwork', 'artwork_type', `TEXT NOT NULL DEFAULT 'poster'`)
+ensureColumn('shows', 'genres_json', `TEXT NOT NULL DEFAULT '[]'`)
 
 const shows = database.prepare('SELECT id, title FROM shows ORDER BY title').all()
+const updateShow = database.prepare(`
+  UPDATE shows
+  SET year = ?, overview = ?, genres_json = ?
+  WHERE id = ?
+`)
 const upsertArtwork = database.prepare(`
   INSERT INTO artwork (id, show_id, local_path, remote_url, provider, provider_id, source, verified, artwork_type)
   VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
@@ -28,6 +34,12 @@ for (const show of shows) {
   const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(show.title)}`)
   if (!response.ok) continue
   const metadata = await response.json()
+  updateShow.run(
+    metadata.premiered ? Number(metadata.premiered.slice(0, 4)) : null,
+    stripHtml(metadata.summary || ''),
+    JSON.stringify([...(metadata.type === 'Animation' ? ['Animação'] : []), ...(metadata.genres || [])]),
+    show.id,
+  )
   const posterUrl = metadata.image?.original || metadata.image?.medium
   if (!posterUrl) continue
 
@@ -78,4 +90,8 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
+}
+
+function stripHtml(value) {
+  return value.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
 }

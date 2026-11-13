@@ -128,7 +128,7 @@ async function buildLibrary() {
   }))
 
   const shows = database.prepare(`
-    SELECT id, title
+    SELECT id, title, year, overview, genres_json
     FROM shows
     WHERE EXISTS (
       SELECT 1
@@ -175,6 +175,9 @@ async function buildLibrary() {
       kind: 'Série',
       meta: `${seasons.length} temporadas`,
       detail: `${episodeCount} episódios catalogados`,
+      year: show.year,
+      overview: show.overview,
+      genres: JSON.parse(show.genres_json || '[]'),
       posterClass: show.title.toLocaleLowerCase().includes('south park') ? 'poster-south-park' : 'poster-default',
       artwork: showArtworks[index].artwork,
       bannerUrl: showArtworks[index].bannerUrl,

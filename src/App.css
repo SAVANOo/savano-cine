@@ -1036,6 +1036,10 @@ h2 {
   margin-top: 22px;
 }
 
+.detail-play {
+  margin-top: 20px;
+}
+
 .show-stats span,
 .episode-meta span {
   padding: 5px 8px;

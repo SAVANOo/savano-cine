@@ -54,6 +54,9 @@ export type LibraryItem = {
   kind: MediaKind
   meta: string
   detail: string
+  year?: number
+  overview?: string
+  genres?: string[]
   posterClass: string
   artwork: Artwork
   tags?: string[]

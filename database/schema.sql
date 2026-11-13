@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS shows (
   title TEXT NOT NULL,
   normalized_title TEXT NOT NULL,
   year INTEGER,
-  overview TEXT
+  overview TEXT,
+  genres_json TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS media_item_title_history (
