@@ -14,9 +14,9 @@ if (!existsSync(databasePath)) {
   process.exit(1)
 }
 
-const database = new DatabaseSync(databasePath, { readOnly: true })
+const database = new DatabaseSync(databasePath)
 
-createServer((request, response) => {
+createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host}`)
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -37,6 +37,30 @@ createServer((request, response) => {
   }
 
   if (requestUrl.pathname === '/api/profiles') {
+    if (request.method === 'POST') {
+      let body
+      try {
+        body = await readJson(request)
+      } catch {
+        return send(response, 400, { error: 'JSON inválido.' })
+      }
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      const avatarKey = typeof body.avatarKey === 'string' ? body.avatarKey.trim() : ''
+      const generatedId = slugify(name)
+      if (!generatedId) return send(response, 400, { error: 'Nome inválido.' })
+      const id = typeof body.id === 'string' && body.id ? body.id : `profile-${generatedId}`
+
+      if (!name || !avatarKey) return send(response, 400, { error: 'Nome e avatar são obrigatórios.' })
+
+      database.prepare(`
+        INSERT INTO profiles (id, name, avatar_key)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_key = excluded.avatar_key
+      `).run(id, name, avatarKey)
+
+      return send(response, 200, { id, name, avatarKey, isKids: 0 })
+    }
+
     const profiles = database.prepare(`
       SELECT id, name, avatar_key AS avatarKey, is_kids AS isKids
       FROM profiles
@@ -129,4 +153,29 @@ function buildLibrary() {
 function send(response, status, body) {
   response.writeHead(status)
   response.end(JSON.stringify(body))
+}
+
+function readJson(request) {
+  return new Promise((resolve, reject) => {
+    let content = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk) => { content += chunk })
+    request.on('end', () => {
+      try {
+        resolve(JSON.parse(content || '{}'))
+      } catch {
+        reject(new Error('JSON inválido'))
+      }
+    })
+    request.on('error', reject)
+  })
+}
+
+function slugify(value) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }

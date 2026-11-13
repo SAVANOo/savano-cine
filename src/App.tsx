@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import { profiles as mockProfiles } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './domain/catalog'
@@ -68,7 +68,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} />
         <main className="content">
           <button className="back-button" type="button" onClick={() => setSelectedShow(null)}>
             ← Voltar para biblioteca
@@ -107,7 +107,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -195,22 +195,32 @@ function Sidebar({
   profiles,
   activeProfileId,
   onProfileChange,
+  onProfilesChange,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
   activeProfileId: string
   onProfileChange: (id: string) => void
+  onProfilesChange: (profiles: Profile[]) => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
+  const [editingProfile, setEditingProfile] = useState<Profile | null | undefined>(undefined)
 
   return (
+    <>
     <aside className="sidebar">
       <div className="brand">
         <span className="brand-mark">S</span>
         <span>{messages.appName}</span>
       </div>
-      <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onProfileChange={onProfileChange} />
+      <ProfileSwitcher
+        profiles={profiles}
+        activeProfile={activeProfile}
+        onProfileChange={onProfileChange}
+        onEditProfile={(profile) => setEditingProfile(profile)}
+        onCreateProfile={() => setEditingProfile(null)}
+      />
       <nav className="main-nav" aria-label="Navegação principal">
         <a className="nav-item active controller-focus" href="#inicio"><span>⌂</span> Início</a>
         <a className="nav-item controller-focus" href="#filmes"><span>▶</span> Filmes</a>
@@ -233,6 +243,20 @@ function Sidebar({
         <button className="settings-button" type="button">⚙ Configurações</button>
       </div>
     </aside>
+    {editingProfile !== undefined && (
+      <ProfileEditor
+        profile={editingProfile}
+        onClose={() => setEditingProfile(undefined)}
+        onSaved={(profile) => {
+          onProfilesChange(profiles.some((item) => item.id === profile.id)
+            ? profiles.map((item) => item.id === profile.id ? profile : item)
+            : [...profiles, profile])
+          onProfileChange(profile.id)
+          setEditingProfile(undefined)
+        }}
+      />
+    )}
+    </>
   )
 }
 
@@ -240,10 +264,14 @@ function ProfileSwitcher({
   profiles,
   activeProfile,
   onProfileChange,
+  onEditProfile,
+  onCreateProfile,
 }: {
   profiles: Profile[]
   activeProfile?: Profile
   onProfileChange: (id: string) => void
+  onEditProfile: (profile: Profile) => void
+  onCreateProfile: () => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -269,11 +297,70 @@ function ProfileSwitcher({
               <span className={`profile-avatar avatar-${profile.avatarKey}`}>{profile.avatarKey === 'cartman' ? 'C' : profile.name[0]}</span>
               <span>{profile.name}</span>
               {profile.id === activeProfile.id && <b>✓</b>}
+              <span className="profile-edit" onClick={(event) => { event.stopPropagation(); onEditProfile(profile) }}>Editar</span>
             </button>
           ))}
-          <button className="profile-add controller-focus" type="button">＋ Criar perfil</button>
+          <button className="profile-add controller-focus" type="button" onClick={onCreateProfile}>＋ Criar perfil</button>
         </div>
       )}
+    </div>
+  )
+}
+
+const avatarPresets = ['cartman', 'south-park', 'ben-10', 'savino'] as const
+
+function ProfileEditor({
+  profile,
+  onClose,
+  onSaved,
+}: {
+  profile: Profile | null
+  onClose: () => void
+  onSaved: (profile: Profile) => void
+}) {
+  const [name, setName] = useState(profile?.name ?? '')
+  const [avatarKey, setAvatarKey] = useState(profile?.avatarKey ?? avatarPresets[0])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profile?.id, name, avatarKey }),
+      })
+      if (!response.ok) throw new Error('Não foi possível salvar o perfil.')
+      onSaved(await response.json())
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o perfil.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="profile-modal-backdrop" role="presentation">
+      <form className="profile-modal" onSubmit={save}>
+        <div className="profile-modal-heading">
+          <div><p className="eyebrow">PERFIL</p><h2>{profile ? 'Editar perfil' : 'Criar perfil'}</h2></div>
+          <button type="button" onClick={onClose}>×</button>
+        </div>
+        <label>Nome<input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} autoFocus /></label>
+        <fieldset><legend>Avatar</legend><div className="avatar-presets">
+          {avatarPresets.map((preset) => (
+            <button className={avatarKey === preset ? 'avatar-preset selected' : 'avatar-preset'} type="button" key={preset} onClick={() => setAvatarKey(preset)}>
+              <span className={`profile-avatar avatar-${preset}`}>{preset === 'cartman' ? 'C' : preset === 'south-park' ? 'S' : preset === 'ben-10' ? 'B' : 'S'}</span>
+              <small>{preset}</small>
+            </button>
+          ))}
+        </div></fieldset>
+        {error && <p className="profile-error">{error}</p>}
+        <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar perfil'}</button></div>
+      </form>
     </div>
   )
 }
