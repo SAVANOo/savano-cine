@@ -48,8 +48,11 @@ Verificações disponíveis:
 npm run lint
 npm run build
 npm run scan -- "D:\\Filmes" --limit 20
+npm run import -- "E:\\Filmes"
 ```
 
 O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.
 
 O schema SQLite inicial está em `database/schema.sql`. Ele ainda não é carregado automaticamente pela interface; essa será a próxima etapa do backend local.
+
+O comando `import` cria `data/catalog.db` localmente e importa os caminhos encontrados sem alterar os arquivos de mídia. A pasta `data/` fica fora do Git.

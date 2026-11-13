@@ -64,6 +64,8 @@ npm run scan -- "E:\\Filmes" --limit 20
 
 O schema inicial está em `database/schema.sql`. Ele separa a origem física (`media_sources`) do catálogo (`media_items`) e das relações de série (`shows`, `seasons`, `episodes`). Assim, remover o SSD altera o estado da fonte para `offline`, sem apagar o catálogo, o progresso ou as capas.
 
+O comando `npm run import -- "E:\\Filmes"` já executa essa primeira persistência local. Duplicidades de temporada/episódio não apagam arquivos: o primeiro vínculo é mantido e os demais continuam registrados como `media_items` para a futura revisão.
+
 ## Importação assistida
 
 A organização terá três níveis, nesta ordem:

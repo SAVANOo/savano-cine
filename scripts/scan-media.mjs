@@ -1,21 +1,26 @@
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const mediaExtensions = new Set(['.avi', '.mkv', '.mp4', '.mov', '.rm', '.rmvb', '.webm'])
-const [, , sourceArg, ...flags] = process.argv
-const source = sourceArg ? path.resolve(sourceArg) : process.cwd()
-const limitFlagIndex = flags.indexOf('--limit')
-const limit = limitFlagIndex >= 0 ? Number(flags[limitFlagIndex + 1]) : Infinity
+export { collectMediaFiles, classifyMedia }
 
-if (!sourceArg) {
-  console.error('Uso: npm run scan -- <pasta> [--limit <quantidade>]')
-  process.exitCode = 1
-} else {
-  const files = await collectMediaFiles(source)
-  const catalog = files.slice(0, Number.isFinite(limit) ? limit : undefined).map((file) => classifyMedia(file, source))
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [, , sourceArg, ...flags] = process.argv
+  const source = sourceArg ? path.resolve(sourceArg) : process.cwd()
+  const limitFlagIndex = flags.indexOf('--limit')
+  const limit = limitFlagIndex >= 0 ? Number(flags[limitFlagIndex + 1]) : Infinity
 
-  console.table(catalog)
-  console.log(`\n${catalog.length} item(ns) exibido(s) de ${files.length} arquivo(s) de mídia encontrado(s).`)
+  if (!sourceArg) {
+    console.error('Uso: npm run scan -- <pasta> [--limit <quantidade>]')
+    process.exitCode = 1
+  } else {
+    const files = await collectMediaFiles(source)
+    const catalog = files.slice(0, Number.isFinite(limit) ? limit : undefined).map((file) => classifyMedia(file, source))
+
+    console.table(catalog)
+    console.log(`\n${catalog.length} item(ns) exibido(s) de ${files.length} arquivo(s) de mídia encontrado(s).`)
+  }
 }
 
 async function collectMediaFiles(directory) {
@@ -62,6 +67,7 @@ function classifyMedia(filePath, sourceRoot) {
     episodio: episode.number,
     formato: extension.slice(1),
     caminho: relativePath,
+    pastaSerie: relativePath.split(path.sep)[0],
   }
 }
 
