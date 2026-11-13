@@ -6,6 +6,8 @@ Interface local para organizar e assistir filmes e séries armazenados em discos
 
 Protótipo inicial da interface. A biblioteca exibida ainda usa dados estáticos; o próximo passo é conectar o scanner de arquivos ao banco SQLite.
 
+O nome da aplicação é **Savano Cine**. O repositório continua com o nome técnico `cine-local` para manter o histórico inicial simples.
+
 ## Arquitetura planejada
 
 O projeto será organizado por responsabilidade, evitando uma camada única com regras de negócio misturadas à interface:
@@ -27,6 +29,9 @@ O protótipo atual mantém a tela principal em `src/App.tsx` para validar a expe
 - Caminhos e fontes de mídia serão persistidos no banco; a interface não dependerá de renomear os arquivos.
 - A aplicação será local e monousuário, sem autenticação ou backend remoto.
 - A primeira integração de metadados será opcional e não bloqueará a reprodução offline.
+- O SQLite será a fonte de verdade do catálogo; CSV/TXT não serão usados como banco principal.
+- Uma caixa de entrada permitirá importar arquivos sem exigir organização manual prévia.
+- IA local será opcional e só poderá sugerir alterações; a confirmação final continuará sendo do usuário.
 
 ## Desenvolvimento
 
