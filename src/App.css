@@ -234,6 +234,37 @@
   font-size: 11px;
 }
 
+.source-list {
+  display: grid;
+  gap: 9px;
+  margin-top: -10px;
+}
+
+.source-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.source-item strong,
+.source-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-item strong {
+  color: #d8d9e1;
+  font-size: 11px;
+}
+
+.source-item small {
+  color: #777987;
+  font-size: 10px;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

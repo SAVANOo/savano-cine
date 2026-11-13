@@ -24,7 +24,7 @@ database.prepare(`
 `).run('profile-savio', 'Savio', 'cartman')
 
 const sourceId = `source-${slugify(sourcePath)}`
-const sourceName = path.basename(sourcePath) || sourcePath
+const sourceName = `${path.basename(sourcePath) || sourcePath} (${sourcePath.slice(0, 2).toUpperCase()})`
 const files = await collectMediaFiles(sourcePath)
 
 database.prepare(`

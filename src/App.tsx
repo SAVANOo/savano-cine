@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import { profiles as mockProfiles } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './domain/catalog'
+import { messages } from './config/messages'
 import './App.css'
 
 type LibraryFilter = 'Tudo' | MediaKind
@@ -207,7 +208,7 @@ function Sidebar({
     <aside className="sidebar">
       <div className="brand">
         <span className="brand-mark">S</span>
-        <span>Savano Cine</span>
+        <span>{messages.appName}</span>
       </div>
       <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onProfileChange={onProfileChange} />
       <nav className="main-nav" aria-label="Navegação principal">
@@ -219,6 +220,14 @@ function Sidebar({
         <div className="source-status">
           <span className={offlineSources ? 'status-dot warning' : 'status-dot'} />
           <div><strong>{sources.length} fontes cadastradas</strong><small>{sources.length - offlineSources} conectada(s)</small></div>
+        </div>
+        <div className="source-list">
+          {sources.map((source) => (
+            <div className="source-item" key={source.id}>
+              <span className={source.status === 'offline' ? 'status-dot warning' : 'status-dot'} />
+              <div><strong>{source.name}</strong><small>{source.path} · {source.itemCount} itens</small></div>
+            </div>
+          ))}
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
         <button className="settings-button" type="button">⚙ Configurações</button>
