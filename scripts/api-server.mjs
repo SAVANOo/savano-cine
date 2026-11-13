@@ -97,7 +97,12 @@ createServer(async (request, response) => {
 
   const artworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/([^/]+)\/(poster|banner)$/)
   if (artworkMatch) {
-    return streamArtwork(artworkMatch[1], artworkMatch[2], response)
+    return streamArtwork('show', artworkMatch[1], artworkMatch[2], response)
+  }
+
+  const movieArtworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/movie\/([^/]+)\/poster$/)
+  if (movieArtworkMatch) {
+    return streamArtwork('movie', movieArtworkMatch[1], 'poster', response)
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
@@ -107,7 +112,8 @@ createServer(async (request, response) => {
 
 async function buildLibrary() {
   const items = database.prepare(`
-    SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath
+    SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
+      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster
     FROM media_items
     WHERE kind = 'movie'
       AND classification_status IN ('auto', 'approved')
@@ -128,6 +134,7 @@ async function buildLibrary() {
     subtitleUrl: `/api/media/${item.id}/subtitles`,
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
+    ...(item.hasPoster ? { artwork: { source: 'local', posterUrl: `/api/artwork/movie/${item.id}/poster`, verified: true } } : {}),
   }))
 
   const shows = database.prepare(`
@@ -235,11 +242,12 @@ function send(response, status, body) {
   response.end(JSON.stringify(body))
 }
 
-function streamArtwork(showId, artworkType, response) {
+function streamArtwork(ownerType, ownerId, artworkType, response) {
+  const ownerColumn = ownerType === 'movie' ? 'movie_id' : 'show_id'
   const artwork = database.prepare(`
     SELECT local_path AS localPath
     FROM artwork
-    WHERE show_id = ? AND artwork_type = ? AND source = 'local'
+    WHERE ${ownerColumn} = ? AND artwork_type = ? AND source = 'local'
     LIMIT 1
   `).get(showId, artworkType)
   if (!artwork) return send(response, 404, { error: 'Arte não encontrada.' })
