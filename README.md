@@ -4,7 +4,9 @@ Interface local para organizar e assistir filmes e séries armazenados em discos
 
 ## Status
 
-Protótipo inicial da interface. A biblioteca exibida ainda usa dados estáticos; o próximo passo é conectar o scanner de arquivos ao banco SQLite.
+Aplicação local funcional em evolução incremental: o catálogo já usa SQLite, importa as fontes
+locais, abre séries por rota própria, reproduz arquivos pelo player HTTP e baixa capas de séries.
+O próximo ciclo é acompanhado no [Kanban](docs/kanban.md).
 
 O nome da aplicação é **Savano Cine**. O repositório continua com o nome técnico `cine-local` para manter o histórico inicial simples.
 
@@ -33,6 +35,11 @@ O protótipo atual mantém a tela principal em `src/App.tsx` para validar a expe
 - Uma caixa de entrada permitirá importar arquivos sem exigir organização manual prévia.
 - IA local será opcional e só poderá sugerir alterações; a confirmação final continuará sendo do usuário.
 - Capas serão tratadas como metadado substituível: primeiro arquivo local, depois fonte pública e, por último, geração por IA.
+
+## Operação do projeto
+
+O Kanban em `docs/kanban.md` é a referência de execução. A revisão automática do estado,
+pendências e próximo incremento acontece a cada 2 minutos e 30 segundos de trabalho contínuo.
 - Legendas serão priorizadas nesta ordem: embutidas, arquivos locais, OpenSubtitles e seleção manual.
 - A biblioteca principal só exibe filmes e séries aprovados; cursos, coleções e arquivos promocionais ficam em revisão.
 
