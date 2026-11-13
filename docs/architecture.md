@@ -66,6 +66,8 @@ O schema inicial está em `database/schema.sql`. Ele separa a origem física (`m
 
 O comando `npm run import -- "E:\\Filmes"` já executa essa primeira persistência local. Duplicidades de temporada/episódio não apagam arquivos: o primeiro vínculo é mantido e os demais continuam registrados como `media_items` para a futura revisão.
 
+A API local em `scripts/api-server.mjs` expõe o catálogo somente para leitura em `/api/library`, `/api/sources` e `/api/health`. A interface usa esses endpoints quando disponíveis e mantém o protótipo como fallback durante o desenvolvimento.
+
 ## Importação assistida
 
 A organização terá três níveis, nesta ordem:

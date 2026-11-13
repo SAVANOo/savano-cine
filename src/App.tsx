@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { library, mediaSources } from './data/mockCatalog'
+import { useEffect, useMemo, useState } from 'react'
+import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource } from './domain/catalog'
 import './App.css'
 
@@ -10,18 +10,32 @@ function App() {
   const [query, setQuery] = useState('')
   const [selectedShow, setSelectedShow] = useState<LibraryItem | null>(null)
   const [selectedSeason, setSelectedSeason] = useState(1)
+  const [catalog, setCatalog] = useState<LibraryItem[]>(mockLibrary)
+  const [sources, setSources] = useState(mockSources)
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/library').then((response) => response.ok ? response.json() : Promise.reject(response)),
+      fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)),
+    ]).then(([remoteLibrary, remoteSources]) => {
+      setCatalog(remoteLibrary)
+      setSources(remoteSources)
+    }).catch(() => {
+      console.warn('API local indisponível; usando o catálogo de demonstração.')
+    })
+  }, [])
 
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
 
-    return library.filter((item) => {
+    return catalog.filter((item) => {
       const matchesFilter = activeFilter === 'Tudo' || item.kind === activeFilter
       const matchesQuery =
         !normalizedQuery || item.title.toLocaleLowerCase().includes(normalizedQuery)
 
       return matchesFilter && matchesQuery
     })
-  }, [activeFilter, query])
+  }, [activeFilter, catalog, query])
 
   const selectedEpisodes =
     selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
@@ -29,7 +43,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar />
+        <Sidebar sources={sources} />
         <main className="content">
           <button className="back-button" type="button" onClick={() => setSelectedShow(null)}>
             ← Voltar para biblioteca
@@ -68,7 +82,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar sources={sources} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -86,14 +100,14 @@ function App() {
           </label>
         </header>
 
-        <OfflineSourceNotice source={mediaSources.find((source) => source.status === 'offline')} />
+        <OfflineSourceNotice source={sources.find((source) => source.status === 'offline')} />
 
         <section className="hero-card">
           <div className="hero-copy">
             <span className="hero-label">CONTINUE ASSISTINDO</span>
             <h2>South Park</h2>
             <p>Temporada 1 · Episódio 6 · 13:24 de 22:00</p>
-            <button className="primary-button" type="button" onClick={() => setSelectedShow(library[0])}>
+            <button className="primary-button" type="button" onClick={() => setSelectedShow(catalog.find((item) => item.kind === 'Série') ?? mockLibrary[0])}>
               <span>▶</span> Continuar
             </button>
           </div>
@@ -151,8 +165,8 @@ function OfflineSourceNotice({ source }: { source?: MediaSource }) {
   )
 }
 
-function Sidebar() {
-  const offlineSources = mediaSources.filter((source) => source.status === 'offline').length
+function Sidebar({ sources }: { sources: typeof mockSources }) {
+  const offlineSources = sources.filter((source) => source.status === 'offline').length
 
   return (
     <aside className="sidebar">
@@ -168,7 +182,7 @@ function Sidebar() {
       <div className="sidebar-bottom">
         <div className="source-status">
           <span className={offlineSources ? 'status-dot warning' : 'status-dot'} />
-          <div><strong>Biblioteca local</strong><small>1 pasta conectada</small></div>
+          <div><strong>{sources.length} fontes cadastradas</strong><small>{sources.length - offlineSources} conectada(s)</small></div>
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
         <button className="settings-button" type="button">⚙ Configurações</button>
