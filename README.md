@@ -46,4 +46,7 @@ Verificações disponíveis:
 ```bash
 npm run lint
 npm run build
+npm run scan -- "D:\\Filmes" --limit 20
 ```
+
+O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.

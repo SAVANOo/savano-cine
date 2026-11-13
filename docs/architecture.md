@@ -56,6 +56,12 @@ Fonte cadastrada
 
 O caminho original será preservado. Títulos, anos e episódios serão dados normalizados no banco, não uma exigência para os arquivos físicos.
 
+O primeiro scanner determinístico está disponível em `scripts/scan-media.mjs`. Ele serve como etapa de pré-importação e pode ser executado antes da existência do banco:
+
+```bash
+npm run scan -- "E:\\Filmes" --limit 20
+```
+
 ## Importação assistida
 
 A organização terá três níveis, nesta ordem:
