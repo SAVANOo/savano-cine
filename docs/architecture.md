@@ -62,6 +62,8 @@ O primeiro scanner determinístico está disponível em `scripts/scan-media.mjs`
 npm run scan -- "E:\\Filmes" --limit 20
 ```
 
+Além dos padrões `S01E01`, `1x01` e `01.01`, o scanner reconhece episódios numerados dentro de pastas como `1ª Temporada`, `1ª. Temporada` e `Season 01`. Isso cobre coleções antigas como Ben 10 sem exigir renomeação imediata.
+
 O schema inicial está em `database/schema.sql`. Ele separa a origem física (`media_sources`) do catálogo (`media_items`) e das relações de série (`shows`, `seasons`, `episodes`). Assim, remover o SSD altera o estado da fonte para `offline`, sem apagar o catálogo, o progresso ou as capas.
 
 O comando `npm run import -- "E:\\Filmes"` já executa essa primeira persistência local. Duplicidades de temporada/episódio não apagam arquivos: o primeiro vínculo é mantido e os demais continuam registrados como `media_items` para a futura revisão.

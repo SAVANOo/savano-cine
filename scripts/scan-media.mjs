@@ -47,7 +47,7 @@ function classifyMedia(filePath, sourceRoot) {
   const relativePath = path.relative(sourceRoot, filePath)
   const extension = path.extname(filePath).toLowerCase()
   const basename = path.basename(filePath, extension)
-  const episode = findEpisodePattern(basename)
+  const episode = findEpisodePattern(basename) ?? findEpisodeFromSeasonFolder(basename, relativePath)
 
   if (!episode) {
     return {
@@ -67,7 +67,7 @@ function classifyMedia(filePath, sourceRoot) {
     episodio: episode.number,
     formato: extension.slice(1),
     caminho: relativePath,
-    pastaSerie: relativePath.split(path.sep)[0],
+    pastaSerie: inferSeriesFolder(relativePath),
   }
 }
 
@@ -91,6 +91,38 @@ function findEpisodePattern(filename) {
   }
 
   return null
+}
+
+function findEpisodeFromSeasonFolder(filename, relativePath) {
+  const seasonMatch = relativePath.match(/(?:^|[\\/])[^\\/]*?(\d{1,2})[ªº°]?[.\s_-]*Temporada[^\\/]*(?:[\\/]|$)/i)
+    ?? relativePath.match(/(?:^|[\\/])[^\\/]*?Season[\s._-]*(\d{1,2})[^\\/]*(?:[\\/]|$)/i)
+  const episodeMatch = /^(\d{1,3})[\s._-]+/.exec(filename)
+
+  if (!seasonMatch || !episodeMatch) return null
+
+  return {
+    season: Number(seasonMatch[1]),
+    number: Number(episodeMatch[1]),
+    index: episodeMatch[0].length,
+    prefixEnd: 0,
+  }
+}
+
+function inferSeriesFolder(relativePath) {
+  const segments = relativePath.split(path.sep)
+  const seasonIndex = segments.findIndex((segment) => /(?:\d{1,2}[ªº°]?\s*Temporada|Season[\s._-]*\d{1,2})/i.test(segment))
+
+  if (seasonIndex > 0) {
+    const categoryNames = new Set(['animações', 'animacoes', 'filmes', 'series', 'séries'])
+    const candidateIndex = categoryNames.has(normalizeSegment(segments[0])) ? 1 : 0
+    return segments[candidateIndex] || segments[seasonIndex - 1]
+  }
+
+  return segments[0]
+}
+
+function normalizeSegment(value) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase()
 }
 
 function cleanTitle(value) {

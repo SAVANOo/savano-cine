@@ -56,6 +56,9 @@ const insertEpisode = database.prepare(`
   VALUES (?, ?, ?, ?, ?)
   ON CONFLICT(season_id, episode_number) DO NOTHING
 `)
+const deleteEpisodeForMediaItem = database.prepare(`
+  DELETE FROM episodes WHERE media_item_id = ?
+`)
 
 let imported = 0
 let episodes = 0
@@ -79,6 +82,7 @@ try {
       const showTitle = item.pastaSerie || path.basename(path.dirname(file))
       const showId = `show-${slugify(showTitle)}`
       const seasonId = `${showId}-season-${item.temporada}`
+      deleteEpisodeForMediaItem.run(itemId)
       insertShow.run(showId, showTitle, normalize(showTitle))
       insertSeason.run(seasonId, showId, item.temporada)
       insertEpisode.run(
