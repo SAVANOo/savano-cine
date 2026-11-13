@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS media_items (
   tags_json TEXT NOT NULL DEFAULT '[]',
   deleted_at TEXT,
   year INTEGER,
+  overview TEXT,
+  genres_json TEXT NOT NULL DEFAULT '[]',
   extension TEXT NOT NULL,
   file_size INTEGER,
   duration_seconds INTEGER,

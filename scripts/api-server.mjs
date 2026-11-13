@@ -107,7 +107,7 @@ createServer(async (request, response) => {
 
 async function buildLibrary() {
   const items = database.prepare(`
-    SELECT id, title, extension, tags_json, relative_path AS relativePath
+    SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath
     FROM media_items
     WHERE kind = 'movie'
       AND classification_status IN ('auto', 'approved')
@@ -120,6 +120,9 @@ async function buildLibrary() {
     kind: 'Filme',
     meta: item.extension.toUpperCase(),
     detail: item.relativePath,
+    year: item.year,
+    overview: item.overview,
+    genres: JSON.parse(item.genres_json || item.tags_json || '[]'),
     posterClass: 'poster-default',
     mediaUrl: `/api/media/${item.id}`,
     subtitleUrl: `/api/media/${item.id}/subtitles`,

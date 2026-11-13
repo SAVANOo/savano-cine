@@ -9,6 +9,8 @@ const database = new DatabaseSync(databasePath)
 await mkdir(path.join(artworkRoot, 'shows'), { recursive: true })
 ensureColumn('artwork', 'artwork_type', `TEXT NOT NULL DEFAULT 'poster'`)
 ensureColumn('shows', 'genres_json', `TEXT NOT NULL DEFAULT '[]'`)
+ensureColumn('media_items', 'overview', 'TEXT')
+ensureColumn('media_items', 'genres_json', `TEXT NOT NULL DEFAULT '[]'`)
 
 const shows = database.prepare('SELECT id, title FROM shows ORDER BY title').all()
 const updateShow = database.prepare(`
@@ -73,6 +75,23 @@ for (const show of shows) {
   downloaded += 1
 }
 
+const movies = database.prepare(`
+  SELECT id, title FROM media_items
+  WHERE kind = 'movie' AND (overview IS NULL OR overview = '')
+  ORDER BY title
+`).all()
+const updateMovie = database.prepare(`
+  UPDATE media_items
+  SET year = COALESCE(?, year), overview = ?, genres_json = ?
+  WHERE id = ?
+`)
+
+for (const movie of movies) {
+  const metadata = await fetchWikipedia(movie.title)
+  if (!metadata) continue
+  updateMovie.run(metadata.year, metadata.overview, JSON.stringify([]), movie.id)
+}
+
 console.log(`Arte baixada para ${downloaded} séries em ${artworkRoot}`)
 
 function ensureColumn(table, column, definition) {
@@ -94,4 +113,22 @@ function slugify(value) {
 
 function stripHtml(value) {
   return value.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+}
+
+async function fetchWikipedia(title) {
+  const search = await fetch(`https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title)}&srlimit=1&format=json&origin=*`)
+  if (!search.ok) return null
+  const result = await search.json()
+  const page = result.query?.search?.[0]
+  if (!page) return null
+
+  const details = await fetch(`https://pt.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`)
+  if (!details.ok) return null
+  const data = await details.json()
+  const overview = data.query?.pages?.[page.pageid]?.extract?.trim()
+  if (!overview) return null
+  return {
+    overview,
+    year: title.match(/\b(19\d{2}|20\d{2})\b/)?.[1] ? Number(title.match(/\b(19\d{2}|20\d{2})\b/)[1]) : null,
+  }
 }
