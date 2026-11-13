@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { library } from './data/mockCatalog'
-import type { Episode, LibraryItem, MediaKind } from './domain/catalog'
+import { library, mediaSources } from './data/mockCatalog'
+import type { Episode, LibraryItem, MediaKind, MediaSource } from './domain/catalog'
 import './App.css'
 
 type LibraryFilter = 'Tudo' | MediaKind
@@ -86,6 +86,8 @@ function App() {
           </label>
         </header>
 
+        <OfflineSourceNotice source={mediaSources.find((source) => source.status === 'offline')} />
+
         <section className="hero-card">
           <div className="hero-copy">
             <span className="hero-label">CONTINUE ASSISTINDO</span>
@@ -134,7 +136,24 @@ function App() {
   )
 }
 
+function OfflineSourceNotice({ source }: { source?: MediaSource }) {
+  if (!source) return null
+
+  return (
+    <aside className="offline-notice" role="status">
+      <span className="offline-icon">!</span>
+      <div>
+        <strong>{source.name} desconectado</strong>
+        <p>Conecte o volume <b>{source.volumeLabel}</b> para assistir aos itens armazenados em <code>{source.path}</code>.</p>
+      </div>
+      <button type="button">Ver itens indisponíveis</button>
+    </aside>
+  )
+}
+
 function Sidebar() {
+  const offlineSources = mediaSources.filter((source) => source.status === 'offline').length
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -148,9 +167,10 @@ function Sidebar() {
       </nav>
       <div className="sidebar-bottom">
         <div className="source-status">
-          <span className="status-dot" />
+          <span className={offlineSources ? 'status-dot warning' : 'status-dot'} />
           <div><strong>Biblioteca local</strong><small>1 pasta conectada</small></div>
         </div>
+        {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
         <button className="settings-button" type="button">⚙ Configurações</button>
       </div>
     </aside>

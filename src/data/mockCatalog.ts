@@ -1,4 +1,24 @@
-import type { Episode, LibraryItem, SubtitleTrack } from '../domain/catalog'
+import type { Episode, LibraryItem, MediaSource, SubtitleTrack } from '../domain/catalog'
+
+export const mediaSources: MediaSource[] = [
+  {
+    id: 'local-filmes',
+    name: 'Biblioteca local',
+    path: 'D:\\Filmes',
+    status: 'online',
+    removable: false,
+    itemCount: 3,
+  },
+  {
+    id: 'ssd-filmes',
+    name: 'SSD externo',
+    path: 'E:\\Filmes',
+    status: 'offline',
+    removable: true,
+    itemCount: 0,
+    volumeLabel: 'SAVANO_MEDIA',
+  },
+]
 
 const portugueseSubtitle: SubtitleTrack = {
   language: 'pt-BR',

@@ -33,3 +33,13 @@ export type LibraryItem = {
   progress?: number
   seasons?: Season[]
 }
+
+export type MediaSource = {
+  id: string
+  name: string
+  path: string
+  status: 'online' | 'offline'
+  removable: boolean
+  itemCount: number
+  volumeLabel?: string
+}
