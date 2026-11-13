@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS media_items (
   classification_status TEXT NOT NULL DEFAULT 'review'
     CHECK (classification_status IN ('auto', 'review', 'approved', 'ignored')),
   classification_reason TEXT,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  deleted_at TEXT,
   year INTEGER,
   extension TEXT NOT NULL,
   file_size INTEGER,
@@ -44,6 +46,15 @@ CREATE TABLE IF NOT EXISTS shows (
   normalized_title TEXT NOT NULL,
   year INTEGER,
   overview TEXT
+);
+
+CREATE TABLE IF NOT EXISTS media_item_title_history (
+  id TEXT PRIMARY KEY,
+  media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+  old_title TEXT NOT NULL,
+  new_title TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS profiles (
@@ -74,6 +85,8 @@ CREATE TABLE IF NOT EXISTS artwork (
   id TEXT PRIMARY KEY,
   movie_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
   show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
+  artwork_type TEXT NOT NULL DEFAULT 'poster'
+    CHECK (artwork_type IN ('poster', 'banner')),
   remote_url TEXT,
   local_path TEXT,
   provider TEXT,

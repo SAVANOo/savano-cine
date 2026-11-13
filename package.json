@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "api": "node scripts/api-server.mjs",
+    "artwork": "node scripts/fetch-artwork.mjs",
     "import": "node scripts/import-catalog.mjs",
     "lint": "oxlint",
     "scan": "node scripts/scan-media.mjs",

@@ -74,9 +74,20 @@ createServer(async (request, response) => {
     return send(response, 200, await buildLibrary())
   }
 
+  const archiveMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)\/archive$/)
+  if (archiveMatch && request.method === 'POST') {
+    database.prepare('UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(archiveMatch[1])
+    return send(response, 200, { status: 'archived' })
+  }
+
   const mediaMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)$/)
   if (mediaMatch) {
     return streamMedia(mediaMatch[1], request, response)
+  }
+
+  const artworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/([^/]+)\/(poster|banner)$/)
+  if (artworkMatch) {
+    return streamArtwork(artworkMatch[1], artworkMatch[2], response)
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
@@ -86,10 +97,11 @@ createServer(async (request, response) => {
 
 async function buildLibrary() {
   const items = database.prepare(`
-    SELECT id, title, extension, relative_path AS relativePath
+    SELECT id, title, extension, tags_json, relative_path AS relativePath
     FROM media_items
     WHERE kind = 'movie'
       AND classification_status IN ('auto', 'approved')
+      AND deleted_at IS NULL
     ORDER BY title COLLATE NOCASE
     LIMIT 500
   `).all().map((item) => ({
@@ -100,6 +112,7 @@ async function buildLibrary() {
     detail: item.relativePath,
     posterClass: 'poster-default',
     mediaUrl: `/api/media/${item.id}`,
+    tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
   }))
 
@@ -129,7 +142,7 @@ async function buildLibrary() {
         SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename
         FROM episodes e
         JOIN media_items m ON m.id = e.media_item_id
-        WHERE e.season_id = ?
+        WHERE e.season_id = ? AND m.deleted_at IS NULL
         ORDER BY number
       `).all(season.id).map((episode) => ({
         id: episode.id,
@@ -151,7 +164,9 @@ async function buildLibrary() {
       meta: `${seasons.length} temporadas`,
       detail: `${episodeCount} episódios catalogados`,
       posterClass: show.title.toLocaleLowerCase().includes('south park') ? 'poster-south-park' : 'poster-default',
-      artwork: showArtworks[index],
+      artwork: showArtworks[index].artwork,
+      bannerUrl: showArtworks[index].bannerUrl,
+      tags: showArtworks[index].tags,
       seasons,
     })
   }
@@ -162,11 +177,35 @@ async function buildLibrary() {
       if (!response.ok) throw new Error(`TVMaze ${response.status}`)
       const show = await response.json()
       const posterUrl = show.image?.original || show.image?.medium
-      return posterUrl
-        ? { source: 'tvmaze', posterUrl, providerId: String(show.id), verified: true }
-        : { source: 'none', verified: false }
+      const tags = ['Série']
+      if (show.type === 'Animation') tags.push('Animação')
+      for (const genre of show.genres || []) tags.push(genre)
+      const showId = `show-${slugify(title)}`
+      const localArt = database.prepare(`
+        SELECT artwork_type AS type
+        FROM artwork
+        WHERE show_id = ? AND source = 'local'
+      `).all(showId)
+      const hasPoster = localArt.some((art) => art.type === 'poster')
+      const hasBanner = localArt.some((art) => art.type === 'banner')
+      return {
+        artwork: posterUrl
+          ? { source: hasPoster ? 'local' : 'tvmaze', posterUrl: hasPoster ? `/api/artwork/${showId}/poster` : posterUrl, providerId: String(show.id), verified: true }
+          : { source: 'none', verified: false },
+        bannerUrl: hasBanner ? `/api/artwork/${showId}/banner` : posterUrl,
+        tags,
+      }
     } catch {
-      return { source: 'none', verified: false }
+      return { artwork: { source: 'none', verified: false }, tags: ['Série'] }
+    }
+
+    function slugify(value) {
+      return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
     }
   }
 
@@ -176,6 +215,29 @@ async function buildLibrary() {
 function send(response, status, body) {
   response.writeHead(status)
   response.end(JSON.stringify(body))
+}
+
+function streamArtwork(showId, artworkType, response) {
+  const artwork = database.prepare(`
+    SELECT local_path AS localPath
+    FROM artwork
+    WHERE show_id = ? AND artwork_type = ? AND source = 'local'
+    LIMIT 1
+  `).get(showId, artworkType)
+  if (!artwork) return send(response, 404, { error: 'Arte não encontrada.' })
+
+  const filePath = path.resolve(root, '..', artwork.localPath)
+  try {
+    const fileSize = statSync(filePath).size
+    response.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=86400',
+    })
+    return createReadStream(filePath).pipe(response)
+  } catch {
+    return send(response, 404, { error: 'Arquivo de arte indisponível.' })
+  }
 }
 
 function streamMedia(mediaId, request, response) {

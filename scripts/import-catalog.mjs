@@ -17,6 +17,18 @@ await mkdir(path.dirname(databasePath), { recursive: true })
 const database = new DatabaseSync(databasePath)
 const schema = await readFile(path.resolve('database/schema.sql'), 'utf8')
 database.exec(schema)
+ensureColumn('media_items', 'tags_json', `TEXT NOT NULL DEFAULT '[]'`)
+ensureColumn('media_items', 'deleted_at', 'TEXT')
+database.exec(`
+  CREATE TABLE IF NOT EXISTS media_item_title_history (
+    id TEXT PRIMARY KEY,
+    media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    old_title TEXT NOT NULL,
+    new_title TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`)
 database.prepare(`
   INSERT INTO profiles (id, name, avatar_key)
   VALUES (?, ?, ?)
@@ -39,14 +51,15 @@ database.prepare(`
 const insertMovie = database.prepare(`
   INSERT INTO media_items (
     id, source_id, relative_path, title, kind, classification_status, classification_reason,
-    extension, exists_on_disk
+    tags_json, extension, exists_on_disk
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   ON CONFLICT(source_id, relative_path) DO UPDATE SET
     title = excluded.title,
     kind = excluded.kind,
     classification_status = excluded.classification_status,
     classification_reason = excluded.classification_reason,
+    tags_json = excluded.tags_json,
     extension = excluded.extension,
     exists_on_disk = 1,
     updated_at = CURRENT_TIMESTAMP
@@ -69,6 +82,11 @@ const insertEpisode = database.prepare(`
 const deleteEpisodeForMediaItem = database.prepare(`
   DELETE FROM episodes WHERE media_item_id = ?
 `)
+const findExistingTitle = database.prepare('SELECT title FROM media_items WHERE id = ?')
+const insertTitleHistory = database.prepare(`
+  INSERT INTO media_item_title_history (id, media_item_id, old_title, new_title, reason)
+  VALUES (?, ?, ?, ?, ?)
+`)
 
 let imported = 0
 let episodes = 0
@@ -79,6 +97,16 @@ try {
   for (const file of files) {
     const item = classifyMedia(file, sourcePath)
     const itemId = `media-${slugify(`${sourceId}-${item.caminho}`)}`
+    const previous = findExistingTitle.get(itemId)
+    if (previous && previous.title !== item.titulo) {
+      insertTitleHistory.run(
+        `title-${itemId}-${Date.now()}`,
+        itemId,
+        previous.title,
+        item.titulo,
+        'normalização automática do título',
+      )
+    }
     deleteEpisodeForMediaItem.run(itemId)
     const kind = item.tipo === 'serie' ? 'episode' : item.tipo === 'outro' ? 'other' : 'movie'
     const classificationStatus = item.tipo === 'outro' ? 'review' : 'auto'
@@ -90,6 +118,7 @@ try {
       kind,
       classificationStatus,
       item.motivo || null,
+      JSON.stringify(buildTags(item)),
       path.extname(file).slice(1).toLowerCase(),
     )
 
@@ -128,4 +157,22 @@ function normalize(value) {
 
 function slugify(value) {
   return normalize(value).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function ensureColumn(table, column, definition) {
+  try {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) throw error
+  }
+}
+
+function buildTags(item) {
+  const tags = [item.tipo === 'serie' ? 'Série' : item.tipo === 'filme' ? 'Filme' : 'Revisão']
+  const normalized = normalize(`${item.titulo} ${item.pastaSerie || ''} ${item.caminho || ''}`)
+  if (/(anime|desenho|cartoon|ben 10|south park|gravity falls)/.test(normalized)) tags.push('Animação')
+  if (/(terror|horror)/.test(normalized)) tags.push('Terror')
+  if (/(suspense|thriller|misterio)/.test(normalized)) tags.push('Suspense')
+  if (/(comedia|comedy)/.test(normalized)) tags.push('Comédia')
+  return tags
 }

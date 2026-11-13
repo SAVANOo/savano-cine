@@ -2,6 +2,7 @@ export type MediaKind = 'Filme' | 'Série'
 
 export type Artwork = {
   posterUrl?: string
+  bannerUrl?: string
   localPath?: string
   providerId?: string
   source: 'local' | 'tmdb' | 'tvmaze' | 'generated' | 'none'
@@ -54,6 +55,7 @@ export type LibraryItem = {
   detail: string
   posterClass: string
   artwork: Artwork
+  tags?: string[]
   rating?: Rating
   progress?: number
   seasons?: Season[]

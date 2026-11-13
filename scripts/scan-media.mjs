@@ -203,12 +203,20 @@ function normalizeSegment(value) {
 }
 
 function cleanTitle(value) {
-  return value
-    .replace(/\b(720p|1080p|2160p|WEB[- ]?DL|BluRay|Dublado|Dual|NACIONAL)\b/gi, '')
+  const year = value.match(/\b(19\d{2}|20\d{2})\b/)?.[1]
+  const cleaned = value
+    .replace(/[-_.\s]*(?:www\.)?bludv(?:\.com)?\b.*$/i, '')
+    .replace(/\b(?:x26[45]|h26[45]|hevc|avc|aac|dts|5[._ ]1|web[- ]?dl|web[- ]?rip|blu[- ]?ray|remux|720p|1080p|2160p|dublado|dual|nacional)\b/gi, '')
     .replace(/[._]+/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/[-\s]+$/, '')
     .trim()
+
+  if (year && cleaned.endsWith(year) && !cleaned.endsWith(`(${year})`)) {
+    return `${cleaned.slice(0, -year.length).trim()} (${year})`.trim()
+  }
+
+  return cleaned
 }
 
 function cleanEpisodeTitle(filename, episode) {

@@ -19,6 +19,10 @@ function App() {
   const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string } | null>(null)
 
   useEffect(() => {
+    document.title = selectedShow ? `SC - ${selectedShow.title}` : messages.appName
+  }, [selectedShow])
+
+  useEffect(() => {
     Promise.all([
       fetch('/api/library').then((response) => response.ok ? response.json() : Promise.reject(response)),
       fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)),
@@ -399,7 +403,7 @@ function ProfileEditor({
 function ShowHeader({ show }: { show: LibraryItem }) {
   return (
     <section className="show-header">
-      <div className={`show-poster poster ${show.posterClass}`}>
+      <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
         {show.artwork.posterUrl && <img className="poster-image" src={show.artwork.posterUrl} alt="" />}
         {!show.artwork.posterUrl && <strong>{show.title}</strong>}
       </div>
@@ -443,6 +447,7 @@ function MediaCard({ item, onOpen, onPlay }: { item: LibraryItem; onOpen: (item:
         </div>
         <span className="more-button" aria-hidden="true">···</span>
       </div>
+      <div className="card-tags">{item.tags?.map((tag) => <span key={tag}>{tag}</span>)}</div>
       <small className="card-detail">{item.detail}</small>
     </article>
   )

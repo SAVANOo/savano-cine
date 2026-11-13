@@ -884,6 +884,21 @@ h2 {
   margin-top: 5px;
 }
 
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.card-tags span {
+  padding: 3px 6px;
+  border: 1px solid #343744;
+  border-radius: 999px;
+  color: #a9abba;
+  font-size: 9px;
+}
+
 .more-button {
   color: #777988;
   letter-spacing: 2px;
