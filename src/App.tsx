@@ -689,6 +689,7 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
   const lastSavedPosition = useRef(0)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
   const [subtitleUrl, setSubtitleUrl] = useState('')
+  const [streamInfo, setStreamInfo] = useState<{ available: boolean; audio: Array<{ language?: string; title?: string }>; subtitles: Array<{ language?: string; title?: string }> } | null>(null)
   const [rate, setRate] = useState(1)
   const [volume, setVolume] = useState(1)
 
@@ -729,6 +730,15 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
       .then((tracks) => setSubtitleTracks(tracks))
       .catch(() => setSubtitleTracks([]))
   }, [media.subtitleUrl])
+
+  useEffect(() => {
+    setStreamInfo(null)
+    if (!media.mediaId || !capabilities?.ffprobe) return
+    fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
+      .then((response) => response.ok ? response.json() : null)
+      .then(setStreamInfo)
+      .catch(() => setStreamInfo(null))
+  }, [capabilities?.ffprobe, media.mediaId])
 
   const seek = (seconds: number) => {
     if (videoRef.current) videoRef.current.currentTime += seconds
@@ -771,9 +781,13 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
           </select></label>}
           <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
         </div>
+        {streamInfo?.available && <small>
+          Faixas internas detectadas: {streamInfo.audio.length} áudio(s) e {streamInfo.subtitles.length} legenda(s).
+          A seleção de áudio/transcodificação depende de FFmpeg e ainda não altera a reprodução do navegador.
+        </small>}
         <small>{capabilities?.ffmpeg || capabilities?.vlc
-          ? 'FFmpeg/VLC disponível: suporte avançado de áudio será ativado na próxima etapa.'
-          : 'Player web ativo. Para múltiplos áudios e formatos incompatíveis, instale FFmpeg/VLC e deixe-os no PATH ou configure os caminhos locais.'}</small>
+          ? 'FFmpeg/VLC disponível; o player web atual mantém reprodução compatível sem prometer seleção avançada.'
+          : 'Player web ativo. FFprobe/FFmpeg não disponível: faixas internas não são analisadas e o player atual permanece inalterado.'}</small>
       </section>
     </div>
   )

@@ -82,6 +82,12 @@ somente disponibilidade e diagnóstico seguro da origem (`environment`, `path` o
 não expõe caminhos absolutos. Nenhum runtime é instalado e nenhum transcoding é executado
 por essa detecção.
 
+`GET /api/media/:mediaId/streams` valida a mídia no catálogo e, quando o FFprobe está
+disponível, analisa faixas internas de áudio e legendas usando `execFile` sem shell.
+A resposta nunca inclui o caminho físico. Sem FFprobe, retorna `available: false` com
+listas vazias, mantendo o player web atual funcionando; a interface não promete seleção
+de faixas nesse caso.
+
 `npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
 Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
 Wikipedia configurável e recua para português e inglês:

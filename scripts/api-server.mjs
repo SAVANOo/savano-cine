@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -17,6 +18,7 @@ if (!existsSync(databasePath)) {
 }
 
 const database = new DatabaseSync(databasePath)
+const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 
 createServer(async (request, response) => {
@@ -283,6 +285,11 @@ createServer(async (request, response) => {
     return streamMedia(mediaMatch[1], request, response)
   }
 
+  const streamInfoMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/streams$/)
+  if (streamInfoMatch && request.method === 'GET') {
+    return analyzeMediaStreams(streamInfoMatch[1], response)
+  }
+
   const subtitleListMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles$/)
   if (subtitleListMatch) {
     return send(response, 200, findSubtitleTracks(subtitleListMatch[1]))
@@ -412,6 +419,67 @@ function isExecutableFile(candidatePath) {
     return Boolean(candidatePath) && statSync(candidatePath).isFile()
   } catch {
     return false
+  }
+}
+
+async function analyzeMediaStreams(mediaId, response) {
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ?
+  `).get(mediaId)
+
+  if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const filePath = path.resolve(media.rootPath, media.relativePath)
+  const rootPath = path.resolve(media.rootPath)
+  if (filePath === rootPath || !filePath.startsWith(`${rootPath}${path.sep}`)) {
+    return send(response, 400, { error: 'Caminho de mídia inválido.' })
+  }
+
+  const runtime = detectRuntime('CINE_FFPROBE_PATH', 'ffprobe.exe')
+  if (!runtime.available) {
+    return send(response, 200, {
+      available: false,
+      reason: 'ffprobe-not-found',
+      audio: [],
+      subtitles: [],
+    })
+  }
+
+  try {
+    const executable = process.env.CINE_FFPROBE_PATH?.trim() || 'ffprobe.exe'
+    const { stdout } = await execFileAsync(executable, [
+      '-v', 'error',
+      '-show_entries', 'stream=index,codec_type,codec_name:stream_tags=language,title',
+      '-of', 'json',
+      filePath,
+    ], {
+      windowsHide: true,
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
+    })
+    const parsed = JSON.parse(stdout)
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : []
+    const mapTrack = (stream, index) => ({
+      index: Number.isInteger(stream.index) ? stream.index : index,
+      codec: typeof stream.codec_name === 'string' ? stream.codec_name : undefined,
+      language: typeof stream.tags?.language === 'string' ? stream.tags.language : undefined,
+      title: typeof stream.tags?.title === 'string' ? stream.tags.title : undefined,
+    })
+    return send(response, 200, {
+      available: true,
+      audio: streams.filter((stream) => stream.codec_type === 'audio').map(mapTrack),
+      subtitles: streams.filter((stream) => stream.codec_type === 'subtitle').map(mapTrack),
+    })
+  } catch {
+    return send(response, 200, {
+      available: false,
+      reason: 'ffprobe-failed',
+      audio: [],
+      subtitles: [],
+    })
   }
 }
 
