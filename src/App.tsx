@@ -13,6 +13,7 @@ import type {
 } from './components/modals/CatalogModals'
 import { VideoPlayer } from './components/player/VideoPlayer'
 import { ProfileModal } from './components/profile/ProfileModal'
+import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
 import {
   library as mockLibrary,
   mediaSources as mockSources,
@@ -54,6 +55,9 @@ export function App() {
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
   const [catalog, setCatalog] = useState<LibraryItem[]>(
     () => readCachedCatalog('profile-savio') ?? mockLibrary,
+  )
+  const [catalogLoading, setCatalogLoading] = useState(
+    () => !readCachedCatalog('profile-savio'),
   )
   const [sources, setSources] = useState<MediaSource[]>(mockSources)
   const [sourcesError, setSourcesError] = useState('')
@@ -99,7 +103,12 @@ export function App() {
       if (nextId === activeProfileId) return
       setProfileFading(true)
       const cached = readCachedCatalog(nextId)
-      if (cached) setCatalog(cached)
+      if (cached) {
+        setCatalog(cached)
+        setCatalogLoading(false)
+      } else {
+        setCatalogLoading(true)
+      }
       setActiveProfileId(nextId)
       window.setTimeout(() => setProfileFading(false), 240)
     },
@@ -173,6 +182,7 @@ export function App() {
         }
       })
       .catch(() => undefined)
+      .finally(() => setCatalogLoading(false))
 
     fetch('/api/sources')
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -502,6 +512,8 @@ export function App() {
             onBack={() => setAdminOpen(false)}
             onRefreshAll={refreshCatalogAndSources}
           />
+        ) : catalogLoading ? (
+          <CatalogSkeleton />
         ) : selectedShow ? (
           <ShowDetailView
             show={selectedShow}

@@ -53,7 +53,7 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onT
             src={imageUrl}
             alt={item.title}
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-full w-full animate-none bg-neutral-800 object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-4 text-center">
