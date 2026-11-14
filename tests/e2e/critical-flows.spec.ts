@@ -53,4 +53,26 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.goto('/series/show-south-park')
     await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
   })
+
+  test('Busca por South Park mostra a série e filtros de ordenação/não assistidos funcionam', async ({ page }) => {
+    await page.goto('/')
+    const search = page.locator('#sc-search-input')
+    await search.fill('South Park')
+    await expect(page.locator('article h3', { hasText: /^South Park$/i }).first()).toBeVisible()
+
+    await search.fill('')
+    await page.getByLabel('Ordenar catálogo').selectOption('az')
+    await page.getByRole('button', { name: /Não assistidos/i }).click()
+    await expect(page.getByText(/título\(s\)/i)).toBeVisible()
+  })
+
+  test('Player exibe controle de velocidade e slider de volume até 300%', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('article button[aria-label^="Assistir"]').first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByTitle('Velocidade de reprodução')).toHaveText('1x')
+    const volumeSlider = dialog.getByLabel('Volume')
+    await expect(volumeSlider).toHaveAttribute('max', '3')
+  })
 })

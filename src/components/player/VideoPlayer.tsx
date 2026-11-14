@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Maximize2, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Check, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 
@@ -52,8 +52,36 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const totalDurationRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
-  const [volume, setVolume] = useState(1)
+  const prefsKey = `savano-cine-player-prefs:${profileId}`
+  const [volume, setVolume] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(prefsKey) || '{}')
+      return typeof saved.volume === 'number' && saved.volume >= 0 && saved.volume <= 3 ? saved.volume : 1
+    } catch {
+      return 1
+    }
+  })
   const [muted, setMuted] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(prefsKey) || '{}')
+      return typeof saved.playbackRate === 'number' && [0.75, 1, 1.25, 1.5, 2].includes(saved.playbackRate)
+        ? saved.playbackRate
+        : 1
+    } catch {
+      return 1
+    }
+  })
+  const [hoverPreview, setHoverPreview] = useState<{ seconds: number; percent: number; bucket: number; imgOk: boolean } | null>(null)
+  const hoverTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(prefsKey, JSON.stringify({ volume, playbackRate }))
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [prefsKey, volume, playbackRate])
 
   const applyVolume = useCallback((nextVol: number, nextMuted: boolean) => {
     const video = videoRef.current
@@ -101,9 +129,16 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
     }, 2800)
   }, [trackMenuOpen])
 
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackRate
+    }
+  }, [playbackRate])
+
   useEffect(() => () => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
     if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
     void audioCtxRef.current?.close().catch(() => undefined)
   }, [])
 
@@ -330,6 +365,12 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             pauseOverlayTimer.current = window.setTimeout(() => setShowPausedInfo(true), 2200)
           }}
           onLoadedMetadata={() => {
+            if (videoRef.current) {
+              videoRef.current.playbackRate = playbackRate
+              if (volume !== 1 || muted) {
+                applyVolume(volume, muted)
+              }
+            }
             if (videoRef.current && !playbackUrl.includes('/transcode') && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
               totalDurationRef.current = videoRef.current.duration
               setDuration(videoRef.current.duration)
@@ -408,18 +449,62 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             <span className="w-12 text-right text-xs font-medium tabular-nums text-white/85">
               {formatClock(currentTime)}
             </span>
-            <input
-              type="range"
-              aria-label="Progresso do vídeo"
-              min={0}
-              max={duration || 100}
-              step={1}
-              value={Math.min(currentTime, duration || 100)}
-              onChange={(event) => {
-                seekTo(Number(event.target.value))
+            <div
+              className="relative flex flex-1 items-center"
+              onMouseMove={(event) => {
+                if (!duration || duration <= 0) return
+                const rect = event.currentTarget.getBoundingClientRect()
+                const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+                const seconds = Math.round(ratio * duration)
+                const bucket = Math.floor(seconds / 5) * 5
+                const percent = Math.max(6, Math.min(94, ratio * 100))
+                if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
+                setHoverPreview((prev) => ({
+                  seconds,
+                  percent,
+                  bucket: prev?.bucket ?? bucket,
+                  imgOk: prev?.imgOk ?? true,
+                }))
+                hoverTimerRef.current = window.setTimeout(() => {
+                  setHoverPreview((prev) => (prev ? { ...prev, bucket, imgOk: true } : null))
+                }, 110)
               }}
-              className="h-1.5 flex-1 accent-[var(--sc-accent)]"
-            />
+              onMouseLeave={() => {
+                if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
+                setHoverPreview(null)
+              }}
+            >
+              {hoverPreview && (
+                <div
+                  className="pointer-events-none absolute bottom-6 z-30 flex -translate-x-1/2 flex-col items-center gap-1 rounded-lg border border-white/20 bg-black/90 p-1.5 shadow-2xl"
+                  style={{ left: `${hoverPreview.percent}%` }}
+                >
+                  {media.mediaId && hoverPreview.imgOk && (
+                    <img
+                      src={`/api/media/${encodeURIComponent(media.mediaId)}/thumbnail?t=${hoverPreview.bucket}`}
+                      alt=""
+                      className="h-20 w-36 rounded object-cover"
+                      onError={() => setHoverPreview((prev) => (prev ? { ...prev, imgOk: false } : null))}
+                    />
+                  )}
+                  <span className="text-[11px] font-semibold tabular-nums text-white">
+                    {formatClock(hoverPreview.seconds)}
+                  </span>
+                </div>
+              )}
+              <input
+                type="range"
+                aria-label="Progresso do vídeo"
+                min={0}
+                max={duration || 100}
+                step={1}
+                value={Math.min(currentTime, duration || 100)}
+                onChange={(event) => {
+                  seekTo(Number(event.target.value))
+                }}
+                className="h-1.5 w-full accent-[var(--sc-accent)]"
+              />
+            </div>
             <span className="w-12 text-xs font-medium tabular-nums text-white/65">
               {formatClock(duration)}
             </span>
@@ -495,12 +580,42 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => {
+                  const speeds = [0.75, 1, 1.25, 1.5, 2]
+                  const idx = speeds.indexOf(playbackRate)
+                  setPlaybackRate(speeds[(idx + 1) % speeds.length])
+                }}
+                title="Velocidade de reprodução"
+                className="flex h-9 items-center justify-center rounded-full border border-white/15 bg-white/10 px-3 text-xs font-semibold tabular-nums text-white hover:bg-white/20"
+              >
+                {playbackRate}x
+              </button>
+              <button
+                type="button"
                 onClick={() => setTrackMenuOpen((value) => !value)}
                 className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 text-xs font-semibold text-white hover:bg-white/20"
               >
                 <Subtitles className="h-4 w-4" />
                 Idioma e legendas
               </button>
+              {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const video = videoRef.current
+                    if (!video) return
+                    if (document.pictureInPictureElement) {
+                      void document.exitPictureInPicture().catch(() => undefined)
+                    } else {
+                      void video.requestPictureInPicture().catch(() => undefined)
+                    }
+                  }}
+                  title="Picture-in-Picture"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+                >
+                  <PictureInPicture2 className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={toggleFullscreen}

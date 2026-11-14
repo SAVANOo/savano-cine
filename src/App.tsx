@@ -44,6 +44,8 @@ function getInitialDeepLinkId(): string | null {
 export function App() {
   const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
+  const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
+  const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
   const [adminOpen, setAdminOpen] = useState(false)
@@ -305,9 +307,10 @@ export function App() {
 
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    return catalog.filter((item) => {
+    const list = catalog.filter((item) => {
       if (activeKind !== 'Todos' && item.kind !== activeKind) return false
       if (activeGenre !== 'Todos' && !(item.genres ?? []).includes(activeGenre)) return false
+      if (unwatchedOnly && (item.progress ?? 0) >= 90) return false
       if (!normalized) return true
       return (
         item.title.toLowerCase().includes(normalized) ||
@@ -316,10 +319,17 @@ export function App() {
         (item.genres ?? []).some((g) => translateGenre(g).toLowerCase().includes(normalized))
       )
     })
-  }, [activeGenre, activeKind, catalog, query])
+    if (sortOrder === 'az') {
+      return [...list].sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'))
+    }
+    if (sortOrder === 'year-desc') {
+      return [...list].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title, 'pt-BR'))
+    }
+    return list
+  }, [activeGenre, activeKind, catalog, query, sortOrder, unwatchedOnly])
 
   const isFilteredView =
-    activeKind !== 'Todos' || activeGenre !== 'Todos' || query.trim().length > 0
+    activeKind !== 'Todos' || activeGenre !== 'Todos' || sortOrder !== 'default' || unwatchedOnly || query.trim().length > 0
 
   const heroItems = useMemo(() => {
     const withArt = catalog.filter((item) => item.artwork.bannerUrl || item.artwork.posterUrl)
@@ -426,7 +436,7 @@ export function App() {
               />
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <select
                 aria-label="Filtrar por gênero"
                 value={activeGenre}
@@ -443,6 +453,36 @@ export function App() {
                   </option>
                 ))}
               </select>
+
+              <select
+                aria-label="Ordenar catálogo"
+                value={sortOrder}
+                onChange={(event) => {
+                  setSortOrder(event.target.value as 'default' | 'az' | 'year-desc')
+                  setSelectedShow(null)
+                }}
+                className="h-10 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-4 text-xs font-semibold text-white focus:border-white/35 focus:outline-none"
+              >
+                <option value="default">Ordem padrão</option>
+                <option value="az">Título (A–Z)</option>
+                <option value="year-desc">Mais recentes</option>
+              </select>
+
+              <button
+                type="button"
+                aria-pressed={unwatchedOnly}
+                onClick={() => {
+                  setUnwatchedOnly((value) => !value)
+                  setSelectedShow(null)
+                }}
+                className={`h-10 rounded-full border px-3.5 text-xs font-semibold transition ${
+                  unwatchedOnly
+                    ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)]/20 text-white'
+                    : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-secondary)] hover:text-white'
+                }`}
+              >
+                Não assistidos
+              </button>
 
               <span className="hidden text-xs text-[var(--sc-text-muted)] sm:inline">
                 {filteredItems.length} título(s)

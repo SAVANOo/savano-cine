@@ -18,7 +18,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Baixa | Miniaturas de preview na timeline do player | Gerar sprites/thumbnails ao passar o mouse na barra de progresso |
+| Média | Sinopses e banners widescreen em PT-BR | Enriquecer catálogo com backdrops horizontais opcionais via TMDB |
 
 ## Backlog
 
@@ -42,6 +42,9 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Troca de faixas de áudio durante transcoding mantendo posição real na timeline (`start=` + duração total via FFprobe) e busca funcional na barra.
 - Reconciliação de episódios de South Park classificados como filme, limpeza de títulos e remoção lógica de clipes promocionais de release.
 - Retomada automática de séries/filmes no último ponto assistido (e avanço ao próximo episódio após conclusão) + altura uniforme nos `MediaCard`.
+- Boost de volume até 300% via Web Audio API (`GainNode` + `DynamicsCompressorNode`), velocidade de reprodução (`0.75x`–`2x`), PiP e preferências persistidas por perfil.
+- Miniaturas de preview na timeline do player (`/api/media/:id/thumbnail` com cache em memória).
+- Agrupamento de filmes duplicados com seletor de versões disponíveis, ordenação (`A–Z`, `Mais recentes`) e filtro `Não assistidos`.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
 - Endpoint seguro de análise de faixas com FFprobe, sem shell injection ou exposição de caminhos absolutos; fallback explícito quando o runtime está ausente.

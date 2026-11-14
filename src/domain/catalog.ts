@@ -64,6 +64,15 @@ export type Season = {
   episodes: Episode[]
 }
 
+export type MediaVersion = {
+  mediaId: string
+  label: string
+  mediaUrl: string
+  subtitleUrl?: string
+  meta: string
+  detail: string
+}
+
 export type LibraryItem = {
   id: string
   title: string
@@ -85,6 +94,7 @@ export type LibraryItem = {
   mediaId?: string
   resume?: ResumeInfo
   inWatchlist?: boolean
+  versions?: MediaVersion[]
 }
 
 export type MediaSource = {

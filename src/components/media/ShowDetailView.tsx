@@ -235,6 +235,31 @@ export function ShowDetailView({
               )}
             </div>
 
+            {show.versions && show.versions.length > 1 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-white/60">Versões disponíveis:</span>
+                {show.versions.map((ver) => (
+                  <button
+                    key={ver.mediaId}
+                    type="button"
+                    onClick={() =>
+                      onPlayMedia({
+                        title: `${show.title} (${ver.label})`,
+                        url: ver.mediaUrl,
+                        subtitleUrl: ver.subtitleUrl,
+                        mediaId: ver.mediaId,
+                        overview: show.overview,
+                        year: show.year,
+                      })
+                    }
+                    className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                  >
+                    {ver.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <p className="mt-5 mb-0 max-w-2xl text-sm leading-relaxed text-white/85">
               {show.overview || 'Descrição ainda não cadastrada para este título.'}
             </p>

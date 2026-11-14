@@ -460,6 +460,11 @@ async function handleApiRequest(request, response) {
     return analyzeMediaStreams(streamInfoMatch[1], response)
   }
 
+  const thumbnailMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/thumbnail$/)
+  if (thumbnailMatch && request.method === 'GET') {
+    return serveMediaThumbnail(thumbnailMatch[1], requestUrl.searchParams.get('t'), response)
+  }
+
   const subtitleListMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles$/)
   if (subtitleListMatch && request.method === 'GET') {
     return send(response, 200, findSubtitleTracks(subtitleListMatch[1]))
@@ -760,6 +765,120 @@ function getRuntimeExecutable(environmentVariable, commandName) {
   return process.env[environmentVariable]?.trim() || commandName
 }
 
+const thumbnailCache = new Map()
+
+async function serveMediaThumbnail(mediaId, rawSeconds, response) {
+  if (typeof mediaId !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/.test(mediaId)) {
+    return send(response, 400, { error: 'mediaId inválido.' })
+  }
+  const parsedSeconds = Number(rawSeconds)
+  if (!Number.isFinite(parsedSeconds) || parsedSeconds < 0) {
+    return send(response, 400, { error: 'Parâmetro t inválido.' })
+  }
+  const bucket = Math.floor(parsedSeconds / 5) * 5
+  const cacheKey = `${mediaId}:${bucket}`
+  const cached = thumbnailCache.get(cacheKey)
+  if (cached) {
+    response.writeHead(200, {
+      'Content-Type': 'image/jpeg',
+      'Content-Length': cached.length,
+      'Cache-Control': 'public, max-age=86400',
+    })
+    return response.end(cached)
+  }
+
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ? AND m.deleted_at IS NULL
+  `).get(mediaId)
+  if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const adapter = getAdapterForSource(media.rootPath)
+  if (adapter.kind === 'self_hosted') {
+    return send(response, 404, { error: 'Miniatura indisponível para stream remoto.' })
+  }
+
+  const filePath = path.resolve(media.rootPath, media.relativePath)
+  const rootPath = path.resolve(media.rootPath)
+  if (filePath === rootPath || !filePath.startsWith(`${rootPath}${path.sep}`)) {
+    return send(response, 400, { error: 'Caminho de mídia inválido.' })
+  }
+  try {
+    if (!statSync(filePath).isFile()) return send(response, 404, { error: 'Arquivo indisponível.' })
+  } catch {
+    return send(response, 404, { error: 'Arquivo indisponível.' })
+  }
+
+  const runtime = detectRuntime('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  if (!runtime.available) {
+    return send(response, 404, { available: false, reason: 'ffmpeg-not-found' })
+  }
+
+  const executable = getRuntimeExecutable('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  const chunks = []
+  const child = spawn(
+    executable,
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-ss',
+      String(bucket),
+      '-i',
+      filePath,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=240:-1',
+      '-q:v',
+      '6',
+      '-f',
+      'image2pipe',
+      '-vcodec',
+      'mjpeg',
+      'pipe:1',
+    ],
+    { windowsHide: true },
+  )
+
+  const timer = setTimeout(() => {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // ignore
+    }
+  }, 5000)
+
+  child.stdout.on('data', (chunk) => chunks.push(chunk))
+  child.once('close', (code) => {
+    clearTimeout(timer)
+    if (code !== 0 || chunks.length === 0) {
+      if (!response.writableEnded) send(response, 404, { error: 'Miniatura indisponível.' })
+      return
+    }
+    const buffer = Buffer.concat(chunks)
+    if (thumbnailCache.size >= 200) {
+      const oldestKey = thumbnailCache.keys().next().value
+      if (oldestKey) thumbnailCache.delete(oldestKey)
+    }
+    thumbnailCache.set(cacheKey, buffer)
+    if (!response.writableEnded) {
+      response.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': buffer.length,
+        'Cache-Control': 'public, max-age=86400',
+      })
+      response.end(buffer)
+    }
+  })
+  child.once('error', () => {
+    clearTimeout(timer)
+    if (!response.writableEnded) send(response, 404, { error: 'Falha ao gerar miniatura.' })
+  })
+}
+
 async function transcodeMedia(mediaId, request, response) {
   if (typeof mediaId !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/.test(mediaId)) {
     return send(response, 400, { error: 'mediaId inválido.' })
@@ -947,7 +1066,7 @@ async function analyzeMediaStreams(mediaId, response) {
 async function buildLibrary(profileId) {
   const watchlistRows = database.prepare('SELECT target_type, target_id FROM watchlist WHERE profile_id = ?').all(profileId)
   const watchlistSet = new Set(watchlistRows.map((r) => `${r.target_type}:${r.target_id}`))
-  const items = database.prepare(`
+  const rawMovies = database.prepare(`
     SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
       p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
       p.watched AS progressWatched, p.updated_at AS progressUpdatedAt,
@@ -999,6 +1118,55 @@ async function buildLibrary(profileId) {
       },
     } : {}),
   }))
+
+  const extractVersionLabel = (movie) => {
+    const src = `${movie.detail || ''} ${movie.meta || ''}`
+    const res = src.match(/\b(2160p|4k|1080p|720p|480p)\b/i)?.[1]?.toUpperCase() || ''
+    const audio = /\bdual\b/i.test(src) ? 'Dual' : (/\bdublado\b/i.test(src) ? 'Dublado' : '')
+    return [res, movie.meta, audio].filter(Boolean).join(' · ') || movie.meta
+  }
+
+  const versionScore = (movie) => {
+    const src = `${movie.detail || ''} ${movie.meta || ''}`
+    let score = 0
+    if (movie.resume) score += 1000
+    if (movie.artwork?.verified) score += 200
+    if (/2160p|4k/i.test(src)) score += 40
+    else if (/1080p/i.test(src)) score += 30
+    else if (/720p/i.test(src)) score += 20
+    if (/mkv/i.test(movie.meta)) score += 5
+    return score
+  }
+
+  const groupedMovies = new Map()
+  for (const movie of rawMovies) {
+    const key = String(movie.title || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+    if (!key) continue
+    const list = groupedMovies.get(key) || []
+    list.push(movie)
+    groupedMovies.set(key, list)
+  }
+
+  const items = []
+  for (const group of groupedMovies.values()) {
+    group.sort((a, b) => versionScore(b) - versionScore(a))
+    const primary = { ...group[0] }
+    if (group.length > 1) {
+      primary.versions = group.map((entry) => ({
+        mediaId: entry.id,
+        label: extractVersionLabel(entry),
+        mediaUrl: entry.mediaUrl,
+        subtitleUrl: entry.subtitleUrl,
+        meta: entry.meta,
+        detail: entry.detail,
+      }))
+    }
+    items.push(primary)
+  }
 
   const shows = database.prepare(`
     SELECT id, title, year, overview, genres_json
