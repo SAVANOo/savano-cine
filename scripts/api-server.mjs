@@ -76,6 +76,49 @@ createServer(async (request, response) => {
     return send(response, 200, { position, duration, watched: Boolean(watched) })
   }
 
+  if (requestUrl.pathname === '/api/rating' && request.method === 'GET') {
+    const profileId = requestUrl.searchParams.get('profileId')
+    const mediaId = requestUrl.searchParams.get('mediaId')
+    const showId = requestUrl.searchParams.get('showId')
+    const rating = mediaId
+      ? database.prepare('SELECT score, review FROM ratings WHERE profile_id = ? AND media_item_id = ?').get(profileId, mediaId)
+      : database.prepare('SELECT score, review FROM ratings WHERE profile_id = ? AND show_id = ?').get(profileId, showId)
+    return send(response, 200, rating || null)
+  }
+
+  if (requestUrl.pathname === '/api/rating' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const profileId = typeof body.profileId === 'string' ? body.profileId : ''
+    const mediaId = typeof body.mediaId === 'string' ? body.mediaId : ''
+    const showId = typeof body.showId === 'string' ? body.showId : ''
+    const score = Number(body.score)
+    const review = typeof body.review === 'string' ? body.review.trim().slice(0, 500) : ''
+    if (!profileId || (!mediaId && !showId) || (mediaId && showId) || !Number.isInteger(score) || score < 0 || score > 10) {
+      return send(response, 400, { error: 'Avaliação inválida.' })
+    }
+    const targetId = mediaId || showId
+    const id = `rating-${profileId}-${targetId}`
+    if (mediaId) {
+      database.prepare(`
+        INSERT INTO ratings (id, profile_id, media_item_id, score, review)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(profile_id, media_item_id) DO UPDATE SET score = excluded.score, review = excluded.review, updated_at = CURRENT_TIMESTAMP
+      `).run(id, profileId, mediaId, score, review || null)
+    } else {
+      database.prepare(`
+        INSERT INTO ratings (id, profile_id, show_id, score, review)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(profile_id, show_id) DO UPDATE SET score = excluded.score, review = excluded.review, updated_at = CURRENT_TIMESTAMP
+      `).run(id, profileId, showId, score, review || null)
+    }
+    return send(response, 200, { score, review })
+  }
+
   if (requestUrl.pathname === '/api/profiles') {
     if (request.method === 'POST') {
       let body

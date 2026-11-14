@@ -35,6 +35,7 @@ database.prepare(`
   VALUES (?, ?, ?)
   ON CONFLICT(id) DO NOTHING
 `).run('profile-savio', 'Savio', 'cartman')
+ensureProfileRatingsTable()
 
 const sourceId = `source-${slugify(sourcePath)}`
 const sourceName = `${path.basename(sourcePath) || sourcePath} (${sourcePath.slice(0, 2).toUpperCase()})`
@@ -187,6 +188,31 @@ function ensureProfileProgressTable() {
     SELECT 'profile-savio', media_item_id, position_seconds, duration_seconds, watched, updated_at
     FROM watch_progress_legacy;
     DROP TABLE watch_progress_legacy;
+  `)
+}
+
+function ensureProfileRatingsTable() {
+  const columns = database.prepare('PRAGMA table_info(ratings)').all().map((column) => column.name)
+  if (!columns.length || columns.includes('profile_id')) return
+
+  database.exec(`
+    ALTER TABLE ratings RENAME TO ratings_legacy;
+    CREATE TABLE ratings (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      media_item_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
+      show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
+      score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+      review TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CHECK ((media_item_id IS NULL) != (show_id IS NULL)),
+      UNIQUE(profile_id, media_item_id),
+      UNIQUE(profile_id, show_id)
+    );
+    INSERT INTO ratings (id, profile_id, media_item_id, show_id, score, review, updated_at)
+    SELECT id, 'profile-savio', media_item_id, show_id, score, review, updated_at
+    FROM ratings_legacy;
+    DROP TABLE ratings_legacy;
   `)
 }
 

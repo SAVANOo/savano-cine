@@ -133,7 +133,7 @@ function App() {
           <button className="back-button" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
-          <ShowHeader show={selectedShow} onPlay={setSelectedMedia} />
+          <ShowHeader show={selectedShow} profileId={activeProfileId} onPlay={setSelectedMedia} />
           {selectedShow.kind === 'Série' && <section className="episodes-section">
             <div className="season-header">
               <div>
@@ -486,7 +486,7 @@ function ProfileEditor({
   )
 }
 
-function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
+function ShowHeader({ show, profileId, onPlay }: { show: LibraryItem; profileId: string; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
   return (
     <section className="show-header">
       <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
@@ -503,9 +503,57 @@ function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { tit
           <span>{show.detail}</span>
           {show.genres?.map((genre) => <span key={genre}>{genre}</span>)}
         </div>
+        <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
         {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
       </div>
     </section>
+  )
+}
+
+function RatingControl({ profileId, mediaId, showId }: { profileId: string; mediaId?: string; showId?: string }) {
+  const [score, setScore] = useState<number | null>(null)
+  const [review, setReview] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams({ profileId })
+    if (mediaId) params.set('mediaId', mediaId)
+    if (showId) params.set('showId', showId)
+    fetch(`/api/rating?${params}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((rating) => {
+        setScore(rating?.score ?? null)
+        setReview(rating?.review ?? '')
+      })
+      .catch(() => undefined)
+  }, [mediaId, profileId, showId])
+
+  const save = async () => {
+    if (score === null) return
+    const response = await fetch('/api/rating', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId, mediaId, showId, score, review }),
+    })
+    if (response.ok) {
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 1800)
+    }
+  }
+
+  return (
+    <div className="rating-control">
+      <div className="rating-heading"><span>Sua avaliação</span><small>{saved ? 'Salva' : `Perfil: ${profileId === 'profile-savio' ? 'Savio' : 'Família'}`}</small></div>
+      <div className="rating-score">
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
+          <button type="button" key={value} className={score === value ? 'rating-choice selected' : 'rating-choice'} onClick={() => setScore(value)} aria-label={`Nota ${value}`}>{value}</button>
+        ))}
+      </div>
+      <div className="rating-footer">
+        <input value={review} onChange={(event) => setReview(event.target.value)} maxLength={500} placeholder="Comentário opcional" />
+        <button type="button" onClick={() => void save()} disabled={score === null}>Salvar</button>
+      </div>
+    </div>
   )
 }
 

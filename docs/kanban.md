@@ -12,6 +12,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | --- | --- | --- |
 | Alta | Player compatível com o acervo | FFmpeg/VLC ainda não instalado; backend já expõe capacidades e aguarda runtime |
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
+| Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 
 ## Próximo ciclo
 
@@ -27,7 +28,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Catálogo | Histórico e restauração de alterações | Soft delete e títulos já possuem base no SQLite; falta uma tela operacional |
 | Séries | Especiais e extras | Exibir `Curtas` dentro da série sem misturar com temporadas normais |
 | Legendas | Scanner local e integração autorizada | Priorizar embutidas, arquivos próximos e depois provedores |
-| Perfis | Rating de 0 a 10 por perfil | Persistir nota e comentário sem tornar rating global |
 | Interface | Navegação completa por controle | Foco, seleção, voltar, busca e player |
 | Fontes | Detecção automática de SSD offline/online | Identificar volume por ID, não apenas pela letra da unidade |
 | Integrações | Adapters de fontes autorizadas | Protocolo extensível para acervo local, servidores próprios e provedores licenciados |
