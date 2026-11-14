@@ -10,7 +10,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Player compatível com o acervo | Integrar FFmpeg/VLC para formatos e múltiplas faixas de áudio |
+| Alta | Player compatível com o acervo | FFmpeg/VLC ainda não instalado; backend já expõe capacidades e aguarda runtime |
 
 ## Próximo ciclo
 

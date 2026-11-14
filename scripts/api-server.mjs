@@ -25,6 +25,15 @@ createServer(async (request, response) => {
     return send(response, 200, { status: 'ok' })
   }
 
+  if (requestUrl.pathname === '/api/player/capabilities') {
+    return send(response, 200, {
+      browser: true,
+      ffmpeg: Boolean(process.env.CINE_FFMPEG_PATH && existsSync(process.env.CINE_FFMPEG_PATH)),
+      ffprobe: Boolean(process.env.CINE_FFPROBE_PATH && existsSync(process.env.CINE_FFPROBE_PATH)),
+      vlc: Boolean(process.env.CINE_VLC_PATH && existsSync(process.env.CINE_VLC_PATH)),
+    })
+  }
+
   if (requestUrl.pathname === '/api/sources') {
     const sources = database.prepare(`
       SELECT id, name, root_path AS path, status, removable, volume_label AS volumeLabel,
@@ -289,7 +298,7 @@ function streamArtwork(ownerType, ownerId, artworkType, response) {
     FROM artwork
     WHERE ${ownerColumn} = ? AND artwork_type = ? AND source = 'local'
     LIMIT 1
-  `).get(showId, artworkType)
+  `).get(ownerId, artworkType)
   if (!artwork) return send(response, 404, { error: 'Arte não encontrada.' })
 
   const filePath = path.resolve(root, '..', artwork.localPath)

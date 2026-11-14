@@ -17,6 +17,14 @@ function App() {
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
   const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string } | null>(null)
+  const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/player/capabilities')
+      .then((response) => response.ok ? response.json() : null)
+      .then(setPlayerCapabilities)
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -140,7 +148,7 @@ function App() {
             </div>
           </section>}
         </main>
-        {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} onClose={() => setSelectedMedia(null)} />}
+        {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
       </div>
     )
   }
@@ -214,7 +222,7 @@ function App() {
           )}
         </section>
       </main>
-      {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} onClose={() => setSelectedMedia(null)} />}
+      {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
     </div>
   )
 }
@@ -482,7 +490,7 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
   )
 }
 
-function VideoPlayer({ media, profileId, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; onClose: () => void }) {
+function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; capabilities: { ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedPosition = useRef(0)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
@@ -569,7 +577,9 @@ function VideoPlayer({ media, profileId, onClose }: { media: { title: string; ur
           </select></label>}
           <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
         </div>
-        <small>Áudio: o navegador usa a faixa padrão do arquivo. Seleção de múltiplas faixas e conversão de formatos serão adicionadas com FFmpeg/VLC.</small>
+        <small>{capabilities?.ffmpeg || capabilities?.vlc
+          ? 'FFmpeg/VLC disponível: suporte avançado de áudio será ativado na próxima etapa.'
+          : 'Player web ativo. Para múltiplos áudios e formatos incompatíveis, configure FFmpeg ou VLC no ambiente local.'}</small>
       </section>
     </div>
   )
