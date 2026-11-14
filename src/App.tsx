@@ -12,6 +12,7 @@ import type {
   CatalogRefreshStatus,
 } from './components/modals/CatalogModals'
 import { VideoPlayer } from './components/player/VideoPlayer'
+import { ProfileGate } from './components/profile/ProfileGate'
 import { ProfileModal } from './components/profile/ProfileModal'
 import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
 import {
@@ -55,12 +56,25 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs'>('review')
 
-  const [activeProfileId, setActiveProfileId] = useState('profile-savio')
+  const getProfileSessionCookie = () => {
+    if (typeof document === 'undefined') return ''
+    const match = document.cookie.match(/(?:^|;\s*)sc_profile_session=([^;]+)/)
+    return match ? decodeURIComponent(match[1]) : ''
+  }
+
+  const setProfileSessionCookie = (profileId: string) => {
+    if (typeof document === 'undefined') return
+    document.cookie = `sc_profile_session=${encodeURIComponent(profileId)}; Max-Age=86400; Path=/; SameSite=Lax`
+  }
+
+  const initialCookieProfile = getProfileSessionCookie()
+  const [profileGateOpen, setProfileGateOpen] = useState(() => !initialCookieProfile)
+  const [activeProfileId, setActiveProfileId] = useState(() => initialCookieProfile || 'profile-savio')
   const [catalog, setCatalog] = useState<LibraryItem[]>(
-    () => readCachedCatalog('profile-savio') ?? mockLibrary,
+    () => readCachedCatalog(initialCookieProfile || 'profile-savio') ?? mockLibrary,
   )
   const [catalogLoading, setCatalogLoading] = useState(
-    () => !readCachedCatalog('profile-savio'),
+    () => !readCachedCatalog(initialCookieProfile || 'profile-savio'),
   )
   const [sources, setSources] = useState<MediaSource[]>(mockSources)
   const [sourcesError, setSourcesError] = useState('')
@@ -103,6 +117,8 @@ export function App() {
 
   const handleProfileChange = useCallback(
     (nextId: string) => {
+      setProfileSessionCookie(nextId)
+      setProfileGateOpen(false)
       if (nextId === activeProfileId) return
       setProfileFading(true)
       const cached = readCachedCatalog(nextId)
@@ -833,14 +849,38 @@ export function App() {
         />
       )}
 
+      {profileGateOpen && !profileEditorOpen && (
+        <ProfileGate
+          profiles={profiles}
+          backdropUrl={heroItems[0]?.artwork.bannerUrl || heroItems[0]?.artwork.posterUrl}
+          onSelectProfile={(id) => handleProfileChange(id)}
+          onAddProfile={() => {
+            setEditingProfile(undefined)
+            setProfileEditorOpen(true)
+          }}
+          onEditProfile={(profile) => {
+            setEditingProfile(profile)
+            setProfileEditorOpen(true)
+          }}
+        />
+      )}
+
       <ProfileModal
         key={editingProfile?.id ?? (profileEditorOpen ? 'new' : 'closed')}
         open={profileEditorOpen}
         profile={editingProfile}
+        canDelete={profiles.length > 1}
         onClose={() => setProfileEditorOpen(false)}
         onSaved={(savedId) => {
           refreshProfiles()
           handleProfileChange(savedId)
+        }}
+        onDeleted={(deletedId) => {
+          refreshProfiles()
+          if (deletedId === activeProfileId) {
+            const fallback = profiles.find((p) => p.id !== deletedId)?.id ?? 'profile-savio'
+            handleProfileChange(fallback)
+          }
         }}
       />
     </div>

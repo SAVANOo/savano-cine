@@ -277,13 +277,14 @@ async function handleApiRequest(request, response) {
 
       if (!name || !avatarKey) return send(response, 400, { error: 'Nome e avatar são obrigatórios.' })
 
+      const isKids = body.isKids ? 1 : 0
       database.prepare(`
-        INSERT INTO profiles (id, name, avatar_key)
-        VALUES (?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_key = excluded.avatar_key
-      `).run(id, name, avatarKey)
+        INSERT INTO profiles (id, name, avatar_key, is_kids)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_key = excluded.avatar_key, is_kids = excluded.is_kids
+      `).run(id, name, avatarKey, isKids)
 
-      return send(response, 200, { id, name, avatarKey, isKids: 0 })
+      return send(response, 200, { id, name, avatarKey, isKids })
     }
 
     const profiles = database.prepare(`
@@ -293,6 +294,22 @@ async function handleApiRequest(request, response) {
     `).all()
 
     return send(response, 200, profiles)
+  }
+
+  const deleteProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)$/)
+  if (deleteProfileMatch && request.method === 'DELETE') {
+    const profileId = decodeURIComponent(deleteProfileMatch[1])
+    const total = database.prepare('SELECT COUNT(*) AS count FROM profiles').get()?.count ?? 0
+    if (total <= 1) {
+      return send(response, 400, { error: 'Não é possível excluir o único perfil restante.' })
+    }
+    const existing = database.prepare('SELECT id FROM profiles WHERE id = ?').get(profileId)
+    if (!existing) return send(response, 404, { error: 'Perfil não encontrado.' })
+    database.prepare('DELETE FROM watch_progress WHERE profile_id = ?').run(profileId)
+    database.prepare('DELETE FROM ratings WHERE profile_id = ?').run(profileId)
+    database.prepare('DELETE FROM watchlist WHERE profile_id = ?').run(profileId)
+    database.prepare('DELETE FROM profiles WHERE id = ?').run(profileId)
+    return send(response, 200, { deleted: true, id: profileId })
   }
 
   if (requestUrl.pathname === '/api/library') {

@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Profile } from '../../domain/catalog'
@@ -9,16 +9,19 @@ import { Modal } from '../ui/Modal'
 type ProfileModalProps = {
   open: boolean
   profile?: Profile
+  canDelete?: boolean
   onClose: () => void
   onSaved: (profileId: string) => void
+  onDeleted?: (profileId: string) => void
 }
 
 /** Netflix-style profile creator & editor with avatar icons organized by series. */
-export function ProfileModal({ open, profile, onClose, onSaved }: ProfileModalProps) {
+export function ProfileModal({ open, profile, canDelete = false, onClose, onSaved, onDeleted }: ProfileModalProps) {
   const [name, setName] = useState(profile?.name ?? '')
   const [avatarKey, setAvatarKey] = useState<string>(profile?.avatarKey ?? 'savino')
   const [isKids, setIsKids] = useState(Boolean(profile?.isKids))
   const [saving, setSaving] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState('')
 
   const previewStyle = getAvatarStyle(avatarKey)
@@ -135,13 +138,71 @@ export function ProfileModal({ open, profile, onClose, onSaved }: ProfileModalPr
 
         {error && <p className="m-0 text-xs text-red-400">{error}</p>}
 
-        <div className="flex justify-end gap-2 border-t border-[var(--sc-border-subtle)] pt-4">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar perfil'}
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sc-border-subtle)] pt-4">
+          <div>
+            {profile && canDelete && !confirmingDelete && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => setConfirmingDelete(true)}
+                className="text-red-400 hover:bg-red-500/15 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir perfil
+              </Button>
+            )}
+            {profile && canDelete && confirmingDelete && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-red-300">Confirmar exclusão?</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  disabled={saving}
+                  onClick={async () => {
+                    setSaving(true)
+                    setError('')
+                    try {
+                      const response = await fetch(`/api/profiles/${encodeURIComponent(profile.id)}`, {
+                        method: 'DELETE',
+                      })
+                      const body = await response.json().catch(() => null)
+                      if (!response.ok) {
+                        setError(body?.error || 'Não foi possível excluir o perfil.')
+                        setConfirmingDelete(false)
+                        return
+                      }
+                      onDeleted?.(profile.id)
+                      onClose()
+                    } catch {
+                      setError('API indisponível para excluir perfil.')
+                    } finally {
+                      setSaving(false)
+                    }
+                  }}
+                >
+                  Sim, excluir
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar perfil'}
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>

@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test'
 
 test.describe('Savano Cine - Fluxos Críticos E2E', () => {
+  test.beforeEach(async ({ context }) => {
+    await context.addCookies([
+      {
+        name: 'sc_profile_session',
+        value: 'profile-savio',
+        url: 'http://127.0.0.1:4173',
+      },
+    ])
+  })
+
   test('Home exibe Hero com Mais informações e carrosséis', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
@@ -74,5 +84,15 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(dialog.getByTitle('Velocidade de reprodução')).toHaveText('1x')
     const volumeSlider = dialog.getByLabel('Volume')
     await expect(volumeSlider).toHaveAttribute('max', '3')
+  })
+
+  test('Gate Quem está assistindo aparece sem cookie e entra ao escolher perfil', async ({ page, context }) => {
+    await context.clearCookies()
+    await page.goto('/')
+    const gate = page.getByRole('dialog', { name: 'Quem está assistindo?' })
+    await expect(gate).toBeVisible()
+    await gate.getByRole('button', { name: /Savio/i }).first().click()
+    await expect(gate).toBeHidden()
+    await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
   })
 })
