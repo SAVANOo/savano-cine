@@ -5,7 +5,7 @@ import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './do
 import { messages } from './config/messages'
 import './App.css'
 
-type LibraryFilter = 'Tudo' | MediaKind
+type LibraryFilter = 'Tudo' | MediaKind | string
 
 function App() {
   const [activeFilter, setActiveFilter] = useState<LibraryFilter>('Tudo')
@@ -89,13 +89,17 @@ function App() {
     const normalizedQuery = query.trim().toLocaleLowerCase()
 
     return catalog.filter((item) => {
-      const matchesFilter = activeFilter === 'Tudo' || item.kind === activeFilter
+      const matchesFilter = activeFilter === 'Tudo' || item.kind === activeFilter || item.genres?.includes(activeFilter) || item.tags?.includes(activeFilter)
       const matchesQuery =
         !normalizedQuery || item.title.toLocaleLowerCase().includes(normalizedQuery)
 
       return matchesFilter && matchesQuery
     })
   }, [activeFilter, catalog, query])
+
+  const genreFilters = useMemo(() => Array.from(new Set(catalog.flatMap((item) => [...(item.genres ?? []), ...(item.tags ?? [])])))
+    .filter((tag) => !['Filme', 'Série'].includes(tag))
+    .sort((a, b) => a.localeCompare(b)), [catalog])
 
   const selectedEpisodes =
     selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
@@ -214,7 +218,7 @@ function App() {
               <h2>Sua biblioteca</h2>
             </div>
             <div className="filters" role="group" aria-label="Filtrar biblioteca">
-              {(['Tudo', 'Filme', 'Série'] as const).map((filter) => (
+              {(['Tudo', 'Filme', 'Série', ...genreFilters]).map((filter) => (
                 <button
                   className={activeFilter === filter ? 'filter active' : 'filter'}
                   key={filter}

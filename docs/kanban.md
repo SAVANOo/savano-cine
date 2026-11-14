@@ -13,6 +13,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Alta | Player compatível com o acervo | FFmpeg/VLC ainda não instalado; backend já expõe capacidades e aguarda runtime |
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
+| Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
 
 ## Próximo ciclo
 
@@ -24,7 +25,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Área | Cartão | Observação |
 | --- | --- | --- |
-| Catálogo | Tags pesquisáveis e filtros por gênero | Usar metadados confirmados; manter tags manuais possíveis |
 | Catálogo | Histórico e restauração de alterações | Soft delete e títulos já possuem base no SQLite; falta uma tela operacional |
 | Séries | Especiais e extras | Exibir `Curtas` dentro da série sem misturar com temporadas normais |
 | Legendas | Scanner local e integração autorizada | Priorizar embutidas, arquivos próximos e depois provedores |
