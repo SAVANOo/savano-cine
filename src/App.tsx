@@ -1277,15 +1277,22 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
             {[0.75, 1, 1.25, 1.5, 2].map((value) => <option value={value} key={value}>{value}x</option>)}
           </select></label>
           <label>Volume<input type="range" min="0" max="1" step="0.05" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} /></label>
-          {subtitleTracks.length > 0 && <label>Legenda<select value={subtitleUrl} onChange={(event) => setSubtitleUrl(event.target.value)}>
+          <label>Legenda<select value={subtitleUrl} onChange={(event) => setSubtitleUrl(event.target.value)}>
             <option value="">Sem legenda</option>
             {subtitleTracks.map((track) => <option value={track.url} key={track.url}>{track.label}</option>)}
-          </select></label>}
-          {streamInfo?.available && capabilities?.transcoding && streamInfo.audio.length > 0 && <label>Áudio<select value={audioStream} onChange={(event) => changeAudioStream(event.target.value)}>
-            <option value="">Original</option>
-            {streamInfo.audio.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
-          </select></label>}
-          {streamInfo?.available && capabilities?.transcoding && streamInfo.subtitles.length > 0 && <label>Legenda embutida<select value={subtitleStream} onChange={(event) => changeSubtitleStream(event.target.value)}>
+          </select></label>
+          {media.mediaId && <label title={!streamInfo?.available ? 'Instale/configure FFprobe para listar faixas internas' : !capabilities?.transcoding ? 'Instale/configure FFmpeg para trocar a faixa de áudio' : undefined}>
+            Áudio
+            <select
+              value={audioStream}
+              disabled={!streamInfo?.available || !capabilities?.transcoding || streamInfo.audio.length === 0}
+              onChange={(event) => changeAudioStream(event.target.value)}
+            >
+              <option value="">{!streamInfo?.available ? 'Original (requer FFprobe)' : !capabilities?.transcoding ? 'Original (requer FFmpeg)' : 'Original'}</option>
+              {streamInfo?.audio.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
+            </select>
+          </label>}
+          {streamInfo?.available && streamInfo.subtitles.length > 0 && <label>Legenda embutida<select value={subtitleStream} disabled={!capabilities?.transcoding} onChange={(event) => changeSubtitleStream(event.target.value)}>
             <option value="">Original</option>
             {streamInfo.subtitles.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
           </select></label>}

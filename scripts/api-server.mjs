@@ -1147,13 +1147,24 @@ function streamSubtitle(token, response) {
   }
   try {
     const extension = path.extname(filePath).toLowerCase()
-    const content = readFileSync(filePath, 'utf8')
+    const rawBuffer = readFileSync(filePath)
+    const content = decodeSubtitleBuffer(rawBuffer)
     const body = extension === '.srt' ? srtToVtt(content) : content
     response.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8' })
     return response.end(body)
   } catch {
     return send(response, 404, { error: 'Legenda indisponível.' })
   }
+}
+
+function decodeSubtitleBuffer(buffer) {
+  let decoded
+  try {
+    decoded = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  } catch {
+    decoded = new TextDecoder('windows-1252').decode(buffer)
+  }
+  return decoded.replace(/^\uFEFF/, '')
 }
 
 function srtToVtt(content) {

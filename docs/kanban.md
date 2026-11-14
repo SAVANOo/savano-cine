@@ -18,6 +18,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
+| Alta | Redesign e polimento visual do frontend | Hero cinematográfico com backdrop, cards com hover/badges de progresso e idioma, player com controles mais limpos/agradáveis, melhor hierarquia visual e responsividade |
+| Média | Troca de faixa de áudio com FFmpeg/FFprobe no ambiente | Garantir FFmpeg e FFprobe configurados no sistema (`CINE_FFMPEG_PATH`/`CINE_FFPROBE_PATH`) para habilitar troca real de faixa de áudio em MKV/MP4 multi-áudio |
 | Baixa | Adapter HTTP/remoto de fontes autorizadas | Implementar adapter concreto baseado em `src/domain/sourceAdapter.ts` para servidores próprios |
 
 ## Backlog
@@ -66,6 +68,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Integração de legendas embutidas e provedores: endpoint `/api/media/:id/subtitles/embedded/:streamIndex` (extração WebVTT via FFmpeg quando disponível), busca/download com confirmação para OpenSubtitles (`/api/media/:id/subtitles/search` e `/download`) e botão **Buscar arte/metadados** na página de detalhe.
 - Protocolo extensível de adapters de fontes autorizadas definido em `src/domain/sourceAdapter.ts`.
 - Adapters concretos (`LocalSourceAdapter` e `SelfHostedSourceAdapter`) em `scripts/source-adapters.mjs`, cadastro de fontes via `POST /api/sources` na sidebar e edição reversível de metadados (`PATCH /api/catalog/:id`) + arquivamento na página de detalhe.
+- Correção de acentuação em legendas `.srt`/`.vtt` com decodificação UTF-8 e fallback automático para Windows-1252/Latin-1, além de exibição permanente dos seletores de legenda e faixa de áudio no player.
 
 ## Regras do quadro
 
