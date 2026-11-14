@@ -606,6 +606,7 @@ async function buildLibrary(profileId) {
   const items = database.prepare(`
     SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
       p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
+      p.watched AS progressWatched, p.updated_at AS progressUpdatedAt,
       (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster,
       (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'banner' AND a.source = 'local' LIMIT 1) AS hasBanner
     FROM media_items
@@ -640,6 +641,18 @@ async function buildLibrary(profileId) {
       },
     } : {}),
     progress: item.progressDuration ? Math.round((item.progressPosition / item.progressDuration) * 100) : undefined,
+    ...(!item.progressWatched && item.progressPosition > 0 ? {
+      resume: {
+        kind: 'movie',
+        title: item.title,
+        position: item.progressPosition,
+        duration: item.progressDuration || undefined,
+        updatedAt: item.progressUpdatedAt,
+        mediaId: item.id,
+        mediaUrl: `/api/media/${item.id}`,
+        subtitleUrl: `/api/media/${item.id}/subtitles`,
+      },
+    } : {}),
   }))
 
   const shows = database.prepare(`
@@ -690,6 +703,19 @@ async function buildLibrary(profileId) {
     }))
 
     const episodeCount = seasons.reduce((total, season) => total + season.episodes.length, 0)
+    const resumeEpisode = database.prepare(`
+      SELECT e.episode_number AS number, e.title, s.season_number AS season,
+        m.id AS mediaId, p.position_seconds AS position, p.duration_seconds AS duration,
+        p.updated_at AS updatedAt
+      FROM episodes e
+      JOIN seasons s ON s.id = e.season_id
+      JOIN media_items m ON m.id = e.media_item_id
+      JOIN watch_progress p ON p.media_item_id = m.id
+      WHERE s.show_id = ? AND p.profile_id = ? AND p.position_seconds > 0 AND p.watched = 0
+        AND m.deleted_at IS NULL
+      ORDER BY p.updated_at DESC
+      LIMIT 1
+    `).get(show.id, profileId)
     items.push({
       id: show.id,
       title: show.title,
@@ -704,6 +730,21 @@ async function buildLibrary(profileId) {
       bannerUrl: showArtworks[index].bannerUrl,
       tags: showArtworks[index].tags,
       seasons,
+      ...(resumeEpisode ? {
+        resume: {
+          kind: 'episode',
+          title: resumeEpisode.title,
+          showTitle: show.title,
+          season: resumeEpisode.season,
+          episode: resumeEpisode.number,
+          position: resumeEpisode.position,
+          duration: resumeEpisode.duration || undefined,
+          updatedAt: resumeEpisode.updatedAt,
+          mediaId: resumeEpisode.mediaId,
+          mediaUrl: `/api/media/${resumeEpisode.mediaId}`,
+          subtitleUrl: `/api/media/${resumeEpisode.mediaId}/subtitles`,
+        },
+      } : {}),
     })
   }
 

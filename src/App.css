@@ -775,6 +775,8 @@ h2 {
   right: 12%;
   bottom: -31px;
   width: 265px;
+  background-position: center;
+  background-size: cover;
   color: rgba(235, 192, 208, 0.18);
   font-family: Georgia, serif;
   font-size: 63px;

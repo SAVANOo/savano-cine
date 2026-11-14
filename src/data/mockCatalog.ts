@@ -91,8 +91,6 @@ const southParkEpisodes: Episode[] = [
     title: 'Morte',
     filename: '01.06 - Morte.rmvb',
     duration: '22 min',
-    progress: 42,
-    position: '13:24',
     subtitles: [portugueseSubtitle],
   },
   {
@@ -115,7 +113,6 @@ export const library: LibraryItem[] = [
     detail: '216 episódios encontrados',
     posterClass: 'poster-south-park',
     artwork: { source: 'none', verified: false },
-    progress: 42,
     seasons: [{ number: 1, episodes: southParkEpisodes }],
   },
   {

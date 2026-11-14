@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import { profiles as mockProfiles } from './data/mockCatalog'
-import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './domain/catalog'
+import type { Episode, LibraryItem, MediaKind, MediaSource, Profile, ResumeInfo } from './domain/catalog'
 import { messages } from './config/messages'
 import './App.css'
 
@@ -130,6 +130,10 @@ function App() {
 
   const selectedEpisodes =
     selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
+  const resume = catalog
+    .map((item) => item.resume ? { item, resume: item.resume } : null)
+    .filter((entry): entry is { item: LibraryItem; resume: ResumeInfo } => Boolean(entry))
+    .sort((a, b) => (b.resume.updatedAt ?? '').localeCompare(a.resume.updatedAt ?? ''))[0]
 
   const openShow = (show: LibraryItem) => {
     setSelectedShow(show)
@@ -224,18 +228,26 @@ function App() {
         <section className="hero-card">
           <div className="hero-copy">
             <span className="hero-label">CONTINUE ASSISTINDO</span>
-            <h2>South Park</h2>
-            <p>Temporada 1 · Episódio 6 · 13:24 de 22:00</p>
-            <button className="primary-button" type="button" onClick={() => {
-              const southPark = catalog.find((item) => item.title.toLocaleLowerCase() === 'south park' && item.kind === 'Série')
-              if (southPark) openShow(southPark)
-            }}>
-              <span>▶</span> Continuar
-            </button>
+            {resume ? <>
+              <h2>{resume.resume.kind === 'episode' ? resume.resume.showTitle : resume.resume.title}</h2>
+              <p>{resume.resume.kind === 'episode'
+                ? `Temporada ${resume.resume.season} · Episódio ${resume.resume.episode} · ${resume.resume.title} · ${formatPlaybackTime(resume.resume.position)}${resume.resume.duration ? ` de ${formatPlaybackTime(resume.resume.duration)}` : ''}`
+                : `${formatPlaybackTime(resume.resume.position)}${resume.resume.duration ? ` de ${formatPlaybackTime(resume.resume.duration)}` : ''}`}</p>
+              <button className="primary-button" type="button" onClick={() => setSelectedMedia({
+                title: resume.resume.kind === 'episode' ? `${resume.resume.showTitle} · ${resume.resume.title}` : resume.resume.title,
+                url: resume.resume.mediaUrl,
+                subtitleUrl: resume.resume.subtitleUrl,
+                mediaId: resume.resume.mediaId,
+              })}>
+                <span>▶</span> Continuar
+              </button>
+            </> : <>
+              <h2>Nada para retomar ainda</h2>
+              <p>Quando você parar um filme ou episódio, ele aparecerá aqui.</p>
+            </>}
           </div>
-          <div className="hero-art" aria-hidden="true">
-            <span>South</span>
-            <strong>Park</strong>
+          <div className="hero-art" aria-hidden="true" style={resume?.item.artwork.bannerUrl ? { backgroundImage: `url(${resume.item.artwork.bannerUrl})` } : undefined}>
+            {!resume?.item.artwork.bannerUrl && <><span>Sua</span><strong>biblioteca</strong></>}
           </div>
         </section>
 
@@ -273,6 +285,16 @@ function App() {
       {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
     </div>
   )
+}
+
+function formatPlaybackTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const remainingSeconds = safeSeconds % 60
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+    : `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
 }
 
 function OfflineSourceNotice({ source }: { source?: MediaSource }) {

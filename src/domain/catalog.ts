@@ -44,6 +44,20 @@ export type Episode = {
   mediaId?: string
 }
 
+export type ResumeInfo = {
+  kind: 'movie' | 'episode'
+  title: string
+  showTitle?: string
+  season?: number
+  episode?: number
+  position: number
+  duration?: number
+  updatedAt?: string
+  mediaId: string
+  mediaUrl: string
+  subtitleUrl?: string
+}
+
 export type Season = {
   number: number
   label?: string
@@ -69,6 +83,7 @@ export type LibraryItem = {
   subtitleUrl?: string
   subtitles?: SubtitleTrack[]
   mediaId?: string
+  resume?: ResumeInfo
 }
 
 export type MediaSource = {
