@@ -369,6 +369,13 @@ export function App() {
     if (sortOrder === 'year-desc') {
       return [...list].sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title, 'pt-BR'))
     }
+    if (activeKind === 'Continuar') {
+      return [...list].sort((a, b) => {
+        const ta = a.resume?.updatedAt ? Date.parse(a.resume.updatedAt) : 0
+        const tb = b.resume?.updatedAt ? Date.parse(b.resume.updatedAt) : 0
+        return tb - ta
+      })
+    }
     return list
   }, [activeGenre, activeKind, catalog, query, sortOrder, unwatchedOnly])
 
@@ -442,7 +449,14 @@ export function App() {
   }, [catalog, dailySeed])
 
   const continueWatching = useMemo(
-    () => catalog.filter((item) => Boolean(item.resume) || (item.progress ?? 0) > 0),
+    () =>
+      catalog
+        .filter((item) => Boolean(item.resume) || ((item.progress ?? 0) > 0 && (item.progress ?? 0) < 90))
+        .sort((a, b) => {
+          const ta = a.resume?.updatedAt ? Date.parse(a.resume.updatedAt) : 0
+          const tb = b.resume?.updatedAt ? Date.parse(b.resume.updatedAt) : 0
+          return tb - ta
+        }),
     [catalog],
   )
 
@@ -451,14 +465,30 @@ export function App() {
     [catalog],
   )
 
+  const shuffleForRow = useCallback(
+    (items: LibraryItem[], rowKey: string) => {
+      const score = (id: string) => {
+        let h = dailySeed
+        const raw = `${rowKey}:${id}`
+        for (let i = 0; i < raw.length; i += 1) {
+          h ^= raw.charCodeAt(i)
+          h = Math.imul(h, 16777619)
+        }
+        return h >>> 0
+      }
+      return [...items].sort((a, b) => score(a.id) - score(b.id))
+    },
+    [dailySeed],
+  )
+
   const moviesRow = useMemo(
-    () => catalog.filter((item) => item.kind === 'Filme').slice(0, 20),
-    [catalog],
+    () => shuffleForRow(catalog.filter((item) => item.kind === 'Filme'), 'movies').slice(0, 20),
+    [catalog, shuffleForRow],
   )
 
   const seriesRow = useMemo(
-    () => catalog.filter((item) => item.kind === 'Série').slice(0, 20),
-    [catalog],
+    () => shuffleForRow(catalog.filter((item) => item.kind === 'Série'), 'series').slice(0, 20),
+    [catalog, shuffleForRow],
   )
 
   const genreCarousels = useMemo(() => {
@@ -486,12 +516,15 @@ export function App() {
         genre,
         label: translateGenre(genre),
         score: (genreAffinity.get(genre) ?? 0) + dailyGenreJitter(genre),
-        items: catalog.filter((item) => (item.genres ?? []).includes(genre)).slice(0, 18),
+        items: shuffleForRow(
+          catalog.filter((item) => (item.genres ?? []).includes(genre)),
+          `genre:${genre}`,
+        ).slice(0, 18),
       }))
       .filter((row) => row.items.length >= 2)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
-  }, [catalog, dailySeed, genreOptions])
+  }, [catalog, dailySeed, genreOptions, shuffleForRow])
 
   const goHome = useCallback(() => {
     setSelectedShow(null)
