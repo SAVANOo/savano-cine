@@ -1,3 +1,5 @@
+import type { LibraryItem } from './catalog'
+
 const GENRE_TRANSLATIONS: Record<string, string> = {
   action: 'Ação',
   adventure: 'Aventura',
@@ -83,3 +85,80 @@ export function getAvatarStyle(avatarKey: string): { background: string; badge: 
   }
   return { background: 'linear-gradient(145deg, #e85a82, #8b4ed1)', badge: avatarKey.slice(0, 1).toUpperCase() || 'S' }
 }
+
+export type PlayableMedia = {
+  title: string
+  url: string
+  subtitleUrl?: string
+  mediaId?: string
+  overview?: string
+  year?: number
+  startPosition?: number
+}
+
+/** Resolve the best playable stream for a movie or series (preferring active resume target). */
+export function resolvePlayableMedia(item: LibraryItem, restart = false): PlayableMedia | null {
+  if (item.resume?.mediaUrl) {
+    const suffix = item.resume.season && item.resume.episode
+      ? ` — T${item.resume.season}:E${item.resume.episode}`
+      : ''
+    return {
+      title: `${item.title}${suffix}`,
+      url: item.resume.mediaUrl,
+      subtitleUrl: item.resume.subtitleUrl ?? item.subtitleUrl,
+      mediaId: item.resume.mediaId ?? item.mediaId,
+      overview: item.overview,
+      year: item.year,
+      startPosition: restart ? 0 : item.resume.position,
+    }
+  }
+
+  if (item.kind === 'Filme' && item.mediaUrl) {
+    return {
+      title: item.title,
+      url: item.mediaUrl,
+      subtitleUrl: item.subtitleUrl,
+      mediaId: item.mediaId,
+      overview: item.overview,
+      year: item.year,
+      startPosition: 0,
+    }
+  }
+
+  for (const season of item.seasons ?? []) {
+    const first = season.episodes.find((ep) => Boolean(ep.mediaUrl))
+    if (first?.mediaUrl) {
+      return {
+        title: `${item.title} — T${season.number}:E${first.number} ${first.title}`,
+        url: first.mediaUrl,
+        subtitleUrl: first.subtitleUrl,
+        mediaId: first.mediaId,
+        overview: item.overview,
+        year: item.year,
+        startPosition: 0,
+      }
+    }
+  }
+
+  return null
+}
+
+/** Rank related titles by shared genres and matching kind for "Você também pode gostar". */
+export function getRelatedItems(target: LibraryItem, library: LibraryItem[], limit = 12): LibraryItem[] {
+  const targetGenres = new Set((target.genres ?? []).map((g) => g.toLowerCase()))
+  return library
+    .filter((candidate) => candidate.id !== target.id)
+    .map((candidate) => {
+      let score = candidate.kind === target.kind ? 1 : 0
+      for (const g of candidate.genres ?? []) {
+        if (targetGenres.has(g.toLowerCase())) score += 3
+      }
+      if (candidate.artwork.verified) score += 0.5
+      return { candidate, score }
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry) => entry.candidate)
+}
+

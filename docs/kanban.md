@@ -78,6 +78,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Redesign da página de detalhes estilo Netflix (`ShowHeader`): hero com backdrop, título em destaque e botão **▶ Assistir** proeminente, com detalhes técnicos, legendas locais e avaliação em bloco lateral secundário.
 - Avaliação por 5 estrelas (`RatingControl`, mapeando `1..5` estrelas para `2..10` no SQLite) e ajuste de overflow em `.card-detail` para evitar texto vazando dos cards.
 - Editor de perfil estilo Netflix com grupos de avatares temáticos por série (`Os Clássicos`, `South Park`, `Ben 10`, `Gravity Falls` em `src/domain/uiHelpers.ts`), transição com fade ao trocar de perfil, cursor temático nos cards clicáveis, filtros compactos com dropdown e gêneros traduzidos para PT-BR, correção do botão fechar `×` do modal de revisão de arte e marca **Savano Cine** clicável na sidebar (recolhendo para apenas o ícone `S` em telas menores).
+- Adoção de Tailwind CSS v4 (`@tailwindcss/vite`), `lucide-react` e Design System padronizado (`src/styles/tokens.css`, `src/index.css` e primitivos em `src/components/ui/`: `Button`, `Badge`, `Modal`, `StarRating`), além da modularização completa do frontend em `src/components/`.
+- Experiência de Home e navegação estilo Netflix / HBO Max / Prime Video: `HeroCarousel` rotativo com **▶ Assistir / Retome** + **ⓘ Mais informações**, carrosséis horizontais (`Continue assistindo` em 16:9 com barra de progresso, `Recomendados`, `Filmes`, `Séries` e gêneros), cards com clique na capa para reprodução direta e clique em `ⓘ` para detalhes, e `ShowDetailView` com abas **Você também pode gostar** e **Detalhes / Episódios** + botão **Reiniciar**.
 
 ## Regras do quadro
 

@@ -1,25 +1,54 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
-import { profiles as mockProfiles } from './data/mockCatalog'
-import type { Episode, LibraryItem, MediaKind, MediaSource, Profile, ResumeInfo, ReviewItem } from './domain/catalog'
-import { getAvatarStyle, PROFILE_AVATAR_GROUPS, translateGenre } from './domain/uiHelpers'
-import { messages } from './config/messages'
-import './App.css'
+import { Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { HeroCarousel } from './components/home/HeroCarousel'
+import { MediaCarousel } from './components/home/MediaCarousel'
+import { Sidebar } from './components/layout/Sidebar'
+import { MediaCard } from './components/media/MediaCard'
+import { ShowDetailView } from './components/media/ShowDetailView'
+import {
+  ArtworkReviewModal,
+  HistoryModal,
+  ReviewModal,
+  type ArtworkCandidateGroup,
+  type CatalogHistory,
+  type CatalogRefreshStatus,
+} from './components/modals/CatalogModals'
+import { VideoPlayer } from './components/player/VideoPlayer'
+import { ProfileModal } from './components/profile/ProfileModal'
+import {
+  library as mockLibrary,
+  mediaSources as mockSources,
+  profiles as mockProfiles,
+} from './data/mockCatalog'
+import type { LibraryItem, MediaSource, Profile, ReviewItem } from './domain/catalog'
+import {
+  resolvePlayableMedia,
+  translateGenre,
+  type PlayableMedia,
+} from './domain/uiHelpers'
 
-type LibraryFilter = 'Tudo' | MediaKind | string
 const SOURCE_REFRESH_INTERVAL_MS = 30_000
 
-function App() {
-  const [activeFilter, setActiveFilter] = useState<LibraryFilter>('Tudo')
+export function App() {
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série'>('Todos')
+  const [activeGenre, setActiveGenre] = useState('Todos')
   const [query, setQuery] = useState('')
   const [selectedShow, setSelectedShow] = useState<LibraryItem | null>(null)
-  const [selectedSeason, setSelectedSeason] = useState(1)
   const [catalog, setCatalog] = useState<LibraryItem[]>(mockLibrary)
-  const [sources, setSources] = useState(mockSources)
+  const [sources, setSources] = useState<MediaSource[]>(mockSources)
+  const [sourcesError, setSourcesError] = useState('')
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
-  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number } | null>(null)
-  const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
+  const [profileFading, setProfileFading] = useState(false)
+
+  const [selectedMedia, setSelectedMedia] = useState<PlayableMedia | null>(null)
+  const [playerCapabilities, setPlayerCapabilities] = useState<{
+    ffmpeg: boolean
+    transcoding?: boolean
+    ffprobe: boolean
+    vlc: boolean
+  } | null>(null)
+
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [reviewError, setReviewError] = useState('')
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -27,1676 +56,481 @@ function App() {
   const [artworkCandidates, setArtworkCandidates] = useState<ArtworkCandidateGroup[]>([])
   const [artworkCandidatesError, setArtworkCandidatesError] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({ archived: [], titleChanges: [] })
-  const [catalogRefresh, setCatalogRefresh] = useState<CatalogRefreshStatus>({ state: 'idle', sourceIds: [], results: [] })
-  const [profileFading, setProfileFading] = useState(false)
+  const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({
+    archived: [],
+    titleChanges: [],
+  })
+  const [catalogRefresh, setCatalogRefresh] = useState<CatalogRefreshStatus>({
+    state: 'idle',
+    sourceIds: [],
+    results: [],
+  })
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined)
   const lastRefreshState = useRef(catalogRefresh.state)
 
-  const handleProfileChange = useCallback((nextId: string) => {
-    if (nextId === activeProfileId) return
-    setProfileFading(true)
-    setActiveProfileId(nextId)
-    window.setTimeout(() => setProfileFading(false), 280)
-  }, [activeProfileId])
+  const handleProfileChange = useCallback(
+    (nextId: string) => {
+      if (nextId === activeProfileId) return
+      setProfileFading(true)
+      setActiveProfileId(nextId)
+      window.setTimeout(() => setProfileFading(false), 260)
+    },
+    [activeProfileId],
+  )
 
   useEffect(() => {
     fetch('/api/player/capabilities')
-      .then((response) => response.ok ? response.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then(setPlayerCapabilities)
       .catch(() => undefined)
   }, [])
 
   const refreshReview = useCallback(() => {
     fetch('/api/review')
-      .then(async (response) => {
-        if (!response.ok) {
-          const body = await response.json().catch(() => null)
-          throw new Error(body?.error || 'Não foi possível carregar a revisão.')
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(body?.error || 'Não foi possível carregar os itens de revisão.')
         }
-        return response.json()
+        return res.json()
       })
-      .then(setReviewItems)
-      .then(() => setReviewError(''))
-      .catch((error: Error) => setReviewError(error.message))
+      .then((items) => {
+        setReviewItems(items)
+        setReviewError('')
+      })
+      .catch((err: Error) => setReviewError(err.message))
   }, [])
 
   const refreshHistory = useCallback(() => {
     fetch('/api/catalog/history')
-      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(setCatalogHistory)
       .catch(() => setCatalogHistory({ archived: [], titleChanges: [] }))
   }, [])
 
   const refreshArtworkCandidates = useCallback(() => {
     fetch('/api/artwork/candidates')
-      .then(async (response) => {
-        if (!response.ok) {
-          const body = await response.json().catch(() => null)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
           throw new Error(body?.error || 'Não foi possível carregar os candidatos de arte.')
         }
-        return response.json()
+        return res.json()
       })
-      .then(setArtworkCandidates)
-      .then(() => setArtworkCandidatesError(''))
-      .catch((error: Error) => setArtworkCandidatesError(error.message))
+      .then((groups) => {
+        setArtworkCandidates(groups)
+        setArtworkCandidatesError('')
+      })
+      .catch((err: Error) => setArtworkCandidatesError(err.message))
   }, [])
 
-  useEffect(() => {
-    refreshReview()
-    refreshHistory()
-    refreshArtworkCandidates()
-  }, [refreshArtworkCandidates, refreshHistory, refreshReview])
+  const refreshProfiles = useCallback(() => {
+    fetch('/api/profiles')
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((items: Profile[]) => {
+        if (items.length > 0) setProfiles(items)
+      })
+      .catch(() => undefined)
+  }, [])
 
-  const refreshCatalog = useCallback(() => {
+  const refreshCatalogAndSources = useCallback(() => {
     fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`)
-      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then(setCatalog)
       .catch(() => undefined)
-  }, [activeProfileId])
 
-  const refreshSources = useCallback(async (signal?: AbortSignal) => {
-    const response = await fetch('/api/sources', { signal })
-    if (!response.ok) throw new Error('Não foi possível atualizar o estado das fontes.')
-    setSources(await response.json() as MediaSource[])
-  }, [])
+    fetch('/api/sources')
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((items) => {
+        setSources(items)
+        setSourcesError('')
+      })
+      .catch(() => setSourcesError('API indisponível no momento.'))
 
-  const updateCatalog = useCallback(() => {
-    fetch('/api/catalog/refresh', { method: 'POST' })
-      .then((response) => response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || 'Não foi possível iniciar a atualização.'))))
-      .then(setCatalogRefresh)
-      .catch((error: Error) => setCatalogRefresh((current) => ({ ...current, state: 'failed', error: error.message })))
-  }, [])
-
-  useEffect(() => {
-    Promise.all([
-      fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`).then((response) => response.ok ? response.json() : Promise.reject(response)),
-      fetch('/api/profiles').then((response) => response.ok ? response.json() : Promise.reject(response)),
-    ]).then(([remoteLibrary, remoteProfiles]) => {
-      setCatalog(remoteLibrary)
-      setProfiles(remoteProfiles)
-    }).catch(() => {
-      console.warn('API local indisponível; usando o catálogo de demonstração.')
-    })
-  }, [activeProfileId])
+    refreshReview()
+    refreshArtworkCandidates()
+    refreshHistory()
+  }, [activeProfileId, refreshArtworkCandidates, refreshHistory, refreshReview])
 
   useEffect(() => {
-    let disposed = false
-    let requestInFlight = false
-    const controller = new AbortController()
-    const refresh = async () => {
-      if (disposed || requestInFlight) return
-      requestInFlight = true
-      try {
-        await refreshSources(controller.signal)
-      } catch (error) {
-        if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
-          console.warn('Não foi possível atualizar o estado das fontes.')
-        }
-      } finally {
-        requestInFlight = false
-      }
+    refreshProfiles()
+    refreshCatalogAndSources()
+    const interval = window.setInterval(refreshCatalogAndSources, SOURCE_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [refreshCatalogAndSources, refreshProfiles])
+
+  useEffect(() => {
+    let active = true
+    const poll = () => {
+      fetch('/api/catalog/refresh')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((status: CatalogRefreshStatus | null) => {
+          if (active && status) setCatalogRefresh(status)
+        })
+        .catch(() => undefined)
     }
-
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), SOURCE_REFRESH_INTERVAL_MS)
+    poll()
+    const timer = window.setInterval(poll, catalogRefresh.state === 'running' ? 2000 : 12000)
     return () => {
-      disposed = true
-      controller.abort()
+      active = false
       window.clearInterval(timer)
     }
-  }, [refreshSources])
+  }, [catalogRefresh.state])
 
   useEffect(() => {
-    const refreshStatus = () => fetch('/api/catalog/refresh/status')
-      .then((response) => response.ok ? response.json() : Promise.reject(response))
-      .then((status: CatalogRefreshStatus) => {
-        setCatalogRefresh(status)
-        if (status.state === 'succeeded' && lastRefreshState.current !== 'succeeded') {
-          refreshCatalog()
-          refreshSources().catch(() => undefined)
-          refreshReview()
-        }
-        lastRefreshState.current = status.state
-      })
-      .catch(() => undefined)
-    refreshStatus()
-    const timer = window.setInterval(refreshStatus, 1000)
-    return () => window.clearInterval(timer)
-  }, [refreshCatalog, refreshReview, refreshSources])
+    if (lastRefreshState.current === 'running' && catalogRefresh.state !== 'running') {
+      refreshCatalogAndSources()
+    }
+    lastRefreshState.current = catalogRefresh.state
+  }, [catalogRefresh.state, refreshCatalogAndSources])
 
   useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && selectedMedia) {
-        setSelectedMedia(null)
-        return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (selectedMedia) setSelectedMedia(null)
+        else if (profileEditorOpen) setProfileEditorOpen(false)
+        else if (reviewOpen) setReviewOpen(false)
+        else if (artworkReviewOpen) setArtworkReviewOpen(false)
+        else if (historyOpen) setHistoryOpen(false)
+        else if (selectedShow) setSelectedShow(null)
       }
-
-      if (event.key === 'Escape' && selectedShow) {
-        setSelectedShow(null)
-        return
-      }
-
-      if (event.key === 'Escape' && reviewOpen) {
-        setReviewOpen(false)
-        return
-      }
-
-      if (event.key === 'Escape' && historyOpen) {
-        setHistoryOpen(false)
-        return
-      }
-
-      if (event.key === 'Escape' && artworkReviewOpen) {
-        setArtworkReviewOpen(false)
-        return
-      }
-
-      if (event.key === '/' && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT') {
+      if (
+        event.key === '/' &&
+        event.target instanceof HTMLElement &&
+        !['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)
+      ) {
         event.preventDefault()
-        document.querySelector<HTMLInputElement>('.search-box input')?.focus()
+        document.querySelector<HTMLInputElement>('#sc-search-input')?.focus()
       }
     }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [artworkReviewOpen, historyOpen, profileEditorOpen, reviewOpen, selectedMedia, selectedShow])
 
-    window.addEventListener('keydown', handleShortcut)
-    return () => window.removeEventListener('keydown', handleShortcut)
-  }, [artworkReviewOpen, historyOpen, reviewOpen, selectedMedia, selectedShow])
+  const activeProfile =
+    profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
 
-  useEffect(() => {
-    document.title = selectedMedia
-      ? `▶ ${selectedMedia.title} · ${messages.appName}`
-      : selectedShow
-        ? `SC - ${selectedShow.title}`
-        : messages.appName
-  }, [selectedMedia, selectedShow])
+  const playLibraryItem = useCallback((item: LibraryItem) => {
+    const playable = resolvePlayableMedia(item)
+    if (playable) setSelectedMedia(playable)
+    else setSelectedShow(item)
+  }, [])
 
-  useGamepadNavigation()
+  const triggerArtworkSearch = useCallback(
+    async (item: LibraryItem) => {
+      const targetType = item.kind === 'Série' ? 'show' : 'movie'
+      const targetId = item.kind === 'Série' ? item.id : item.mediaId || item.id
+      try {
+        await fetch('/api/artwork/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetType, targetId }),
+        })
+        refreshArtworkCandidates()
+        refreshCatalogAndSources()
+        setArtworkReviewOpen(true)
+      } catch {
+        setArtworkReviewOpen(true)
+      }
+    },
+    [refreshArtworkCandidates, refreshCatalogAndSources],
+  )
 
-  const visibleItems = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase()
-
-    return catalog.filter((item) => {
-      const itemLabels = [...(item.genres ?? []), ...(item.tags ?? [])]
-      const matchesFilter = activeFilter === 'Tudo'
-        || item.kind === activeFilter
-        || itemLabels.includes(activeFilter)
-        || itemLabels.some((label) => translateGenre(label) === activeFilter)
-      const matchesQuery =
-        !normalizedQuery || item.title.toLocaleLowerCase().includes(normalizedQuery)
-
-      return matchesFilter && matchesQuery
-    })
-  }, [activeFilter, catalog, query])
-
-  const genreFilters = useMemo(() => Array.from(new Set(
-    catalog
-      .flatMap((item) => [...(item.genres ?? []), ...(item.tags ?? [])])
-      .map((tag) => translateGenre(tag)),
-  ))
-    .filter((tag) => !['Filme', 'Série', 'Revisão'].includes(tag))
-    .sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalog])
-
-  const selectedEpisodes =
-    selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
-  const resume = catalog
-    .map((item) => item.resume ? { item, resume: item.resume } : null)
-    .filter((entry): entry is { item: LibraryItem; resume: ResumeInfo } => Boolean(entry))
-    .sort((a, b) => (b.resume.updatedAt ?? '').localeCompare(a.resume.updatedAt ?? ''))[0]
-
-  const openShow = (show: LibraryItem) => {
-    setSelectedShow(show)
-    setSelectedSeason(show.seasons?.[0]?.number ?? 1)
-    window.history.pushState({}, '', `/${show.kind === 'Série' ? 'series' : 'filmes'}/${encodeURIComponent(show.id)}`)
-  }
-
-  const closeShow = () => {
-    setSelectedShow(null)
-    window.history.pushState({}, '', '/inicio')
-  }
-
-  const goHome = () => {
-    setSelectedMedia(null)
-    setReviewOpen(false)
-    setArtworkReviewOpen(false)
-    setHistoryOpen(false)
-    setActiveFilter('Tudo')
-    closeShow()
-  }
-
-  const searchArtworkForItem = async (item: LibraryItem) => {
-    const targetType = item.kind === 'Série' ? 'show' : 'movie'
-    const targetId = item.kind === 'Série' ? item.id : (item.mediaId ?? item.id)
-    setArtworkCandidatesError('')
-    try {
-      const response = await fetch('/api/artwork/candidates/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetType, targetId, query: item.title }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error || 'Não foi possível buscar candidatos de arte.')
-      if (Array.isArray(body?.groups)) setArtworkCandidates(body.groups)
-      else refreshArtworkCandidates()
-    } catch (error) {
-      setArtworkCandidatesError(error instanceof Error ? error.message : 'Não foi possível buscar candidatos de arte.')
+  const genreOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const item of catalog) {
+      for (const genre of item.genres ?? []) set.add(genre)
     }
-    setArtworkReviewOpen(true)
-  }
-
-  useEffect(() => {
-    const syncRoute = () => {
-      const match = window.location.pathname.match(/^\/(series|filmes)\/(.+)$/)
-      const itemId = match ? decodeURIComponent(match[2]) : null
-      const show = itemId ? catalog.find((item) => item.id === itemId) : null
-      setSelectedShow(show ?? null)
-      if (show) setSelectedSeason(show.seasons?.[0]?.number ?? 1)
-    }
-
-    syncRoute()
-    window.addEventListener('popstate', syncRoute)
-    return () => window.removeEventListener('popstate', syncRoute)
+    return Array.from(set).sort((a, b) => translateGenre(a).localeCompare(translateGenre(b), 'pt-BR'))
   }, [catalog])
 
-  if (selectedShow) {
-    return (
-      <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={handleProfileChange} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} onGoHome={goHome} />
-        <main className={profileFading ? 'content content--fading' : 'content'}>
-          <button className="back-button controller-focus" type="button" onClick={closeShow}>
-            ← Voltar para biblioteca
-          </button>
-          <ShowHeader key={selectedShow.id} show={selectedShow} profileId={activeProfileId} onPlay={setSelectedMedia} onSearchArtwork={searchArtworkForItem} onCatalogUpdated={refreshCatalog} onArchived={() => { refreshCatalog(); refreshHistory(); closeShow() }} />
-          {selectedShow.kind === 'Série' && <section className="episodes-section">
-            <div className="season-header">
-              <div>
-                <p className="eyebrow">EPISÓDIOS</p>
-                <h2>Escolha um episódio</h2>
-              </div>
-              <label className="season-select">
-                Temporada
-                <select
-                  value={selectedSeason}
-                  onChange={(event) => setSelectedSeason(Number(event.target.value))}
-                >
-                  {selectedShow.seasons?.map((season) => (
-                    <option key={season.number} value={season.number}>
-                      {season.label ?? `Temporada ${season.number.toString().padStart(2, '0')}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="episode-list">
-              {selectedEpisodes.map((episode) => (
-                <EpisodeRow episode={episode} key={episode.id} onPlay={setSelectedMedia} />
-              ))}
-            </div>
-          </section>}
-        </main>
-        {selectedMedia && <VideoPlayer key={selectedMedia.mediaId ?? selectedMedia.url} media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
-        {reviewOpen && <ReviewPanel items={reviewItems} error={reviewError} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
-        {artworkReviewOpen && <ArtworkReviewPanel groups={artworkCandidates} error={artworkCandidatesError} onRefresh={() => { refreshArtworkCandidates(); refreshCatalog() }} onClose={() => setArtworkReviewOpen(false)} />}
-        {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
-      </div>
-    )
-  }
+  const filteredItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    return catalog.filter((item) => {
+      if (activeKind !== 'Todos' && item.kind !== activeKind) return false
+      if (activeGenre !== 'Todos' && !(item.genres ?? []).includes(activeGenre)) return false
+      if (!normalized) return true
+      return (
+        item.title.toLowerCase().includes(normalized) ||
+        item.detail.toLowerCase().includes(normalized) ||
+        (item.overview ?? '').toLowerCase().includes(normalized) ||
+        (item.genres ?? []).some((g) => translateGenre(g).toLowerCase().includes(normalized))
+      )
+    })
+  }, [activeGenre, activeKind, catalog, query])
+
+  const isFilteredView =
+    activeKind !== 'Todos' || activeGenre !== 'Todos' || query.trim().length > 0
+
+  const heroItems = useMemo(() => {
+    const withArt = catalog.filter((item) => item.artwork.bannerUrl || item.artwork.posterUrl)
+    return (withArt.length > 0 ? withArt : catalog).slice(0, 6)
+  }, [catalog])
+
+  const continueWatching = useMemo(
+    () => catalog.filter((item) => Boolean(item.resume) || (item.progress ?? 0) > 0),
+    [catalog],
+  )
+
+  const moviesRow = useMemo(
+    () => catalog.filter((item) => item.kind === 'Filme').slice(0, 20),
+    [catalog],
+  )
+
+  const seriesRow = useMemo(
+    () => catalog.filter((item) => item.kind === 'Série').slice(0, 20),
+    [catalog],
+  )
+
+  const genreCarousels = useMemo(() => {
+    return genreOptions
+      .slice(0, 4)
+      .map((genre) => ({
+        genre,
+        label: translateGenre(genre),
+        items: catalog.filter((item) => (item.genres ?? []).includes(genre)).slice(0, 18),
+      }))
+      .filter((row) => row.items.length >= 3)
+  }, [catalog, genreOptions])
+
+  const goHome = useCallback(() => {
+    setSelectedShow(null)
+    setActiveGenre('Todos')
+    setQuery('')
+  }, [])
 
   return (
-    <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={handleProfileChange} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} onGoHome={goHome} />
-      <main className={profileFading ? 'content content--fading' : 'content'}>
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">SUA BIBLIOTECA</p>
-            <h1>O que vamos assistir?</h1>
-          </div>
-          <label className="search-box">
-            <span>⌕</span>
+    <div
+      className={`flex min-h-screen flex-col bg-[var(--sc-bg-canvas)] text-[var(--sc-text-primary)] transition-opacity duration-200 lg:flex-row ${
+        profileFading ? 'opacity-25' : 'opacity-100'
+      }`}
+    >
+      <Sidebar
+        sources={sources}
+        sourcesError={sourcesError}
+        activeProfile={activeProfile}
+        profiles={profiles}
+        activeKind={activeKind}
+        onSelectKind={setActiveKind}
+        onSelectProfile={handleProfileChange}
+        onOpenProfileEditor={(profile) => {
+          setEditingProfile(profile)
+          setProfileEditorOpen(true)
+        }}
+        onGoHome={() => {
+          setActiveKind('Todos')
+          goHome()
+        }}
+        onOpenReview={() => setReviewOpen(true)}
+        onOpenArtworkReview={() => {
+          refreshArtworkCandidates()
+          setArtworkReviewOpen(true)
+        }}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onRefreshCatalog={() => void fetch('/api/catalog/refresh', { method: 'POST' })}
+        onSourceAdded={refreshCatalogAndSources}
+        refreshing={catalogRefresh.state === 'running'}
+        refreshStatus={
+          catalogRefresh.state === 'running'
+            ? 'Escaneando fontes...'
+            : catalogRefresh.state === 'succeeded'
+              ? 'Catálogo atualizado.'
+              : catalogRefresh.error || ''
+        }
+        reviewCount={reviewItems.length}
+        artworkCount={artworkCandidates.length}
+        historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length}
+      />
+
+      <main className="min-w-0 flex-1 px-4 py-5 sm:px-8 sm:py-7">
+        {/* Top Search & Genre Filter Bar */}
+        <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
             <input
+              id="sc-search-input"
               type="search"
-              placeholder="Buscar na biblioteca"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setSelectedShow(null)
+              }}
+              placeholder="Buscar filmes, séries ou gêneros (/)"
+              className="h-10 w-full rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] pr-4 pl-10 text-sm text-white placeholder:text-[var(--sc-text-muted)] focus:border-white/35 focus:outline-none"
             />
-          </label>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <select
+              aria-label="Filtrar por gênero"
+              value={activeGenre}
+              onChange={(event) => {
+                setActiveGenre(event.target.value)
+                setSelectedShow(null)
+              }}
+              className="h-10 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-4 text-xs font-semibold text-white focus:border-white/35 focus:outline-none cursor-pointer"
+            >
+              <option value="Todos">Todos os gêneros</option>
+              {genreOptions.map((genre) => (
+                <option key={genre} value={genre}>
+                  {translateGenre(genre)}
+                </option>
+              ))}
+            </select>
+
+            <span className="hidden text-xs text-[var(--sc-text-muted)] sm:inline">
+              {filteredItems.length} título(s)
+            </span>
+          </div>
         </header>
 
-        <OfflineSourceNotice source={sources.find((source) => source.status === 'offline')} />
-
-        <section className="hero-card">
-          <div className="hero-copy">
-            <span className="hero-label">CONTINUE ASSISTINDO</span>
-            {resume ? <>
-              <h2>{resume.resume.kind === 'episode' ? resume.resume.showTitle : resume.resume.title}</h2>
-              <p>{resume.resume.kind === 'episode'
-                ? `Temporada ${resume.resume.season} · Episódio ${resume.resume.episode} · ${resume.resume.title} · ${formatPlaybackTime(resume.resume.position)}${resume.resume.duration ? ` de ${formatPlaybackTime(resume.resume.duration)}` : ''}`
-                : `${formatPlaybackTime(resume.resume.position)}${resume.resume.duration ? ` de ${formatPlaybackTime(resume.resume.duration)}` : ''}`}</p>
-              <button className="primary-button" type="button" onClick={() => setSelectedMedia({
-                title: resume.resume.kind === 'episode' ? `${resume.resume.showTitle} · ${resume.resume.title}` : resume.resume.title,
-                url: resume.resume.mediaUrl,
-                subtitleUrl: resume.resume.subtitleUrl,
-                mediaId: resume.resume.mediaId,
-              })}>
-                <span>▶</span> Continuar
-              </button>
-            </> : <>
-              <h2>Nada para retomar ainda</h2>
-              <p>Quando você parar um filme ou episódio, ele aparecerá aqui.</p>
-            </>}
-          </div>
-          <div className="hero-art" aria-hidden="true" style={resume?.item.artwork.bannerUrl || resume?.item.artwork.posterUrl ? { backgroundImage: `url(${resume.item.artwork.bannerUrl ?? resume.item.artwork.posterUrl})` } : undefined}>
-            {!(resume?.item.artwork.bannerUrl || resume?.item.artwork.posterUrl) && <><span>Sua</span><strong>biblioteca</strong></>}
-          </div>
-        </section>
-
-        <section className="library-section" id="inicio">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">CATÁLOGO</p>
-              <h2>Sua biblioteca</h2>
+        {selectedShow ? (
+          <ShowDetailView
+            show={selectedShow}
+            library={catalog}
+            profileId={activeProfile.id}
+            onBack={() => setSelectedShow(null)}
+            onPlayMedia={(media) => setSelectedMedia(media)}
+            onPlayItem={playLibraryItem}
+            onOpenDetails={(item) => setSelectedShow(item)}
+            onSearchArtwork={(item) => void triggerArtworkSearch(item)}
+            onCatalogUpdated={refreshCatalogAndSources}
+            onArchived={() => {
+              setSelectedShow(null)
+              refreshCatalogAndSources()
+            }}
+          />
+        ) : isFilteredView ? (
+          <section className="flex flex-col gap-5">
+            <div className="flex items-baseline justify-between gap-4">
+              <h1 className="m-0 text-xl font-bold text-white">
+                {activeKind === 'Todos' ? 'Resultados' : activeKind === 'Filme' ? 'Filmes' : 'Séries'}
+                {activeGenre !== 'Todos' ? ` · ${translateGenre(activeGenre)}` : ''}
+              </h1>
+              <span className="text-xs text-[var(--sc-text-muted)]">
+                Capa reproduz · ⓘ abre detalhes
+              </span>
             </div>
-            <div className="filters" role="group" aria-label="Filtrar biblioteca">
-              {(['Tudo', 'Filme', 'Série'] as const).map((filter) => (
-                <button
-                  className={activeFilter === filter ? 'filter active' : 'filter'}
-                  key={filter}
-                  type="button"
-                  onClick={() => setActiveFilter(filter)}
-                >
-                  {filter === 'Tudo' ? 'Tudo' : `${filter}s`}
-                </button>
-              ))}
-              {genreFilters.length > 0 && (
-                <select
-                  className="filter-select"
-                  aria-label="Filtrar por gênero ou tag"
-                  value={genreFilters.includes(activeFilter) ? activeFilter : ''}
-                  onChange={(event) => setActiveFilter(event.target.value || 'Tudo')}
-                >
-                  <option value="">Gênero / Tag…</option>
-                  {genreFilters.map((genre) => (
-                    <option key={genre} value={genre}>{genre}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-          <div className="media-grid">
-            {visibleItems.map((item) => (
-              <MediaCard item={item} key={item.id} onOpen={openShow} />
-            ))}
-          </div>
-          {visibleItems.length === 0 && (
-            <div className="empty-state">Nenhum item encontrado na biblioteca.</div>
-          )}
-        </section>
-      </main>
-      {selectedMedia && <VideoPlayer key={selectedMedia.mediaId ?? selectedMedia.url} media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
-      {reviewOpen && <ReviewPanel items={reviewItems} error={reviewError} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
-      {artworkReviewOpen && <ArtworkReviewPanel groups={artworkCandidates} error={artworkCandidatesError} onRefresh={() => { refreshArtworkCandidates(); refreshCatalog() }} onClose={() => setArtworkReviewOpen(false)} />}
-      {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
-    </div>
-  )
-}
 
-function formatPlaybackTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds))
-  const hours = Math.floor(safeSeconds / 3600)
-  const minutes = Math.floor((safeSeconds % 3600) / 60)
-  const remainingSeconds = safeSeconds % 60
-  return hours > 0
-    ? `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-    : `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-}
-
-function OfflineSourceNotice({ source }: { source?: MediaSource }) {
-  if (!source) return null
-
-  return (
-    <aside className="offline-notice" role="status">
-      <span className="offline-icon">!</span>
-      <div>
-        <strong>{source.name} desconectado</strong>
-        <p>Conecte o volume <b>{source.volumeLabel}</b> para assistir aos itens armazenados em <code>{source.path}</code>.</p>
-      </div>
-      <button type="button">Ver itens indisponíveis</button>
-    </aside>
-  )
-}
-
-function Sidebar({
-  sources,
-  profiles,
-  activeProfileId,
-  onProfileChange,
-  onProfilesChange,
-  reviewCount,
-  onReview,
-  artworkCount,
-  onArtworkReview,
-  historyCount,
-  onHistory,
-  catalogRefresh,
-  onCatalogRefresh,
-  onSourceAdded,
-  onGoHome,
-}: {
-  sources: typeof mockSources
-  profiles: Profile[]
-  activeProfileId: string
-  onProfileChange: (id: string) => void
-  onProfilesChange: (profiles: Profile[]) => void
-  reviewCount: number
-  onReview: () => void
-  artworkCount: number
-  onArtworkReview: () => void
-  historyCount: number
-  onHistory: () => void
-  catalogRefresh: CatalogRefreshStatus
-  onCatalogRefresh: () => void
-  onSourceAdded?: () => void
-  onGoHome?: () => void
-}) {
-  const offlineSources = sources.filter((source) => source.status === 'offline').length
-  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
-  const [editingProfile, setEditingProfile] = useState<Profile | null | undefined>(undefined)
-  const [addingSource, setAddingSource] = useState(false)
-  const [sourcePathInput, setSourcePathInput] = useState('')
-  const [sourceNameInput, setSourceNameInput] = useState('')
-  const [sourceError, setSourceError] = useState('')
-
-  const submitNewSource = async (event: FormEvent) => {
-    event.preventDefault()
-    setSourceError('')
-    try {
-      const response = await fetch('/api/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: sourcePathInput, name: sourceNameInput }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error || 'Não foi possível cadastrar a fonte.')
-      setSourcePathInput('')
-      setSourceNameInput('')
-      setAddingSource(false)
-      onSourceAdded?.()
-    } catch (error) {
-      setSourceError(error instanceof Error ? error.message : 'Não foi possível cadastrar a fonte.')
-    }
-  }
-
-  return (
-    <>
-    <aside className="sidebar">
-      <button className="brand brand-button controller-focus" type="button" onClick={onGoHome} title="Ir para o início">
-        <span className="brand-mark">S</span>
-        <span className="brand-name">{messages.appName}</span>
-      </button>
-      <ProfileSwitcher
-        profiles={profiles}
-        activeProfile={activeProfile}
-        onProfileChange={onProfileChange}
-        onEditProfile={(profile) => setEditingProfile(profile)}
-        onCreateProfile={() => setEditingProfile(null)}
-      />
-      <nav className="main-nav" aria-label="Navegação principal">
-        <a className="nav-item active controller-focus" href="#inicio"><span>⌂</span> Início</a>
-        <a className="nav-item controller-focus" href="#filmes"><span>▶</span> Filmes</a>
-        <a className="nav-item controller-focus" href="#series"><span>▦</span> Séries</a>
-      </nav>
-      <div className="sidebar-bottom">
-        <div className="source-status">
-          <span className={offlineSources ? 'status-dot warning' : 'status-dot'} />
-          <div><strong>{sources.length} fontes cadastradas</strong><small>{sources.length - offlineSources} conectada(s)</small></div>
-        </div>
-        <div className="source-list">
-          {sources.map((source) => (
-            <div className="source-item" key={source.id}>
-              <span className={source.status === 'offline' ? 'status-dot warning' : 'status-dot'} />
-              <div><strong>{source.name}</strong><small>{source.status === 'offline' ? 'Offline · ' : ''}{source.path} · {source.itemCount} itens</small></div>
-            </div>
-          ))}
-        </div>
-        {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
-        <button className="settings-button controller-focus" type="button" onClick={() => setAddingSource((value) => !value)}>
-          + Adicionar fonte
-        </button>
-        {addingSource && (
-          <form className="source-add-form" onSubmit={submitNewSource}>
-            <input value={sourcePathInput} onChange={(event) => setSourcePathInput(event.target.value)} placeholder="D:\\Filmes ou https://..." aria-label="Caminho ou URL da fonte" required />
-            <input value={sourceNameInput} onChange={(event) => setSourceNameInput(event.target.value)} placeholder="Nome opcional" aria-label="Nome da fonte" />
-            {sourceError && <small className="form-error" role="alert">{sourceError}</small>}
-            <button className="settings-button controller-focus" type="submit">Salvar fonte</button>
-          </form>
-        )}
-        <button className="settings-button controller-focus" type="button" onClick={onCatalogRefresh} disabled={catalogRefresh.state === 'running'}>
-          ⚙ Atualizar catálogo
-        </button>
-        <small className="catalog-refresh-status" role="status">
-          {catalogRefresh.state === 'running' ? 'Atualização em andamento…' : catalogRefresh.state === 'succeeded' ? 'Catálogo atualizado.' : catalogRefresh.state === 'failed' ? `Falha: ${catalogRefresh.error}` : 'Configurações e catálogo'}
-        </small>
-        <button className="settings-button controller-focus" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
-        <button className="settings-button controller-focus" type="button" onClick={onArtworkReview}>🖼 Arte {artworkCount > 0 ? `(${artworkCount})` : ''}</button>
-        <button className="settings-button controller-focus" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
-      </div>
-    </aside>
-    {editingProfile !== undefined && (
-      <ProfileEditor
-        profile={editingProfile}
-        onClose={() => setEditingProfile(undefined)}
-        onSaved={(profile) => {
-          onProfilesChange(profiles.some((item) => item.id === profile.id)
-            ? profiles.map((item) => item.id === profile.id ? profile : item)
-            : [...profiles, profile])
-          onProfileChange(profile.id)
-          setEditingProfile(undefined)
-        }}
-      />
-    )}
-    </>
-  )
-}
-
-type CatalogRefreshStatus = {
-  state: 'idle' | 'running' | 'succeeded' | 'failed'
-  startedAt?: string | null
-  finishedAt?: string | null
-  sourceIds: string[]
-  results: Array<{ sourceId: string; status: string; message: string }>
-  error?: string | null
-}
-
-type ArtworkCandidate = {
-  id: string
-  provider: string
-  providerId: string
-  title: string
-  year?: number
-  overview?: string
-  posterUrl?: string
-  backdropUrl?: string
-  language?: string
-}
-
-type ArtworkCandidateGroup = {
-  targetType: 'movie' | 'show'
-  targetId: string
-  title: string
-  year?: number
-  candidates: ArtworkCandidate[]
-}
-
-function ArtworkReviewPanel({
-  groups,
-  error,
-  onRefresh,
-  onClose,
-}: {
-  groups: ArtworkCandidateGroup[]
-  error: string
-  onRefresh: () => void
-  onClose: () => void
-}) {
-  const [savingId, setSavingId] = useState('')
-  const [actionError, setActionError] = useState('')
-
-  const act = async (candidateId: string, operation: 'approve' | 'reject') => {
-    setSavingId(candidateId)
-    setActionError('')
-    try {
-      const response = await fetch(`/api/artwork/candidates/${encodeURIComponent(candidateId)}/${operation}`, { method: 'POST' })
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(body?.error || 'Não foi possível processar o candidato de arte.')
-      }
-      onRefresh()
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Não foi possível processar o candidato de arte.')
-    } finally {
-      setSavingId('')
-    }
-  }
-
-  return (
-    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Revisão de correspondências de arte" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="review-heading">
-          <div>
-            <p className="eyebrow">METADADOS E ARTE</p>
-            <h2>Revisão de correspondências</h2>
-          </div>
-          <button className="controller-focus" type="button" autoFocus aria-label="Fechar revisão de arte" onClick={onClose}>×</button>
-        </div>
-        <p className="review-note">
-          Correspondências ambíguas não são aplicadas automaticamente. Confirme o candidato correto antes de salvar a arte e a sinopse no catálogo.
-        </p>
-        {error && <p className="form-error" role="alert">Falha ao carregar candidatos: {error}</p>}
-        {actionError && <p className="form-error" role="alert">{actionError}</p>}
-        {groups.length === 0 && (
-          <p className="empty-state">Nenhuma correspondência ambígua aguardando confirmação. Execute `npm run artwork` para coletar metadados e candidatos.</p>
-        )}
-        <div className="review-list">
-          {groups.map((group) => (
-            <article className="review-item artwork-group" key={`${group.targetType}:${group.targetId}`}>
-              <div>
-                <strong>{group.title} {group.year ? `(${group.year})` : ''}</strong>
-                <small>{group.targetType === 'show' ? 'Série' : 'Filme'} · {group.candidates.length} candidato(s)</small>
+            {filteredItems.length === 0 ? (
+              <div className="rounded-[var(--sc-radius-xl)] border border-dashed border-white/15 p-12 text-center text-sm text-[var(--sc-text-muted)]">
+                Nenhum título encontrado para os filtros atuais.
               </div>
-              <div className="artwork-candidates-grid">
-                {group.candidates.map((candidate) => {
-                  const preview = candidate.posterUrl || candidate.backdropUrl
-                  return (
-                    <div className="artwork-candidate-card" key={candidate.id}>
-                      {preview && <img className="artwork-candidate-preview" src={preview} alt={candidate.title} />}
-                      <div className="artwork-candidate-body">
-                        <strong>{candidate.title} {candidate.year ? `(${candidate.year})` : ''}</strong>
-                        <small>{candidate.provider.toUpperCase()}{candidate.language ? ` · ${candidate.language}` : ''}</small>
-                        {candidate.overview && <p>{candidate.overview.slice(0, 180)}{candidate.overview.length > 180 ? '…' : ''}</p>}
-                        <div className="review-actions">
-                          <button type="button" className="controller-focus" disabled={savingId === candidate.id} onClick={() => void act(candidate.id, 'approve')}>
-                            Confirmar e aplicar
-                          </button>
-                          <button type="button" className="controller-focus" disabled={savingId === candidate.id} onClick={() => void act(candidate.id, 'reject')}>
-                            Descartar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
-}
-
-type CatalogHistory = {
-  archived: Array<{ id: string; title: string; kind: string; deletedAt: string; relativePath: string; sourceName: string }>
-  titleChanges: Array<{ id: string; mediaItemId: string; oldTitle: string; newTitle: string; reason: string; createdAt: string; currentTitle: string; deletedAt?: string; relativePath: string; sourceName: string }>
-}
-
-function CatalogHistoryPanel({ history, onRefresh, onClose }: { history: CatalogHistory; onRefresh: () => void; onClose: () => void }) {
-  const [savingId, setSavingId] = useState('')
-  const action = async (url: string) => {
-    setSavingId(url)
-    try {
-      const response = await fetch(url, { method: 'POST' })
-      if (!response.ok) throw new Error('Não foi possível restaurar o registro.')
-      onRefresh()
-    } finally {
-      setSavingId('')
-    }
-  }
-
-  return (
-    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Histórico do catálogo" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Histórico e restauração</h2></div><button className="controller-focus" type="button" autoFocus aria-label="Fechar histórico" onClick={onClose}>×</button></div>
-        <p className="history-note">As ações alteram somente o catálogo; nenhum arquivo físico é movido ou apagado.</p>
-        <h3>Itens arquivados</h3>
-        <div className="review-list">
-          {history.archived.map((item) => (
-            <article className="review-item history-item" key={item.id}>
-              <div><strong>{item.title}</strong><small>{item.sourceName} · {item.relativePath}</small><small>Arquivado em {new Date(item.deletedAt).toLocaleString('pt-BR')}</small></div>
-              <button type="button" disabled={savingId.endsWith(item.id)} onClick={() => void action(`/api/catalog/${encodeURIComponent(item.id)}/restore`)}>Restaurar</button>
-            </article>
-          ))}
-          {history.archived.length === 0 && <p className="empty-state">Nenhum item arquivado.</p>}
-        </div>
-        <h3>Alterações de título</h3>
-        <div className="review-list">
-          {history.titleChanges.map((change) => (
-            <article className="review-item history-item" key={change.id}>
-              <div><strong>{change.oldTitle} → {change.newTitle}</strong><small>{change.sourceName} · {change.relativePath}</small><small>{change.reason} · {new Date(change.createdAt).toLocaleString('pt-BR')}</small></div>
-              <button type="button" disabled={savingId.endsWith(change.id)} onClick={() => void action(`/api/catalog/title-history/${encodeURIComponent(change.id)}/restore`)}>Restaurar título anterior</button>
-            </article>
-          ))}
-          {history.titleChanges.length === 0 && <p className="empty-state">Nenhuma alteração de título registrada.</p>}
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function ReviewPanel({
-  items,
-  error,
-  onRefresh,
-  onClose,
-}: {
-  items: ReviewItem[]
-  error: string
-  onRefresh: () => void
-  onClose: () => void
-}) {
-  const [savingId, setSavingId] = useState('')
-  const [actionError, setActionError] = useState('')
-  const displayTitle = (item: ReviewItem) => item.title || item.relativePath.split('\\').pop() || item.relativePath
-  const [drafts, setDrafts] = useState(() => Object.fromEntries(items.map((item) => [item.id, displayTitle(item)])))
-
-  const update = async (item: ReviewItem, action: 'correct_movie' | 'approve_other' | 'ignore') => {
-    setSavingId(item.id)
-    setActionError('')
-    try {
-      const response = await fetch('/api/review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, action, title: drafts[item.id] }),
-      })
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        throw new Error(body?.error || 'Não foi possível atualizar o item.')
-      }
-      onRefresh()
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Não foi possível atualizar o item.')
-    } finally {
-      setSavingId('')
-    }
-  }
-
-  return (
-    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Itens para revisão" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Itens para revisar</h2></div><button className="controller-focus" type="button" autoFocus aria-label="Fechar revisão" onClick={onClose}>×</button></div>
-        <p className="review-note">Escolha exatamente o destino do item. A revisão altera somente o catálogo e nunca move, renomeia ou apaga o arquivo original.</p>
-        {error && <p className="form-error" role="alert">Falha ao carregar a revisão: {error}</p>}
-        {actionError && <p className="form-error" role="alert">{actionError}</p>}
-        {items.length === 0 && <p className="empty-state">Nenhum item aguardando revisão.</p>}
-        <div className="review-list">
-          {items.map((item) => (
-            <article className="review-item" key={item.id}>
-              <div><strong>{displayTitle(item)}</strong><small>{item.sourceName} · {item.relativePath}</small><small>{item.reason || 'Classificação manual necessária.'}</small></div>
-              <input value={drafts[item.id] ?? displayTitle(item)} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))} aria-label={`Título de ${displayTitle(item)}`} />
-              <div className="review-actions">
-                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'correct_movie')}>Corrigir como filme</button>
-                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'approve_other')}>Aprovar como especial/outro</button>
-                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'ignore')}>Ignorar</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function ProfileSwitcher({
-  profiles,
-  activeProfile,
-  onProfileChange,
-  onEditProfile,
-  onCreateProfile,
-}: {
-  profiles: Profile[]
-  activeProfile?: Profile
-  onProfileChange: (id: string) => void
-  onEditProfile: (profile: Profile) => void
-  onCreateProfile: () => void
-}) {
-  const [open, setOpen] = useState(false)
-
-  if (!activeProfile) return null
-
-  const activeStyle = getAvatarStyle(activeProfile.avatarKey)
-
-  return (
-    <div className="profile-switcher">
-      <button className="profile-button controller-focus" type="button" onClick={() => setOpen(!open)}>
-        <span className="profile-avatar" style={{ background: activeStyle.background }}>{activeStyle.badge}</span>
-        <span><strong>{activeProfile.name}</strong><small>Trocar perfil</small></span>
-        <span className="profile-chevron">{open ? '⌃' : '⌄'}</span>
-      </button>
-      {open && (
-        <div className="profile-menu">
-          <p>Quem está assistindo?</p>
-          {profiles.map((profile) => {
-            const style = getAvatarStyle(profile.avatarKey)
-            return (
-              <button
-                className="profile-option controller-focus"
-                type="button"
-                key={profile.id}
-                onClick={() => { onProfileChange(profile.id); setOpen(false) }}
-              >
-                <span className="profile-avatar" style={{ background: style.background }}>{style.badge}</span>
-                <span>{profile.name}</span>
-                {profile.id === activeProfile.id && <b>✓</b>}
-                <span className="profile-edit" onClick={(event) => { event.stopPropagation(); onEditProfile(profile) }}>Editar</span>
-              </button>
-            )
-          })}
-          <button className="profile-add controller-focus" type="button" onClick={onCreateProfile}>＋ Criar perfil</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ProfileEditor({
-  profile,
-  onClose,
-  onSaved,
-}: {
-  profile: Profile | null
-  onClose: () => void
-  onSaved: (profile: Profile) => void
-}) {
-  const [name, setName] = useState(profile?.name ?? '')
-  const [avatarKey, setAvatarKey] = useState(profile?.avatarKey ?? PROFILE_AVATAR_GROUPS[0].options[0].key)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    try {
-      const response = await fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: profile?.id, name, avatarKey }),
-      })
-      if (!response.ok) throw new Error('Não foi possível salvar o perfil.')
-      onSaved(await response.json())
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o perfil.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const currentStyle = getAvatarStyle(avatarKey)
-
-  return (
-    <div className="profile-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="profile-modal profile-modal--wide" onSubmit={save} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="profile-modal-heading">
-          <div>
-            <p className="eyebrow">PERFIL</p>
-            <h2>{profile ? 'Escolha o ícone do seu perfil' : 'Criar perfil'}</h2>
-          </div>
-          <button className="modal-close-button controller-focus" type="button" aria-label="Fechar editor de perfil" onClick={onClose}>×</button>
-        </div>
-        <div className="profile-editor-header">
-          <span className="profile-avatar profile-avatar--lg" style={{ background: currentStyle.background }}>{currentStyle.badge}</span>
-          <label className="profile-name-field">
-            Nome do perfil
-            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} autoFocus required />
-          </label>
-        </div>
-        <div className="avatar-series-list">
-          {PROFILE_AVATAR_GROUPS.map((group) => (
-            <section className="avatar-series-block" key={group.series}>
-              <h3>{group.series}</h3>
-              <div className="avatar-series-row">
-                {group.options.map((option) => (
-                  <button
-                    className={avatarKey === option.key ? 'avatar-preset selected controller-focus' : 'avatar-preset controller-focus'}
-                    type="button"
-                    key={option.key}
-                    onClick={() => setAvatarKey(option.key)}
-                  >
-                    <span className="profile-avatar profile-avatar--md" style={{ background: option.gradient }}>{option.badge}</span>
-                    <small>{option.label}</small>
-                  </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                {filteredItems.map((item) => (
+                  <MediaCard
+                    key={item.id}
+                    item={item}
+                    onPlay={playLibraryItem}
+                    onOpenDetails={(target) => setSelectedShow(target)}
+                  />
                 ))}
               </div>
-            </section>
-          ))}
-        </div>
-        {error && <p className="profile-error">{error}</p>}
-        <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar perfil'}</button></div>
-      </form>
-    </div>
-  )
-}
-
-function ShowHeader({
-  show,
-  profileId,
-  onPlay,
-  onSearchArtwork,
-  onCatalogUpdated,
-  onArchived,
-}: {
-  show: LibraryItem
-  profileId: string
-  onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number }) => void
-  onSearchArtwork?: (show: LibraryItem) => void
-  onCatalogUpdated?: () => void
-  onArchived?: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(show.title)
-  const [draftYear, setDraftYear] = useState(show.year ? String(show.year) : '')
-  const [draftOverview, setDraftOverview] = useState(show.overview ?? '')
-  const [draftTags, setDraftTags] = useState((show.tags ?? []).join(', '))
-  const [saving, setSaving] = useState(false)
-  const [editError, setEditError] = useState('')
-
-  const targetId = show.kind === 'Série' ? show.id : (show.mediaId ?? show.id)
-
-  const saveMetadata = async (event: FormEvent) => {
-    event.preventDefault()
-    setSaving(true)
-    setEditError('')
-    try {
-      const response = await fetch(`/api/catalog/${encodeURIComponent(targetId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: draftTitle,
-          year: draftYear ? Number(draftYear) : null,
-          overview: draftOverview,
-          tags: draftTags.split(',').map((tag) => tag.trim()).filter(Boolean),
-        }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error || 'Não foi possível salvar os metadados.')
-      setEditing(false)
-      onCatalogUpdated?.()
-    } catch (error) {
-      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar os metadados.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const archiveItem = async () => {
-    if (!show.mediaId) return
-    setSaving(true)
-    try {
-      const response = await fetch(`/api/catalog/${encodeURIComponent(show.mediaId)}/archive`, { method: 'POST' })
-      if (response.ok) onArchived?.()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const backdropImage = show.artwork.bannerUrl || show.artwork.posterUrl
-
-  return (
-    <section className="show-detail-shell">
-      <div className={backdropImage ? 'show-hero show-hero--backdrop' : 'show-hero'}>
-        {backdropImage && <div className="show-hero-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${backdropImage})` }} />}
-        <div className="show-hero-content">
-          <p className="eyebrow">{show.kind.toUpperCase()}</p>
-          <h1 className="show-hero-title">{show.title}</h1>
-          <div className="show-stats">
-            {show.year && <span>{show.year}</span>}
-            <span>{show.meta}</span>
-            {show.genres?.map((genre) => <span key={genre}>{translateGenre(genre)}</span>)}
-          </div>
-          <div className="detail-actions">
-            {show.kind === 'Filme' && show.mediaUrl && (
-              <button
-                className="primary-button detail-play-hero controller-focus"
-                type="button"
-                onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId, overview: show.overview, year: show.year })}
-              >
-                ▶ Assistir
-              </button>
             )}
-            {onSearchArtwork && <button className="settings-button controller-focus" type="button" onClick={() => onSearchArtwork(show)}>🖼 Buscar arte/metadados</button>}
-            <button className="settings-button controller-focus" type="button" onClick={() => setEditing((value) => !value)}>✎ Editar metadados</button>
-            {show.kind === 'Filme' && show.mediaId && <button className="settings-button controller-focus" type="button" disabled={saving} onClick={() => void archiveItem()}>Arquivar</button>}
-          </div>
-        </div>
-      </div>
+          </section>
+        ) : (
+          <div className="flex flex-col gap-9">
+            <HeroCarousel
+              items={heroItems}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+            />
 
-      <div className="show-details-grid">
-        <div className="show-details-main">
-          <p className="show-description">{show.overview || 'Descrição ainda não cadastrada para este título.'}</p>
-          {editing && (
-            <form className="metadata-edit-form" onSubmit={saveMetadata}>
-              <label>Título<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} required /></label>
-              <label>Ano<input type="number" min="1900" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /></label>
-              {show.kind === 'Filme' && <label>Tags (separadas por vírgula)<input value={draftTags} onChange={(event) => setDraftTags(event.target.value)} /></label>}
-              <label>Sinopse<textarea rows={3} value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} /></label>
-              {editError && <small className="form-error" role="alert">{editError}</small>}
-              <div className="detail-actions">
-                <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar metadados'}</button>
-                <button className="settings-button" type="button" onClick={() => setEditing(false)}>Cancelar</button>
-              </div>
-            </form>
-          )}
-        </div>
+            <MediaCarousel
+              title="Continue assistindo"
+              subtitle="Retome exatamente de onde parou"
+              items={continueWatching}
+              variant="landscape"
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+            />
 
-        <aside className="show-details-meta">
-          <div className="meta-block">
-            <small>Arquivo</small>
-            <span className="meta-file">{show.detail}</span>
-          </div>
-          {show.kind === 'Filme' && (
-            <div className="meta-block">
-              <small>Legendas locais</small>
-              <span>{show.subtitles?.length ? show.subtitles.map((subtitle) => subtitle.label).join(', ') : 'Nenhuma cadastrada'}</span>
-            </div>
-          )}
-          <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
-        </aside>
-      </div>
-    </section>
-  )
-}
+            <MediaCarousel
+              title="Recomendados para você"
+              items={catalog.slice(0, 18)}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+            />
 
-function RatingControl({ profileId, mediaId, showId }: { profileId: string; mediaId?: string; showId?: string }) {
-  const [score, setScore] = useState<number | null>(null)
-  const [hoverStars, setHoverStars] = useState<number | null>(null)
-  const [review, setReview] = useState('')
-  const [saved, setSaved] = useState(false)
+            <MediaCarousel
+              title="Filmes no catálogo"
+              items={moviesRow}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+            />
 
-  useEffect(() => {
-    const params = new URLSearchParams({ profileId })
-    if (mediaId) params.set('mediaId', mediaId)
-    if (showId) params.set('showId', showId)
-    fetch(`/api/rating?${params}`)
-      .then((response) => response.ok ? response.json() : null)
-      .then((rating) => {
-        setScore(rating?.score ?? null)
-        setReview(rating?.review ?? '')
-      })
-      .catch(() => undefined)
-  }, [mediaId, profileId, showId])
+            <MediaCarousel
+              title="Séries e animações"
+              items={seriesRow}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+            />
 
-  const selectedStars = score === null ? 0 : Math.max(1, Math.min(5, Math.round(score / 2)))
-  const activeStars = hoverStars ?? selectedStars
-
-  const save = async (nextScore = score) => {
-    if (nextScore === null) return
-    const response = await fetch('/api/rating', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId, mediaId, showId, score: nextScore, review }),
-    })
-    if (response.ok) {
-      setSaved(true)
-      window.setTimeout(() => setSaved(false), 1800)
-    }
-  }
-
-  return (
-    <div className="rating-control">
-      <div className="rating-heading">
-        <span>Sua avaliação</span>
-        <small>{saved ? 'Salva ✓' : selectedStars > 0 ? `${selectedStars}/5 estrelas` : 'Toque para avaliar'}</small>
-      </div>
-      <div className="rating-stars" onMouseLeave={() => setHoverStars(null)}>
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            type="button"
-            key={star}
-            className={star <= activeStars ? 'star-button active controller-focus' : 'star-button controller-focus'}
-            onMouseEnter={() => setHoverStars(star)}
-            onClick={() => {
-              const nextScore = star * 2
-              setScore(nextScore)
-              void save(nextScore)
-            }}
-            aria-label={`${star} estrela${star > 1 ? 's' : ''}`}
-          >
-            ★
-          </button>
-        ))}
-      </div>
-      <div className="rating-footer">
-        <input value={review} onChange={(event) => setReview(event.target.value)} maxLength={500} placeholder="Comentário opcional" />
-        <button type="button" onClick={() => void save()} disabled={score === null}>Salvar</button>
-      </div>
-    </div>
-  )
-}
-
-function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: LibraryItem) => void }) {
-  const openItem = () => onOpen(item)
-  const hasSubtitle = Boolean(item.subtitleUrl || item.subtitles?.some((sub) => sub.available))
-
-  return (
-    <article className="media-card">
-      <button className={`poster ${item.posterClass} controller-focus`} type="button" aria-label={`Abrir ${item.title}`} onClick={openItem}>
-        {item.artwork.posterUrl && <img className="poster-image" src={item.artwork.posterUrl} alt="" />}
-        <span className="poster-kind">{item.kind}</span>
-        {hasSubtitle && <span className="poster-cc" title="Legenda disponível">CC</span>}
-        {!item.artwork.posterUrl && (
-          <strong className="poster-fallback-title">
-            {item.title}
-            {item.year ? <small>{item.year}</small> : null}
-          </strong>
-        )}
-        {item.progress !== undefined && item.progress > 0 && (
-          <span className="progress-track"><span style={{ width: `${Math.min(100, item.progress)}%` }} /></span>
-        )}
-      </button>
-      <div className="card-copy">
-        <div>
-          <button className="card-title-button controller-focus" type="button" onClick={openItem}>{item.title}</button>
-          <p>{item.meta}</p>
-        </div>
-        <span className="more-button" aria-hidden="true">···</span>
-      </div>
-      <div className="card-tags">{item.tags?.map((tag) => <span key={tag}>{tag}</span>)}</div>
-      <small className="card-detail">{item.detail}</small>
-    </article>
-  )
-}
-
-function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
-  const watched = episode.progress !== undefined
-
-  return (
-    <article className={watched ? 'episode-row current' : 'episode-row'}>
-      <div className="episode-number">{episode.number.toString().padStart(2, '0')}</div>
-      <div className="episode-info">
-        <div className="episode-title-line">
-          <h3>{episode.title}</h3>
-          {watched && <span className="now-badge">VOCÊ ESTÁ AQUI</span>}
-        </div>
-        <p>{episode.filename}</p>
-        <div className="episode-meta">
-          <span>{episode.duration}</span>
-          <span>{episode.subtitles[0].available ? 'CC PT-BR' : 'Sem legenda cadastrada'}</span>
-          {watched && <span>Parado em {episode.position}</span>}
-        </div>
-        {watched && <span className="episode-progress"><span style={{ width: `${episode.progress}%` }} /></span>}
-      </div>
-      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl, subtitleUrl: episode.subtitleUrl, mediaId: episode.mediaId })}>{watched ? 'Continuar' : 'Assistir'}</button>
-    </article>
-  )
-}
-
-function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number }; profileId: string; capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const stageRef = useRef<HTMLDivElement>(null)
-  const lastSavedPosition = useRef(0)
-  const pendingPosition = useRef(0)
-  const hideTimer = useRef<number | null>(null)
-  const pauseOverlayTimer = useRef<number | null>(null)
-  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
-  const [subtitleUrl, setSubtitleUrl] = useState('')
-  const [streamInfo, setStreamInfo] = useState<{ available: boolean; reason?: string; audio: Array<{ index: number; language?: string; title?: string; codec?: string }>; subtitles: Array<{ index: number; language?: string; title?: string; codec?: string }> } | null>(null)
-  const [audioStream, setAudioStream] = useState('')
-  const [subtitleStream, setSubtitleStream] = useState('')
-  const [playbackUrl, setPlaybackUrl] = useState(media.url)
-  const [rate, setRate] = useState(1)
-  const [volume, setVolume] = useState(1)
-  const [isPlaying, setIsPlaying] = useState(true)
-  const [controlsVisible, setControlsVisible] = useState(true)
-  const [pausedOverlayVisible, setPausedOverlayVisible] = useState(false)
-  const [trackMenuOpen, setTrackMenuOpen] = useState(false)
-  const [onlineSubtitlesOpen, setOnlineSubtitlesOpen] = useState(false)
-  const [onlineSubtitlesLoading, setOnlineSubtitlesLoading] = useState(false)
-  const [onlineSubtitlesMessage, setOnlineSubtitlesMessage] = useState('')
-  const [onlineSubtitlesResults, setOnlineSubtitlesResults] = useState<Array<{ fileId: number; language: string; release: string; downloads: number; hearingImpaired: boolean }>>([])
-  const [downloadingSubtitleId, setDownloadingSubtitleId] = useState<number | null>(null)
-
-  const revealControls = useCallback(() => {
-    setControlsVisible(true)
-    if (hideTimer.current) window.clearTimeout(hideTimer.current)
-    hideTimer.current = window.setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused && !trackMenuOpen && !onlineSubtitlesOpen) {
-        setControlsVisible(false)
-      }
-    }, 2800)
-  }, [onlineSubtitlesOpen, trackMenuOpen])
-
-  useEffect(() => () => {
-    if (hideTimer.current) window.clearTimeout(hideTimer.current)
-    if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
-  }, [])
-
-  useEffect(() => {
-    if (!media.mediaId) return
-    fetch(`/api/progress?profileId=${encodeURIComponent(profileId)}&mediaId=${encodeURIComponent(media.mediaId)}`)
-      .then((response) => response.ok ? response.json() : null)
-      .then((progress) => {
-        if (progress?.position && videoRef.current) videoRef.current.currentTime = progress.position
-      })
-      .catch(() => undefined)
-  }, [media.mediaId, profileId])
-
-  const saveProgress = useCallback(() => {
-    const video = videoRef.current
-    if (!video || !media.mediaId || video.duration === Infinity || Number.isNaN(video.duration)) return
-    if (Math.abs(video.currentTime - lastSavedPosition.current) < 5 && video.currentTime < video.duration - 2) return
-    lastSavedPosition.current = video.currentTime
-    void fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        profileId,
-        mediaId: media.mediaId,
-        position: video.currentTime,
-        duration: video.duration,
-        watched: video.currentTime >= video.duration * 0.9,
-      }),
-    })
-  }, [media.mediaId, profileId])
-
-  useEffect(() => () => saveProgress(), [saveProgress])
-
-  useEffect(() => {
-    if (!media.subtitleUrl) return
-    fetch(media.subtitleUrl)
-      .then((response) => response.ok ? response.json() : [])
-      .then((tracks) => setSubtitleTracks(tracks))
-      .catch(() => setSubtitleTracks([]))
-  }, [media.subtitleUrl])
-
-  useEffect(() => {
-    if (!media.mediaId) return
-    fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
-      .then((response) => response.ok ? response.json() : null)
-      .then(setStreamInfo)
-      .catch(() => setStreamInfo(null))
-  }, [media.mediaId])
-
-  const changeAudioStream = (value: string) => {
-    setAudioStream(value)
-    const currentPos = videoRef.current?.currentTime ?? 0
-    if (!value) {
-      pendingPosition.current = currentPos
-      setPlaybackUrl(media.url)
-      return
-    }
-    if (!media.mediaId || !capabilities?.transcoding) return
-    pendingPosition.current = currentPos
-    const startParam = currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''
-    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(value)}${startParam}`)
-  }
-
-  const changeSubtitleStream = (value: string) => {
-    setSubtitleStream(value)
-    const currentPos = videoRef.current?.currentTime ?? 0
-    if (!value) {
-      pendingPosition.current = currentPos
-      setPlaybackUrl(audioStream
-        ? `/api/media/${encodeURIComponent(media.mediaId!)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream)}${currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''}`
-        : media.url)
-      return
-    }
-    if (!media.mediaId || !capabilities?.transcoding) return
-    pendingPosition.current = currentPos
-    const startParam = currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''
-    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream || '0')}&subtitleStream=${encodeURIComponent(value)}${startParam}`)
-  }
-
-  const restorePosition = () => {
-    if (pendingPosition.current > 0 && videoRef.current && playbackUrl === media.url) {
-      videoRef.current.currentTime = pendingPosition.current
-      pendingPosition.current = 0
-    } else if (playbackUrl !== media.url) {
-      pendingPosition.current = 0
-    }
-  }
-
-  const seek = (seconds: number) => {
-    if (videoRef.current) videoRef.current.currentTime += seconds
-  }
-
-  const changeRate = (value: number) => {
-    setRate(value)
-    if (videoRef.current) videoRef.current.playbackRate = value
-  }
-
-  const changeVolume = (value: number) => {
-    setVolume(value)
-    if (videoRef.current) videoRef.current.volume = value
-  }
-
-  const togglePlay = () => {
-    if (!videoRef.current) return
-    if (videoRef.current.paused) void videoRef.current.play()
-    else videoRef.current.pause()
-  }
-
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen()
-      return
-    }
-    void (stageRef.current ?? videoRef.current)?.requestFullscreen()
-  }
-
-  const searchOnlineSubtitles = async () => {
-    if (!media.mediaId) return
-    setOnlineSubtitlesLoading(true)
-    setOnlineSubtitlesMessage('')
-    try {
-      const response = await fetch(`/api/media/${encodeURIComponent(media.mediaId)}/subtitles/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: media.title }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error || 'Não foi possível buscar legendas online.')
-      setOnlineSubtitlesResults(Array.isArray(body?.results) ? body.results : [])
-      if (body?.message) setOnlineSubtitlesMessage(body.message)
-      else if (Array.isArray(body?.results) && body.results.length === 0) setOnlineSubtitlesMessage('Nenhuma legenda encontrada no OpenSubtitles.')
-    } catch (error) {
-      setOnlineSubtitlesMessage(error instanceof Error ? error.message : 'Erro ao consultar OpenSubtitles.')
-    } finally {
-      setOnlineSubtitlesLoading(false)
-    }
-  }
-
-  const confirmDownloadSubtitle = async (candidate: { fileId: number; language: string; release: string; hearingImpaired: boolean }) => {
-    if (!media.mediaId) return
-    setDownloadingSubtitleId(candidate.fileId)
-    setOnlineSubtitlesMessage('')
-    try {
-      const response = await fetch(`/api/media/${encodeURIComponent(media.mediaId)}/subtitles/download`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileId: candidate.fileId,
-          language: candidate.language,
-          label: `${candidate.language.toUpperCase()} (${candidate.release.slice(0, 28)})`,
-          hearingImpaired: candidate.hearingImpaired,
-        }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error || 'Não foi possível baixar a legenda.')
-      if (Array.isArray(body?.tracks)) setSubtitleTracks(body.tracks)
-      setOnlineSubtitlesMessage('Legenda baixada e registrada com sucesso.')
-    } catch (error) {
-      setOnlineSubtitlesMessage(error instanceof Error ? error.message : 'Erro ao baixar legenda.')
-    } finally {
-      setDownloadingSubtitleId(null)
-    }
-  }
-
-  const showOverlay = controlsVisible || !isPlaying || trackMenuOpen || onlineSubtitlesOpen
-
-  return (
-    <div className="player-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section
-        ref={stageRef}
-        className="player-modal player-modal--immersive"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Reproduzindo ${media.title}`}
-        onMouseDown={(event) => event.stopPropagation()}
-        onMouseMove={revealControls}
-        onMouseLeave={() => { if (isPlaying && !trackMenuOpen && !onlineSubtitlesOpen) setControlsVisible(false) }}
-      >
-        <div className={showOverlay ? 'player-heading player-overlay-bar' : 'player-heading player-overlay-bar hidden'}>
-          <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
-          <button className="player-close modal-close-button controller-focus" type="button" autoFocus aria-label="Fechar player" onClick={onClose}>×</button>
-        </div>
-
-        <div className="player-stage">
-          <video
-            ref={videoRef}
-            className="video-player"
-            src={playbackUrl}
-            controls
-            autoPlay
-            playsInline
-            onLoadedMetadata={restorePosition}
-            onPlay={() => {
-              setIsPlaying(true)
-              setPausedOverlayVisible(false)
-              if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
-              revealControls()
-            }}
-            onPause={() => {
-              setIsPlaying(false)
-              setControlsVisible(true)
-              if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
-              pauseOverlayTimer.current = window.setTimeout(() => setPausedOverlayVisible(true), 2200)
-            }}
-            onTimeUpdate={saveProgress}
-            onEnded={saveProgress}
-          >
-            {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
-            {media.mediaId && streamInfo?.available && capabilities?.ffmpeg && streamInfo.subtitles.map((track) => (
-              <track
-                key={`embedded-${track.index}`}
-                kind="subtitles"
-                srcLang={track.language || 'und'}
-                label={`Embutida · ${track.title || track.language || `Faixa ${track.index + 1}`}`}
-                src={`/api/media/${encodeURIComponent(media.mediaId!)}/subtitles/embedded/${track.index}`}
+            {genreCarousels.map((row) => (
+              <MediaCarousel
+                key={row.genre}
+                title={row.label}
+                items={row.items}
+                onPlay={playLibraryItem}
+                onOpenDetails={(target) => setSelectedShow(target)}
               />
             ))}
-          </video>
-
-          {pausedOverlayVisible && !isPlaying && (
-            <div className="player-paused-overlay" onClick={togglePlay}>
-              <div className="player-paused-info">
-                <span className="eyebrow">Você está assistindo a</span>
-                <h2>{media.title}</h2>
-                {media.year && <small>{media.year}</small>}
-                {media.overview && <p>{media.overview.slice(0, 220)}{media.overview.length > 220 ? '…' : ''}</p>}
-              </div>
-              <span className="player-paused-badge">Pausado</span>
-            </div>
-          )}
-
-          {trackMenuOpen && (
-            <div className="player-track-popover" role="dialog" aria-label="Idioma e legendas">
-              <div className="track-column">
-                <h4>Idioma (Áudio)</h4>
-                <button
-                  type="button"
-                  className={audioStream === '' ? 'track-choice active' : 'track-choice'}
-                  onClick={() => changeAudioStream('')}
-                >
-                  {audioStream === '' ? '✓ ' : ''}Original (padrão)
-                </button>
-                {streamInfo?.available && streamInfo.audio.map((track) => {
-                  const id = String(track.index)
-                  const disabled = !capabilities?.transcoding
-                  return (
-                    <button
-                      type="button"
-                      key={track.index}
-                      disabled={disabled}
-                      className={audioStream === id ? 'track-choice active' : 'track-choice'}
-                      onClick={() => changeAudioStream(id)}
-                    >
-                      {audioStream === id ? '✓ ' : ''}{track.title || track.language || `Faixa ${track.index + 1}`}
-                    </button>
-                  )
-                })}
-                {!streamInfo?.available && <small className="track-hint">FFprobe indisponível para listar faixas internas.</small>}
-              </div>
-
-              <div className="track-column">
-                <h4>Legendas</h4>
-                <button
-                  type="button"
-                  className={subtitleUrl === '' && subtitleStream === '' ? 'track-choice active' : 'track-choice'}
-                  onClick={() => { setSubtitleUrl(''); changeSubtitleStream('') }}
-                >
-                  {subtitleUrl === '' && subtitleStream === '' ? '✓ ' : ''}Desligadas
-                </button>
-                {subtitleTracks.map((track) => (
-                  <button
-                    type="button"
-                    key={track.url}
-                    className={subtitleUrl === track.url ? 'track-choice active' : 'track-choice'}
-                    onClick={() => { setSubtitleUrl(track.url); setSubtitleStream('') }}
-                  >
-                    {subtitleUrl === track.url ? '✓ ' : ''}{track.label}
-                  </button>
-                ))}
-                {streamInfo?.available && streamInfo.subtitles.map((track) => {
-                  const id = String(track.index)
-                  return (
-                    <button
-                      type="button"
-                      key={`sub-${track.index}`}
-                      disabled={!capabilities?.transcoding}
-                      className={subtitleStream === id ? 'track-choice active' : 'track-choice'}
-                      onClick={() => { setSubtitleUrl(''); changeSubtitleStream(id) }}
-                    >
-                      {subtitleStream === id ? '✓ ' : ''}Embutida · {track.title || track.language || `Faixa ${track.index + 1}`}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className={showOverlay ? 'player-controls player-controls--floating' : 'player-controls player-controls--floating hidden'}>
-          <button type="button" onClick={togglePlay}>{isPlaying ? '⏸ Pausar' : '▶ Continuar'}</button>
-          <button type="button" onClick={() => seek(-10)}>↶ 10s</button>
-          <button type="button" onClick={() => seek(10)}>10s ↷</button>
-          <label>Velocidade<select value={rate} onChange={(event) => changeRate(Number(event.target.value))}>
-            {[0.75, 1, 1.25, 1.5, 2].map((value) => <option value={value} key={value}>{value}x</option>)}
-          </select></label>
-          <label>Volume<input type="range" min="0" max="1" step="0.05" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} /></label>
-          <button type="button" className={trackMenuOpen ? 'active' : undefined} onClick={() => { setTrackMenuOpen((v) => !v); setOnlineSubtitlesOpen(false) }}>
-            💬 Áudio e legendas
-          </button>
-          {media.mediaId && <button type="button" onClick={() => { setTrackMenuOpen(false); const next = !onlineSubtitlesOpen; setOnlineSubtitlesOpen(next); if (next && onlineSubtitlesResults.length === 0) void searchOnlineSubtitles() }}>Legendas online</button>}
-          <button type="button" onClick={toggleFullscreen}>⛶ Tela cheia</button>
-        </div>
-        {onlineSubtitlesOpen && (
-          <div className="subtitle-search-box">
-            <div className="subtitle-search-header">
-              <strong>OpenSubtitles (com confirmação)</strong>
-              <button type="button" disabled={onlineSubtitlesLoading} onClick={() => void searchOnlineSubtitles()}>
-                {onlineSubtitlesLoading ? 'Buscando…' : 'Buscar novamente'}
-              </button>
-            </div>
-            {onlineSubtitlesMessage && <small>{onlineSubtitlesMessage}</small>}
-            {onlineSubtitlesResults.length > 0 && (
-              <div className="subtitle-search-list">
-                {onlineSubtitlesResults.map((item) => (
-                  <div className="subtitle-search-item" key={item.fileId}>
-                    <span>{item.language.toUpperCase()} · {item.release} ({item.downloads} downloads){item.hearingImpaired ? ' · CC' : ''}</span>
-                    <button type="button" disabled={downloadingSubtitleId === item.fileId} onClick={() => void confirmDownloadSubtitle(item)}>
-                      {downloadingSubtitleId === item.fileId ? 'Baixando…' : 'Baixar legenda'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
-        {streamInfo?.available && <small>
-          Faixas internas detectadas: {streamInfo.audio.length} áudio(s) e {streamInfo.subtitles.length} legenda(s).
-          A seleção usa transcodificação MP4 quando FFmpeg está disponível.
-        </small>}
-        {streamInfo && !streamInfo.available && <small>Faixas internas indisponíveis: FFprobe não está disponível. O player continua usando a reprodução original e as legendas externas.</small>}
-        <small>{capabilities?.ffmpeg || capabilities?.vlc
-          ? 'FFmpeg/VLC disponível; MKV/AVI usam transcodificação somente quando uma faixa for selecionada.'
-          : 'Player web ativo. FFmpeg não disponível: transcoding sob demanda indisponível; a reprodução atual permanece inalterada.'}</small>
-      </section>
+      </main>
+
+      {selectedMedia && (
+        <VideoPlayer
+          media={selectedMedia}
+          profileId={activeProfile.id}
+          capabilities={playerCapabilities}
+          onClose={() => {
+            setSelectedMedia(null)
+            refreshCatalogAndSources()
+          }}
+        />
+      )}
+
+      <ProfileModal
+        key={editingProfile?.id ?? (profileEditorOpen ? 'new' : 'closed')}
+        open={profileEditorOpen}
+        profile={editingProfile}
+        onClose={() => setProfileEditorOpen(false)}
+        onSaved={(savedId) => {
+          refreshProfiles()
+          handleProfileChange(savedId)
+        }}
+      />
+
+      <ReviewModal
+        open={reviewOpen}
+        items={reviewItems}
+        error={reviewError}
+        onRefresh={refreshCatalogAndSources}
+        onClose={() => setReviewOpen(false)}
+      />
+
+      <ArtworkReviewModal
+        open={artworkReviewOpen}
+        groups={artworkCandidates}
+        error={artworkCandidatesError}
+        onRefresh={() => {
+          refreshArtworkCandidates()
+          refreshCatalogAndSources()
+        }}
+        onClose={() => setArtworkReviewOpen(false)}
+      />
+
+      <HistoryModal
+        open={historyOpen}
+        history={catalogHistory}
+        onRefresh={refreshCatalogAndSources}
+        onClose={() => setHistoryOpen(false)}
+      />
     </div>
   )
-}
-
-function useGamepadNavigation() {
-  const previousButtons = useRef<boolean[]>([])
-  const previousAxes = useRef<ReadonlyArray<number>>([])
-
-  useEffect(() => {
-    if (!navigator.getGamepads) return
-
-    const getFocusable = () => {
-      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]')
-      const scope = dialog ?? document
-      return Array.from(scope.querySelectorAll<HTMLElement>(
-      'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )).filter((element) => {
-        const style = window.getComputedStyle(element)
-        const rect = element.getBoundingClientRect()
-        return !element.matches(':disabled')
-          && element.getAttribute('aria-hidden') !== 'true'
-          && !element.closest('[aria-hidden="true"]')
-          && style.display !== 'none'
-          && style.visibility !== 'hidden'
-          && rect.width > 0
-          && rect.height > 0
-      })
-    }
-
-    const moveFocus = (direction: 'up' | 'down' | 'left' | 'right', focusable: HTMLElement[]) => {
-      const current = document.activeElement as HTMLElement | null
-      const currentRect = current?.getBoundingClientRect()
-      if (!current || !currentRect || !focusable.includes(current)) {
-        focusable[0]?.focus()
-        return
-      }
-
-      const currentX = currentRect.left + currentRect.width / 2
-      const currentY = currentRect.top + currentRect.height / 2
-      const candidates = focusable
-        .filter((element) => element !== current)
-        .map((element) => {
-          const rect = element.getBoundingClientRect()
-          const x = rect.left + rect.width / 2
-          const y = rect.top + rect.height / 2
-          const primary = direction === 'left' ? currentX - x
-            : direction === 'right' ? x - currentX
-              : direction === 'up' ? currentY - y
-                : y - currentY
-          const secondary = direction === 'left' || direction === 'right' ? Math.abs(y - currentY) : Math.abs(x - currentX)
-          return { element, score: primary + secondary * 1.5 }
-        })
-        .filter(({ score }) => score > 4)
-        .sort((a, b) => a.score - b.score)
-
-      candidates[0]?.element.focus()
-    }
-
-    const timer = window.setInterval(() => {
-      const gamepad = Array.from(navigator.getGamepads()).find(Boolean)
-      if (!gamepad) {
-        previousButtons.current = []
-        previousAxes.current = []
-        return
-      }
-
-      const buttons = gamepad.buttons.map((button) => button.pressed)
-      const previous = previousButtons.current
-      const pressed = (index: number) => buttons[index] && !previous[index]
-      const focusable = getFocusable()
-      if (focusable.length === 0) return
-
-      if (pressed(0)) {
-        const active = document.activeElement as HTMLElement | null
-        if (active && focusable.includes(active)) active.click()
-        else focusable[0]?.focus()
-      }
-
-      if (pressed(1) || pressed(9)) {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-      }
-
-      const horizontalAxis = gamepad.axes[0] ?? 0
-      const wasHorizontal = previousAxes.current[0] ?? 0
-      const verticalAxis = gamepad.axes[1] ?? 0
-      const wasVertical = previousAxes.current[1] ?? 0
-
-      if (horizontalAxis > 0.6 && wasHorizontal <= 0.6) {
-        moveFocus('right', focusable)
-      }
-
-      if (horizontalAxis < -0.6 && wasHorizontal >= -0.6) {
-        moveFocus('left', focusable)
-      }
-
-      if (verticalAxis > 0.6 && wasVertical <= 0.6) {
-        moveFocus('down', focusable)
-      }
-
-      if (verticalAxis < -0.6 && wasVertical >= -0.6) {
-        moveFocus('up', focusable)
-      }
-
-      previousButtons.current = buttons
-      previousAxes.current = gamepad.axes
-    }, 100)
-
-    return () => window.clearInterval(timer)
-  }, [])
 }
 
 export default App
