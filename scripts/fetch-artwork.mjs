@@ -305,11 +305,13 @@ function isPlaceholderImage(url) {
 }
 
 async function fetchImdbSuggestion(title) {
-  const candidates = [title.replace(/\s+/g, ' ').trim()]
-  if (candidates[0].includes(' - ')) {
-    const suffix = candidates[0].split(/\s+-\s+/).slice(1).join(' ').trim()
+  const base = title.replace(/\s+/g, ' ').trim()
+  const candidates = [base]
+  if (base.includes(' - ')) {
+    const suffix = base.split(/\s+-\s+/).slice(1).join(' ').trim()
     if (suffix && suffix.length >= 4) candidates.push(suffix)
   }
+  candidates.push(`Um ${base}`)
   for (const clean of candidates) {
     try {
       const response = await fetch(
