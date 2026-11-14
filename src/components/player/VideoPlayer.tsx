@@ -50,8 +50,46 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [, setTranscodeOffset] = useState(0)
   const transcodeOffsetRef = useRef(0)
   const totalDurationRef = useRef(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
+
+  const applyVolume = useCallback((nextVol: number, nextMuted: boolean) => {
+    const video = videoRef.current
+    if (!video) return
+    if (nextVol > 1 && !gainNodeRef.current && typeof AudioContext !== 'undefined') {
+      try {
+        const ctx = new AudioContext()
+        const source = ctx.createMediaElementSource(video)
+        const gain = ctx.createGain()
+        const compressor = ctx.createDynamicsCompressor()
+        compressor.threshold.value = -4
+        compressor.knee.value = 10
+        compressor.ratio.value = 6
+        compressor.attack.value = 0.003
+        compressor.release.value = 0.15
+        source.connect(gain)
+        gain.connect(compressor)
+        compressor.connect(ctx.destination)
+        audioCtxRef.current = ctx
+        gainNodeRef.current = gain
+      } catch {
+        // Fallback to native volume if Web Audio is unavailable
+      }
+    }
+    if (audioCtxRef.current?.state === 'suspended') {
+      void audioCtxRef.current.resume().catch(() => undefined)
+    }
+    if (gainNodeRef.current) {
+      video.volume = 1
+      video.muted = nextMuted
+      gainNodeRef.current.gain.value = nextMuted ? 0 : nextVol
+    } else {
+      video.volume = Math.max(0, Math.min(1, nextVol))
+      video.muted = nextMuted
+    }
+  }, [])
 
   const scheduleHideControls = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
@@ -66,6 +104,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   useEffect(() => () => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
     if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
+    void audioCtxRef.current?.close().catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -420,7 +459,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   onClick={() => {
                     const nextMuted = !muted
                     setMuted(nextMuted)
-                    if (videoRef.current) videoRef.current.muted = nextMuted
+                    applyVolume(volume, nextMuted)
                   }}
                   title={muted ? 'Ativar som' : 'Silenciar'}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
@@ -431,20 +470,25 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   type="range"
                   aria-label="Volume"
                   min={0}
-                  max={1}
+                  max={3}
                   step={0.05}
                   value={muted ? 0 : volume}
                   onChange={(event) => {
                     const nextVol = Number(event.target.value)
                     setVolume(nextVol)
-                    setMuted(nextVol === 0)
-                    if (videoRef.current) {
-                      videoRef.current.volume = nextVol
-                      videoRef.current.muted = nextVol === 0
-                    }
+                    const nextMuted = nextVol === 0
+                    setMuted(nextMuted)
+                    applyVolume(nextVol, nextMuted)
                   }}
-                  className="h-1 w-20 accent-white"
+                  className="h-1 w-24 accent-white"
                 />
+                <span
+                  className={`min-w-[3.1rem] text-[11px] font-semibold tabular-nums ${
+                    !muted && volume > 1 ? 'text-[var(--sc-accent)]' : 'text-white/75'
+                  }`}
+                >
+                  {muted ? '0%' : `${Math.round(volume * 100)}%`}
+                </span>
               </div>
             </div>
 
