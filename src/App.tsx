@@ -357,8 +357,8 @@ function App() {
               <p>Quando você parar um filme ou episódio, ele aparecerá aqui.</p>
             </>}
           </div>
-          <div className="hero-art" aria-hidden="true" style={resume?.item.artwork.bannerUrl ? { backgroundImage: `url(${resume.item.artwork.bannerUrl})` } : undefined}>
-            {!resume?.item.artwork.bannerUrl && <><span>Sua</span><strong>biblioteca</strong></>}
+          <div className="hero-art" aria-hidden="true" style={resume?.item.artwork.bannerUrl || resume?.item.artwork.posterUrl ? { backgroundImage: `url(${resume.item.artwork.bannerUrl ?? resume.item.artwork.posterUrl})` } : undefined}>
+            {!(resume?.item.artwork.bannerUrl || resume?.item.artwork.posterUrl) && <><span>Sua</span><strong>biblioteca</strong></>}
           </div>
         </section>
 
@@ -1040,16 +1040,23 @@ function RatingControl({ profileId, mediaId, showId }: { profileId: string; medi
 
 function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: LibraryItem) => void }) {
   const openItem = () => onOpen(item)
+  const hasSubtitle = Boolean(item.subtitleUrl || item.subtitles?.some((sub) => sub.available))
 
   return (
     <article className="media-card">
       <button className={`poster ${item.posterClass} controller-focus`} type="button" aria-label={`Abrir ${item.title}`} onClick={openItem}>
         {item.artwork.posterUrl && <img className="poster-image" src={item.artwork.posterUrl} alt="" />}
         <span className="poster-kind">{item.kind}</span>
-        {item.id === 'south-park' && <strong>South<br />Park</strong>}
-        {item.id === 'marighella' && <strong>MARIGHELLA</strong>}
-        {item.id === 'a-fuga-do-planeta-terra' && <strong>A FUGA<br />DO PLANETA<br />TERRA</strong>}
-        {item.progress && <span className="progress-track"><span style={{ width: `${item.progress}%` }} /></span>}
+        {hasSubtitle && <span className="poster-cc" title="Legenda disponível">CC</span>}
+        {!item.artwork.posterUrl && (
+          <strong className="poster-fallback-title">
+            {item.title}
+            {item.year ? <small>{item.year}</small> : null}
+          </strong>
+        )}
+        {item.progress !== undefined && item.progress > 0 && (
+          <span className="progress-track"><span style={{ width: `${Math.min(100, item.progress)}%` }} /></span>
+        )}
       </button>
       <div className="card-copy">
         <div>
