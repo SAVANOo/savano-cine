@@ -52,6 +52,16 @@ export function AdminView({
   const [fetchingArtwork, setFetchingArtwork] = useState(false)
   const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
   const [gaps, setGaps] = useState<CatalogGaps | null>(null)
+  const [hiddenReviewIds, setHiddenReviewIds] = useState<Set<string>>(() => new Set())
+  const [hiddenCandidateIds, setHiddenCandidateIds] = useState<Set<string>>(() => new Set())
+
+  const visibleReviewItems = reviewItems.filter((item) => !hiddenReviewIds.has(item.id))
+  const visibleArtworkGroups = artworkGroups
+    .map((group) => ({
+      ...group,
+      candidates: group.candidates.filter((c) => !hiddenCandidateIds.has(c.id)),
+    }))
+    .filter((group) => group.candidates.length > 0)
 
   useEffect(() => {
     if (tab === 'artwork') {
@@ -78,6 +88,8 @@ export function AdminView({
         const body = await response.json().catch(() => null)
         throw new Error(body?.error || 'Falha ao atualizar item.')
       }
+      setHiddenReviewIds((prev) => new Set(prev).add(id))
+      setFeedback('Item atualizado no catálogo.')
       onRefreshAll()
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Erro ao atualizar revisão.')
@@ -86,7 +98,34 @@ export function AdminView({
     }
   }
 
-  async function decideArtwork(candidateId: string, decision: 'approve' | 'reject') {
+  async function runBulkReviewAction(folderKey: string, ids: string[], action: 'approve-movie' | 'set-other' | 'ignore') {
+    setBusyId(`bulk:${folderKey}`)
+    setFeedback('')
+    try {
+      const response = await fetch('/api/review/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, action }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Falha ao atualizar pasta.')
+      }
+      setHiddenReviewIds((prev) => {
+        const next = new Set(prev)
+        for (const id of ids) next.add(id)
+        return next
+      })
+      setFeedback(`${ids.length} item(ns) de "${folderKey}" atualizados.`)
+      onRefreshAll()
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : 'Erro na revisão em lote.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  async function decideArtwork(candidateId: string, decision: 'approve' | 'reject', siblingIds: string[] = []) {
     setBusyId(candidateId)
     setFeedback('')
     try {
@@ -98,6 +137,19 @@ export function AdminView({
         const body = await response.json().catch(() => null)
         throw new Error(body?.error || 'Falha ao processar candidato.')
       }
+      setHiddenCandidateIds((prev) => {
+        const next = new Set(prev)
+        next.add(candidateId)
+        if (decision === 'approve') {
+          for (const siblingId of siblingIds) next.add(siblingId)
+        }
+        return next
+      })
+      setFeedback(
+        decision === 'approve'
+          ? 'Arte confirmada e aplicada ao catálogo! O título saiu das pendências.'
+          : 'Sugestão descartada.',
+      )
       onRefreshAll()
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Erro ao atualizar arte.')
@@ -159,8 +211,8 @@ export function AdminView({
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 border-b border-[var(--sc-border-subtle)] pb-3">
         {[
-          { key: 'review' as const, label: `Revisão (${reviewItems.length})`, icon: Flag },
-          { key: 'artwork' as const, label: `Arte & Metadados (${artworkGroups.length})`, icon: Image },
+          { key: 'review' as const, label: `Revisão (${visibleReviewItems.length})`, icon: Flag },
+          { key: 'artwork' as const, label: `Arte & Metadados (${visibleArtworkGroups.length})`, icon: Image },
           {
             key: 'history' as const,
             label: `Histórico (${history.archived.length + history.titleChanges.length})`,
@@ -189,58 +241,104 @@ export function AdminView({
       {tab === 'review' && (
         <div className="flex flex-col gap-3">
           {reviewError && <p className="text-xs text-red-400">{reviewError}</p>}
-          {reviewItems.length === 0 ? (
+          {visibleReviewItems.length === 0 ? (
             <div className="rounded-[var(--sc-radius-lg)] border border-dashed border-white/15 p-10 text-center text-sm text-[var(--sc-text-muted)]">
               Nenhum item pendente de revisão.
             </div>
           ) : (
-            reviewItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-col justify-between gap-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4 sm:flex-row sm:items-center"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <strong className="truncate text-sm text-white">{item.title}</strong>
-                    <Badge tone="neutral">{item.kind}</Badge>
-                  </div>
-                  <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-secondary)]">
-                    {item.sourceName} · {item.relativePath}
-                  </p>
-                  {item.reason && (
-                    <p className="mt-1 mb-0 text-[11px] text-[var(--sc-text-muted)]">
-                      Motivo: {item.reason}
-                    </p>
+            (() => {
+              const folderGroups = new Map<string, ReviewItem[]>()
+              for (const item of visibleReviewItems) {
+                const topFolder = item.relativePath.split(/[\\/]/).filter(Boolean)[0] || item.title
+                const list = folderGroups.get(topFolder) ?? []
+                list.push(item)
+                folderGroups.set(topFolder, list)
+              }
+              return Array.from(folderGroups.entries()).map(([folder, items]) => (
+                <div key={folder} className="flex flex-col gap-2">
+                  {items.length > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-white/15 bg-white/[0.04] px-4 py-2.5">
+                      <span className="text-xs font-semibold text-white">
+                        Pasta "{folder}" ({items.length} arquivos)
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={busyId === `bulk:${folder}`}
+                          onClick={() => void runBulkReviewAction(folder, items.map((i) => i.id), 'approve-movie')}
+                        >
+                          Todos são Filmes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busyId === `bulk:${folder}`}
+                          onClick={() => void runBulkReviewAction(folder, items.map((i) => i.id), 'set-other')}
+                        >
+                          Todos Especial/Outro
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyId === `bulk:${folder}`}
+                          onClick={() => void runBulkReviewAction(folder, items.map((i) => i.id), 'ignore')}
+                        >
+                          Ignorar todos
+                        </Button>
+                      </div>
+                    </div>
                   )}
+                  {items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-col justify-between gap-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4 sm:flex-row sm:items-center"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <strong className="truncate text-sm text-white">{item.title}</strong>
+                          <Badge tone="neutral">{item.kind}</Badge>
+                        </div>
+                        <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-secondary)]">
+                          {item.sourceName} · {item.relativePath}
+                        </p>
+                        {item.reason && (
+                          <p className="mt-1 mb-0 text-[11px] text-[var(--sc-text-muted)]">
+                            Motivo: {item.reason}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={busyId === item.id}
+                          onClick={() => void runReviewAction(item.id, 'approve-movie')}
+                        >
+                          É filme
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busyId === item.id}
+                          onClick={() => void runReviewAction(item.id, 'set-other')}
+                        >
+                          Especial/Outro
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyId === item.id}
+                          onClick={() => void runReviewAction(item.id, 'ignore')}
+                        >
+                          Ignorar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={busyId === item.id}
-                    onClick={() => void runReviewAction(item.id, 'approve-movie')}
-                  >
-                    É filme
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busyId === item.id}
-                    onClick={() => void runReviewAction(item.id, 'set-other')}
-                  >
-                    Especial/Outro
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busyId === item.id}
-                    onClick={() => void runReviewAction(item.id, 'ignore')}
-                  >
-                    Ignorar
-                  </Button>
-                </div>
-              </div>
-            ))
+              ))
+            })()
           )}
         </div>
       )}
@@ -308,14 +406,25 @@ export function AdminView({
             </div>
           )}
 
+          <div className="rounded-[var(--sc-radius-lg)] border border-sky-500/25 bg-sky-500/10 p-4 text-xs text-sky-100">
+            <strong className="block text-sm text-white">Como avaliar as sugestões abaixo</strong>
+            <p className="mt-1 mb-0 leading-relaxed text-sky-100/85">
+              Quando o sistema encontra mais de um filme ou série com nome parecido, ele lista as opções aqui para você confirmar qual é o arquivo real do seu HD.
+              Clique em <strong>Confirmar arte</strong> na opção correta (isso baixa a capa, preenche a sinopse e remove o título das pendências) ou em{' '}
+              <strong>Descartar</strong> se a sugestão for de outro filme.
+            </p>
+          </div>
+
           {artworkError && <p className="text-xs text-red-400">{artworkError}</p>}
 
-          {artworkGroups.length === 0 ? (
+          {visibleArtworkGroups.length === 0 ? (
             <div className="rounded-[var(--sc-radius-lg)] border border-dashed border-white/15 p-10 text-center text-sm text-[var(--sc-text-muted)]">
               Nenhuma correspondência ambígua aguardando confirmação.
             </div>
           ) : (
-            artworkGroups.map((group) => (
+            visibleArtworkGroups.map((group) => {
+              const siblingIds = group.candidates.map((c) => c.id)
+              return (
               <div
                 key={`${group.targetType}:${group.targetId}`}
                 className="flex flex-col gap-3 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4"
@@ -350,9 +459,9 @@ export function AdminView({
                             size="sm"
                             variant="primary"
                             disabled={busyId === candidate.id}
-                            onClick={() => void decideArtwork(candidate.id, 'approve')}
+                            onClick={() => void decideArtwork(candidate.id, 'approve', siblingIds)}
                           >
-                            Confirmar
+                            Confirmar arte
                           </Button>
                           <Button
                             size="sm"
@@ -368,7 +477,8 @@ export function AdminView({
                   ))}
                 </div>
               </div>
-            ))
+              )
+            })
           )}
         </div>
       )}

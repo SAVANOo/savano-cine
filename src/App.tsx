@@ -254,11 +254,37 @@ export function App() {
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
 
+  const [catalogNotice, setCatalogNotice] = useState('')
+
   const playLibraryItem = useCallback((item: LibraryItem) => {
+    if (item.sourceStatus === 'offline') {
+      setCatalogNotice(
+        `A fonte "${item.sourceName || 'HD externo'}" está desconectada no momento. Conecte o dispositivo e clique em Atualizar na barra lateral.`,
+      )
+      return
+    }
+    setCatalogNotice('')
     const playable = resolvePlayableMedia(item)
-    if (playable) setSelectedMedia(playable)
-    else setSelectedShow(item)
-  }, [setSelectedShow])
+    if (!playable) {
+      setSelectedShow(item)
+      return
+    }
+    if (item.kind === 'Filme' && !playable.nextEpisode) {
+      const itemGenres = new Set((item.genres ?? []).map((g) => g.toLowerCase()))
+      const candidates = catalog.filter(
+        (c) => c.id !== item.id && c.kind === 'Filme' && c.sourceStatus !== 'offline' && Boolean(c.mediaUrl),
+      )
+      const bestNext =
+        candidates.find((c) => (c.genres ?? []).some((g) => itemGenres.has(g.toLowerCase())) && (c.progress ?? 0) < 90) ??
+        candidates.find((c) => (c.progress ?? 0) < 90) ??
+        candidates[0]
+      if (bestNext) {
+        const nextPlayable = resolvePlayableMedia(bestNext, true)
+        if (nextPlayable) playable.nextEpisode = nextPlayable
+      }
+    }
+    setSelectedMedia(playable)
+  }, [catalog, setSelectedShow])
 
   const toggleWatchlist = useCallback(
     async (item: LibraryItem) => {
@@ -400,9 +426,17 @@ export function App() {
     const withArt = catalog.filter((item) => item.artwork.bannerUrl || item.artwork.posterUrl)
     const pool = withArt.length > 0 ? withArt : catalog
     if (pool.length <= 6) return pool
-    const offset = dailySeed % pool.length
-    const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
-    return rotated.slice(0, 6)
+    const scoreHero = (id: string) => {
+      let h = dailySeed ^ 0x9e3779b9
+      for (let i = 0; i < id.length; i += 1) {
+        h ^= id.charCodeAt(i)
+        h = Math.imul(h, 16777619)
+      }
+      return h >>> 0
+    }
+    return [...pool]
+      .sort((a, b) => scoreHero(a.id) - scoreHero(b.id))
+      .slice(0, 6)
   }, [catalog, dailySeed])
 
   const continueWatching = useMemo(
@@ -426,21 +460,45 @@ export function App() {
   )
 
   const genreCarousels = useMemo(() => {
+    const genreAffinity = new Map<string, number>()
+    for (const item of catalog) {
+      const weight =
+        (item.inWatchlist ? 3 : 0) +
+        ((item.progress ?? 0) > 0 ? 2 : 0) +
+        ((item.rating?.score ?? 0) >= 4 ? 3 : 0)
+      if (weight <= 0) continue
+      for (const g of item.genres ?? []) {
+        genreAffinity.set(g, (genreAffinity.get(g) ?? 0) + weight)
+      }
+    }
+    const dailyGenreJitter = (genre: string) => {
+      let h = dailySeed
+      for (let i = 0; i < genre.length; i += 1) {
+        h ^= genre.charCodeAt(i)
+        h = Math.imul(h, 16777619)
+      }
+      return ((h >>> 0) % 100) / 100
+    }
     return genreOptions
-      .slice(0, 4)
       .map((genre) => ({
         genre,
         label: translateGenre(genre),
+        score: (genreAffinity.get(genre) ?? 0) + dailyGenreJitter(genre),
         items: catalog.filter((item) => (item.genres ?? []).includes(genre)).slice(0, 18),
       }))
-      .filter((row) => row.items.length >= 3)
-  }, [catalog, genreOptions])
+      .filter((row) => row.items.length >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+  }, [catalog, dailySeed, genreOptions])
 
   const goHome = useCallback(() => {
     setSelectedShow(null)
     setAdminOpen(false)
     setActiveGenre('Todos')
+    setUnwatchedOnly(false)
     setQuery('')
+    setCatalogNotice('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     if (window.location.pathname !== '/') {
       window.history.replaceState(null, '', '/')
     }
@@ -560,6 +618,22 @@ export function App() {
           </header>
         )}
 
+        {catalogNotice && (
+          <div
+            role="alert"
+            className="mb-4 flex items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100"
+          >
+            <span>{catalogNotice}</span>
+            <button
+              type="button"
+              onClick={() => setCatalogNotice('')}
+              className="rounded border-0 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/20 cursor-pointer"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
+
         {adminOpen ? (
           <AdminView
             initialTab={adminTab}
@@ -609,8 +683,24 @@ export function App() {
             </div>
 
             {filteredItems.length === 0 ? (
-              <div className="rounded-[var(--sc-radius-xl)] border border-dashed border-white/15 p-12 text-center text-sm text-[var(--sc-text-muted)]">
-                Nenhum título encontrado para os filtros atuais.
+              <div className="flex flex-col items-center gap-3 rounded-[var(--sc-radius-xl)] border border-dashed border-white/15 p-12 text-center text-sm text-[var(--sc-text-muted)]">
+                <p className="m-0">
+                  {activeKind === 'Continuar'
+                    ? 'Você ainda não começou a assistir nenhum título neste perfil. Dê o play em um filme ou série para continuar daqui depois.'
+                    : 'Nenhum título encontrado para os filtros atuais.'}
+                </p>
+                {activeKind === 'Continuar' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveKind('Todos')
+                      goHome()
+                    }}
+                    className="rounded-full bg-white px-4 py-2 text-xs font-bold text-black hover:bg-white/90 cursor-pointer"
+                  >
+                    Explorar catálogo
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">

@@ -182,6 +182,9 @@ export function ShowDetailView({
           <div className="relative z-10 flex min-h-[340px] max-w-3xl flex-col justify-end p-6 sm:min-h-[420px] sm:p-10">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Badge tone="accent">{show.kind}</Badge>
+              {show.sourceStatus === 'offline' && (
+                <Badge tone="neutral">HD desconectado ({show.sourceName || 'Fonte offline'})</Badge>
+              )}
               {show.year && <Badge tone="dark">{show.year}</Badge>}
               {(show.genres ?? []).map((genre) => (
                 <Badge key={genre} tone="neutral">
@@ -200,9 +203,14 @@ export function ShowDetailView({
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               {playable && (
-                <Button variant="light" size="lg" onClick={() => onPlayMedia(playable)}>
+                <Button
+                  variant="light"
+                  size="lg"
+                  disabled={show.sourceStatus === 'offline'}
+                  onClick={() => onPlayMedia(playable)}
+                >
                   <Play className="h-4 w-4 fill-current" />
-                  {hasResume ? 'Retome' : 'Assistir'}
+                  {show.sourceStatus === 'offline' ? 'HD desconectado' : hasResume ? 'Retome' : 'Assistir'}
                 </Button>
               )}
               {hasResume && restartable && (
@@ -248,6 +256,7 @@ export function ShowDetailView({
                         url: ver.mediaUrl,
                         subtitleUrl: ver.subtitleUrl,
                         mediaId: ver.mediaId,
+                        needsTranscode: ver.needsTranscode,
                         overview: show.overview,
                         year: show.year,
                       })
@@ -381,13 +390,39 @@ export function ShowDetailView({
                         Boolean(show.resume?.mediaId && ep.mediaId === show.resume.mediaId) ||
                         (show.resume?.season === ep.season && show.resume?.episode === ep.number)
                       const epProgress = Math.max(0, Math.min(100, ep.progress ?? 0))
+                      const epOffline = ep.sourceStatus === 'offline'
+                      const playEp = () => {
+                        if (!ep.mediaUrl || epOffline) return
+                        onPlayMedia({
+                          title: `${show.title} — T${ep.season}:E${ep.number} ${ep.title}`,
+                          url: ep.mediaUrl,
+                          subtitleUrl: ep.subtitleUrl,
+                          mediaId: ep.mediaId,
+                          needsTranscode: ep.needsTranscode,
+                          overview: show.overview,
+                          year: show.year,
+                          startPosition: isResumeEpisode ? show.resume?.position : 0,
+                          nextEpisode: findNextEpisode(show, ep.mediaId),
+                        })
+                      }
                       return (
                         <div
                           key={ep.id}
+                          role={ep.mediaUrl && !epOffline ? 'button' : undefined}
+                          tabIndex={ep.mediaUrl && !epOffline ? 0 : undefined}
+                          onClick={playEp}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              playEp()
+                            }
+                          }}
                           className={`relative overflow-hidden flex items-center justify-between gap-4 rounded-[var(--sc-radius-md)] border p-3.5 transition ${
+                            ep.mediaUrl && !epOffline ? 'cursor-pointer' : 'opacity-70'
+                          } ${
                             isResumeEpisode
                               ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)]'
-                              : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/25'
+                              : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30 hover:bg-white/[0.04]'
                           }`}
                         >
                           <div className="min-w-0 flex-1">
@@ -396,11 +431,24 @@ export function ShowDetailView({
                                 E{ep.number}
                               </span>
                               <strong className="truncate text-sm text-white">{ep.title}</strong>
-                              {isResumeEpisode && (
-                                <Badge tone="accent">Assistindo agora</Badge>
+                              {epOffline && (
+                                <Badge tone="neutral">Fonte offline</Badge>
                               )}
-                              {!isResumeEpisode && epProgress >= 90 && (
-                                <Badge tone="neutral">Visto</Badge>
+                              {!epOffline && epProgress >= 90 && (
+                                <Badge tone="neutral">Assistido</Badge>
+                              )}
+                              {!epOffline && epProgress > 0 && epProgress < 90 && (
+                                <Badge tone="accent">
+                                  {isResumeEpisode
+                                    ? `Parou em ${ep.position || `${epProgress}%`}`
+                                    : `Incompleto · ${ep.position || `${epProgress}%`}`}
+                                </Badge>
+                              )}
+                              {!epOffline && epProgress === 0 && isResumeEpisode && (
+                                <Badge tone="accent">Próximo</Badge>
+                              )}
+                              {!epOffline && epProgress === 0 && !isResumeEpisode && (
+                                <span className="text-[11px] text-[var(--sc-text-muted)]">Não assistido</span>
                               )}
                             </div>
                             <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-muted)]">
@@ -411,31 +459,24 @@ export function ShowDetailView({
                             <Button
                               variant={isResumeEpisode ? 'primary' : 'light'}
                               size="sm"
-                              onClick={() =>
-                                onPlayMedia({
-                                  title: `${show.title} — T${ep.season}:E${ep.number} ${ep.title}`,
-                                  url: ep.mediaUrl!,
-                                  subtitleUrl: ep.subtitleUrl,
-                                  mediaId: ep.mediaId,
-                                  overview: show.overview,
-                                  year: show.year,
-                                  startPosition: isResumeEpisode ? show.resume?.position : 0,
-                                  nextEpisode: findNextEpisode(show, ep.mediaId),
-                                })
-                              }
+                              disabled={epOffline}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                playEp()
+                              }}
                             >
                               <Play className="h-3.5 w-3.5 fill-current" />
-                              {isResumeEpisode ? 'Retome' : 'Assistir'}
+                              {epOffline ? 'Offline' : isResumeEpisode ? 'Retome' : 'Assistir'}
                             </Button>
                           )}
-                          {(epProgress > 0 || isResumeEpisode) && (
-                            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-white/15">
-                              <div
-                                className="h-full bg-[var(--sc-accent)]"
-                                style={{ width: `${Math.max(epProgress, isResumeEpisode ? 15 : 0)}%` }}
-                              />
-                            </div>
-                          )}
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-white/10">
+                            <div
+                              className={`h-full transition-all ${
+                                epProgress >= 90 ? 'bg-emerald-400' : 'bg-[var(--sc-accent)]'
+                              }`}
+                              style={{ width: `${epProgress > 0 ? epProgress : isResumeEpisode ? 8 : 0}%` }}
+                            />
+                          </div>
                         </div>
                       )
                     })}

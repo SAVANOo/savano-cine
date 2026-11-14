@@ -26,6 +26,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
 }
 
+const skippedDirectories = new Set([
+  'cine-local',
+  'node_modules',
+  '.git',
+  '.venv',
+  '$recycle.bin',
+  'system volume information',
+])
+
 async function collectMediaFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
   const files = []
@@ -34,6 +43,7 @@ async function collectMediaFiles(directory) {
     const entryPath = path.join(directory, entry.name)
 
     if (entry.isDirectory()) {
+      if (skippedDirectories.has(entry.name.toLowerCase())) continue
       files.push(...(await collectMediaFiles(entryPath)))
       continue
     }
@@ -140,17 +150,23 @@ function classifyMedia(filePath, sourceRoot) {
       }
     }
 
-    if (/(^|[\\/])(a energia do homem|curso|modulo|módulo)([\\/]|$)/i.test(normalizedPath)) {
+    const moduleMatch = relativePath.match(/(?:^|[\\/])m[oó]dulo\s*(\d{1,2})/i)
+    const lessonMatch = basename.match(/^(\d{1,3})(?:[\s._-]|$)/)
+    if (moduleMatch && lessonMatch) {
+      const segments = relativePath.split(/[\\/]/).filter(Boolean)
+      const pastaSerie = segments[0] || 'Curso'
       return {
-        tipo: 'outro',
-        titulo: cleanTitle(filename),
+        tipo: 'serie',
+        titulo: `Aula ${Number(lessonMatch[1])}`,
+        temporada: Number(moduleMatch[1]),
+        episodio: Number(lessonMatch[1]),
         formato: extension.slice(1),
         caminho: relativePath,
-        motivo: 'collection',
+        pastaSerie,
       }
     }
 
-    if (/(^|[\W_])(1xbet|dinheiro[_ ]livre|bludv\.?com|comando\.?to|lucas firmo)([\W_]|$)|^(trailer|www\.|promo[\W_])/i.test(normalizedFilename)) {
+    if (/(^|[\W_])(1xbet|dinheiro[_ ]livre)([\W_]|$)|^(trailer|promo[\W_])|^(?:www\.)?(?:comandotorrents|bludv|comando\.to)(?:\.com)?$/i.test(normalizedFilename)) {
       return {
         tipo: 'outro',
         titulo: cleanTitle(filename),

@@ -34,7 +34,14 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const hideTimer = useRef<number | null>(null)
   const pauseOverlayTimer = useRef<number | null>(null)
 
-  const [playbackUrl, setPlaybackUrl] = useState(media.url)
+  const initialTranscode = Boolean(media.needsTranscode && media.mediaId && capabilities?.transcoding !== false)
+  const initialStart = Math.max(0, Math.floor(media.startPosition ?? 0))
+  const [playbackUrl, setPlaybackUrl] = useState(() =>
+    initialTranscode && media.mediaId
+      ? `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4${initialStart > 1 ? `&start=${initialStart}` : ''}`
+      : media.url,
+  )
+  const [playbackError, setPlaybackError] = useState('')
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null)
   const [audioStream, setAudioStream] = useState('')
@@ -45,10 +52,10 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [isPaused, setIsPaused] = useState(false)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
-  const [currentTime, setCurrentTime] = useState(0)
+  const [currentTime, setCurrentTime] = useState(initialTranscode ? initialStart : 0)
   const [duration, setDuration] = useState(0)
-  const [, setTranscodeOffset] = useState(0)
-  const transcodeOffsetRef = useRef(0)
+  const [, setTranscodeOffset] = useState(initialTranscode ? initialStart : 0)
+  const transcodeOffsetRef = useRef(initialTranscode ? initialStart : 0)
   const totalDurationRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
@@ -193,6 +200,14 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   useEffect(() => () => saveProgress(true), [saveProgress])
 
   useEffect(() => {
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
+  useEffect(() => {
     if (!media.subtitleUrl) return
     fetch(media.subtitleUrl)
       .then((response) => (response.ok ? response.json() : []))
@@ -217,16 +232,18 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const buildTranscodeUrl = useCallback(
     (streamIdx: string, startSec: number) => {
       if (!media.mediaId) return media.url
+      const audioParam = streamIdx ? `&audioStream=${encodeURIComponent(streamIdx)}` : ''
       const startParam = startSec > 1 ? `&start=${Math.floor(startSec)}` : ''
-      return `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(streamIdx)}${startParam}`
+      return `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4${audioParam}${startParam}`
     },
     [media.mediaId, media.url],
   )
 
   const changeAudioStream = (value: string) => {
     setAudioStream(value)
+    setPlaybackError('')
     const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
-    if (!value) {
+    if (!value && !media.needsTranscode) {
       transcodeOffsetRef.current = 0
       setTranscodeOffset(0)
       pendingPosition.current = effectivePos
@@ -247,7 +264,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
-    if (!audioStream) {
+    if (!playbackUrl.includes('/transcode')) {
       video.currentTime = clamped
       scheduleHideControls()
       return
@@ -422,11 +439,37 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               setNextCountdown(5)
             }
           }}
+          onError={() => {
+            if (!playbackUrl.includes('/transcode') && media.mediaId && capabilities?.transcoding !== false) {
+              const offset = Math.floor(transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0))
+              transcodeOffsetRef.current = offset
+              setTranscodeOffset(offset)
+              setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
+              return
+            }
+            setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou se o FFmpeg está disponível.')
+          }}
         >
           {selectedSubtitleUrl && (
             <track kind="subtitles" label="Legenda" src={selectedSubtitleUrl} default />
           )}
         </video>
+
+        {playbackError && (
+          <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-black/85 p-6 text-center">
+            <div className="max-w-md rounded-[var(--sc-radius-lg)] border border-red-500/40 bg-[#14151e] p-6 shadow-2xl">
+              <p className="m-0 text-sm font-semibold text-white">Falha na reprodução</p>
+              <p className="mt-2 mb-4 text-xs text-[var(--sc-text-secondary)]">{playbackError}</p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full bg-white px-4 py-2 text-xs font-bold text-black hover:bg-white/90 cursor-pointer"
+              >
+                Voltar ao catálogo
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Top Bar Overlay */}
         <div
@@ -633,7 +676,8 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                       void video.requestPictureInPicture().catch(() => undefined)
                     }
                   }}
-                  title="Picture-in-Picture"
+                  title="Modo Picture-in-Picture (janela flutuante)"
+                  aria-label="Modo Picture-in-Picture (janela flutuante)"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
                 >
                   <PictureInPicture2 className="h-4 w-4" />

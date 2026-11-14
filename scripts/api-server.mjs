@@ -344,6 +344,48 @@ async function handleApiRequest(request, response) {
     return send(response, 400, { error: 'Ação de revisão inválida. Escolha corrigir como filme, aprovar como especial/outro ou ignorar.' })
   }
 
+  const reviewActionMatch = requestUrl.pathname.match(/^\/api\/review\/([^/]+)\/(approve-movie|set-other|ignore)$/)
+  if (reviewActionMatch && request.method === 'POST') {
+    const id = decodeURIComponent(reviewActionMatch[1])
+    const action = reviewActionMatch[2]
+    const current = database.prepare('SELECT id, title FROM media_items WHERE id = ? AND deleted_at IS NULL').get(id)
+    if (!current) return send(response, 404, { error: 'Item de revisão não encontrado.' })
+
+    if (action === 'ignore') {
+      database.prepare("UPDATE media_items SET classification_status = 'ignored', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id)
+      return send(response, 200, { status: 'ignored', id })
+    }
+
+    const kind = action === 'approve-movie' ? 'movie' : 'other'
+    database.prepare(`
+      UPDATE media_items
+      SET kind = ?, classification_status = 'approved', classification_reason = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(kind, id)
+    return send(response, 200, { status: 'approved', id, kind })
+  }
+
+  if (requestUrl.pathname === '/api/review/bulk' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === 'string' && id) : []
+    const action = typeof body.action === 'string' ? body.action : ''
+    if (!ids.length || !['approve-movie', 'set-other', 'ignore'].includes(action)) {
+      return send(response, 400, { error: 'Parâmetros inválidos para revisão em lote.' })
+    }
+    const updateIgnore = database.prepare("UPDATE media_items SET classification_status = 'ignored', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    const updateKind = database.prepare("UPDATE media_items SET kind = ?, classification_status = 'approved', classification_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    for (const id of ids) {
+      if (action === 'ignore') updateIgnore.run(id)
+      else updateKind.run(action === 'approve-movie' ? 'movie' : 'other', id)
+    }
+    return send(response, 200, { status: 'ok', count: ids.length, action })
+  }
+
   if (requestUrl.pathname === '/api/catalog/history' && request.method === 'GET') {
     const archived = database.prepare(`
       SELECT m.id, m.title, m.kind, m.deleted_at AS deletedAt,
@@ -1071,22 +1113,28 @@ async function analyzeMediaStreams(mediaId, response) {
 }
 
 async function buildLibrary(profileId) {
+  const transcodeExtensions = new Set(['rmvb', 'rm', 'avi', 'wmv', 'flv'])
   const watchlistRows = database.prepare('SELECT target_type, target_id FROM watchlist WHERE profile_id = ?').all(profileId)
   const watchlistSet = new Set(watchlistRows.map((r) => `${r.target_type}:${r.target_id}`))
   const rawMovies = database.prepare(`
-    SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
+    SELECT m.id, m.title, m.year, m.overview, m.genres_json, m.extension, m.tags_json, m.relative_path AS relativePath,
+      s.name AS sourceName, s.status AS sourceStatus,
       p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
       p.watched AS progressWatched, p.updated_at AS progressUpdatedAt,
-      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster,
-      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'banner' AND a.source = 'local' LIMIT 1) AS hasBanner
-    FROM media_items
-    LEFT JOIN watch_progress p ON p.media_item_id = media_items.id AND p.profile_id = ?
-    WHERE kind = 'movie'
-      AND classification_status IN ('auto', 'approved')
-      AND deleted_at IS NULL
-    ORDER BY title COLLATE NOCASE
+      (SELECT 1 FROM artwork a WHERE a.movie_id = m.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster,
+      (SELECT 1 FROM artwork a WHERE a.movie_id = m.id AND a.artwork_type = 'banner' AND a.source = 'local' LIMIT 1) AS hasBanner
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    LEFT JOIN watch_progress p ON p.media_item_id = m.id AND p.profile_id = ?
+    WHERE m.kind = 'movie'
+      AND m.classification_status IN ('auto', 'approved')
+      AND m.deleted_at IS NULL
+    ORDER BY m.title COLLATE NOCASE
     LIMIT 500
-  `).all(profileId).map((item) => ({
+  `).all(profileId).map((item) => {
+    const ext = String(item.extension || '').replace(/^\./, '').toLowerCase()
+    const needsTranscode = transcodeExtensions.has(ext)
+    return {
     id: item.id,
     title: item.title,
     kind: 'Filme',
@@ -1096,6 +1144,9 @@ async function buildLibrary(profileId) {
     overview: item.overview,
     genres: JSON.parse(item.genres_json || item.tags_json || '[]'),
     posterClass: 'poster-default',
+    sourceName: item.sourceName,
+    sourceStatus: item.sourceStatus,
+    needsTranscode,
     mediaUrl: `/api/media/${item.id}`,
     subtitleUrl: `/api/media/${item.id}/subtitles`,
     mediaId: item.id,
@@ -1122,9 +1173,10 @@ async function buildLibrary(profileId) {
         mediaId: item.id,
         mediaUrl: `/api/media/${item.id}`,
         subtitleUrl: `/api/media/${item.id}/subtitles`,
+        needsTranscode,
       },
     } : {}),
-  }))
+  }})
 
   const extractVersionLabel = (movie) => {
     const src = `${movie.detail || ''} ${movie.meta || ''}`
@@ -1170,6 +1222,7 @@ async function buildLibrary(profileId) {
         subtitleUrl: entry.subtitleUrl,
         meta: entry.meta,
         detail: entry.detail,
+        needsTranscode: entry.needsTranscode,
       }))
     }
     items.push(primary)
@@ -1200,29 +1253,42 @@ async function buildLibrary(profileId) {
       label: season.number === 0 ? 'Curtas' : `Temporada ${season.number.toString().padStart(2, '0')}`,
       episodes: database.prepare(`
         SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename,
+          m.extension, ms.name AS sourceName, ms.status AS sourceStatus,
           p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration
         FROM episodes e
         JOIN media_items m ON m.id = e.media_item_id
+        JOIN media_sources ms ON ms.id = m.source_id
         LEFT JOIN watch_progress p ON p.media_item_id = m.id AND p.profile_id = ?
         WHERE e.season_id = ? AND m.deleted_at IS NULL
         ORDER BY number
-      `).all(profileId, season.id).map((episode) => ({
-        id: episode.id,
-        season: season.number,
-        number: episode.number,
-        title: episode.title,
-        filename: episode.filename,
-        duration: 'Duração não analisada',
-        subtitles: getSubtitleTracks(episode.mediaId),
-        mediaUrl: `/api/media/${episode.mediaId}`,
-        subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
-        mediaId: episode.mediaId,
-        progress: episode.progressDuration ? Math.round((episode.progressPosition / episode.progressDuration) * 100) : undefined,
-        position: episode.progressPosition ? `${Math.floor(episode.progressPosition / 60)} min` : undefined,
-      })),
+      `).all(profileId, season.id).map((episode) => {
+        const ext = String(episode.extension || '').replace(/^\./, '').toLowerCase()
+        const needsTranscode = transcodeExtensions.has(ext)
+        return {
+          id: episode.id,
+          season: season.number,
+          number: episode.number,
+          title: episode.title,
+          filename: episode.filename,
+          duration: episode.progressDuration ? `${Math.max(1, Math.round(episode.progressDuration / 60))} min` : 'Duração não analisada',
+          subtitles: getSubtitleTracks(episode.mediaId),
+          mediaUrl: `/api/media/${episode.mediaId}`,
+          subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
+          mediaId: episode.mediaId,
+          needsTranscode,
+          sourceName: episode.sourceName,
+          sourceStatus: episode.sourceStatus,
+          progress: episode.progressDuration ? Math.round((episode.progressPosition / episode.progressDuration) * 100) : undefined,
+          position: episode.progressPosition ? `${Math.floor(episode.progressPosition / 60)} min` : undefined,
+        }
+      }),
     }))
 
-    const episodeCount = seasons.reduce((total, season) => total + season.episodes.length, 0)
+    const flatShowEpisodes = seasons.flatMap((s) => s.episodes)
+    const episodeCount = flatShowEpisodes.length
+    const onlineEpisode = flatShowEpisodes.find((ep) => ep.sourceStatus === 'online')
+    const showSourceName = onlineEpisode?.sourceName ?? flatShowEpisodes[0]?.sourceName
+    const showSourceStatus = onlineEpisode ? 'online' : (flatShowEpisodes[0]?.sourceStatus ?? 'online')
     let resumeEpisode = database.prepare(`
       SELECT e.episode_number AS number, e.title, s.season_number AS season,
         m.id AS mediaId, p.position_seconds AS position, p.duration_seconds AS duration,
@@ -1264,6 +1330,7 @@ async function buildLibrary(profileId) {
         }
       }
     }
+    const resumeEpObj = resumeEpisode ? flatShowEpisodes.find((ep) => ep.mediaId === resumeEpisode.mediaId) : undefined
     items.push({
       id: show.id,
       title: show.title,
@@ -1274,6 +1341,8 @@ async function buildLibrary(profileId) {
       overview: show.overview,
       genres: JSON.parse(show.genres_json || '[]'),
       posterClass: show.title.toLocaleLowerCase().includes('south park') ? 'poster-south-park' : 'poster-default',
+      sourceName: showSourceName,
+      sourceStatus: showSourceStatus,
       artwork: showArtworks[index].artwork,
       bannerUrl: showArtworks[index].bannerUrl,
       tags: showArtworks[index].tags,
@@ -1291,6 +1360,7 @@ async function buildLibrary(profileId) {
           mediaId: resumeEpisode.mediaId,
           mediaUrl: `/api/media/${resumeEpisode.mediaId}`,
           subtitleUrl: `/api/media/${resumeEpisode.mediaId}/subtitles`,
+          needsTranscode: Boolean(resumeEpObj?.needsTranscode),
         },
       } : {}),
       inWatchlist: watchlistSet.has(`show:${show.id}`),
@@ -2084,19 +2154,88 @@ function ignorePromotionalAds() {
 
 function reconcileMisclassifiedEpisodes() {
   try {
-    // Remove promo/watermark clips shipped inside torrent folders from the movie catalog
+    const softDelete = database.prepare(`UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`)
+
+    // Exclude repository/app files (e.g. cine-local\docs\media\demo.webm) if scanned from D:\Filmes
+    database.prepare(`
+      UPDATE media_items
+      SET deleted_at = CURRENT_TIMESTAMP
+      WHERE deleted_at IS NULL
+        AND (lower(relative_path) LIKE 'cine-local\\%' OR lower(relative_path) LIKE 'cine-local/%')
+    `).run()
+
+    // Remove promo/watermark clips shipped inside torrent folders from the catalog
     const promoRows = database.prepare(`
       SELECT id, relative_path AS relativePath, title
       FROM media_items
-      WHERE kind = 'movie' AND deleted_at IS NULL
+      WHERE deleted_at IS NULL
     `).all()
-    const softDelete = database.prepare(`UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`)
     const promoRe = /^(?:bludv(?:\.tv)?|comandotorrents(?:\.com)?|lapumia|torrentdosfilmes(?:\.to)?|lucas\s*firmo\s*uploader)(?:\.[a-z0-9]{2,4})?$/i
+    const adClipRe = /(?:^|[\W_])(1xbet|dinheiro[_ ]livre)(?:[\W_]|$)/i
     for (const row of promoRows) {
       const basename = path.basename(String(row.relativePath || ''))
       const stem = path.basename(basename, path.extname(basename))
-      if (promoRe.test(basename) || promoRe.test(stem) || promoRe.test(String(row.title || '').trim())) {
+      if (promoRe.test(basename) || promoRe.test(stem) || promoRe.test(String(row.title || '').trim()) || adClipRe.test(basename)) {
         softDelete.run(row.id)
+      }
+    }
+
+    // Auto-approve real movies that were falsely flagged as promotional solely due to release group tags
+    database.prepare(`
+      UPDATE media_items
+      SET kind = 'movie', classification_status = 'approved', classification_reason = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE deleted_at IS NULL
+        AND classification_status = 'review'
+        AND classification_reason = 'promotional'
+        AND lower(relative_path) NOT LIKE '%1xbet%'
+        AND lower(relative_path) NOT LIKE '%promo%'
+        AND lower(relative_path) NOT LIKE '%trailer%'
+    `).run()
+
+    // Ensure Corra! has Terror genre
+    database.prepare(`
+      UPDATE media_items
+      SET genres_json = '["Terror","Suspense"]'
+      WHERE deleted_at IS NULL AND lower(title) = 'corra!' AND (genres_json IS NULL OR genres_json = '[]' OR genres_json NOT LIKE '%Terror%')
+    `).run()
+
+    const upsertSeason = database.prepare(`
+      INSERT INTO seasons (id, show_id, season_number)
+      VALUES (?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `)
+    const upsertEpisode = database.prepare(`
+      INSERT INTO episodes (id, season_id, media_item_id, episode_number, title)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `)
+    const markEpisode = database.prepare(`UPDATE media_items SET kind = 'episode', classification_status = 'auto', classification_reason = NULL WHERE id = ?`)
+
+    // Group "A Energia do Homem" (course modules) as a structured series so user doesn't review 21 lessons one-by-one
+    const energiaRows = database.prepare(`
+      SELECT id, title, relative_path AS relativePath
+      FROM media_items
+      WHERE deleted_at IS NULL
+        AND lower(relative_path) LIKE '%a energia do homem%'
+        AND kind != 'episode'
+    `).all()
+    if (energiaRows.length > 0) {
+      const energiaShowId = 'show-a-energia-do-homem'
+      database.prepare(`
+        INSERT INTO shows (id, title, normalized_title, overview, genres_json)
+        VALUES (?, 'A Energia do Homem', 'aenergiadohomem', 'Curso "A Energia do Homem" (Cátia Damasceno) organizado por módulos e aulas.', '["Documentário"]')
+        ON CONFLICT(id) DO NOTHING
+      `).run(energiaShowId)
+      for (const row of energiaRows) {
+        const modMatch = String(row.relativePath || '').match(/m[oó]dulo\s*(\d{1,2})/i)
+        const base = path.basename(String(row.relativePath || ''), path.extname(String(row.relativePath || '')))
+        const epMatch = base.match(/^(\d{1,3})/)
+        const seasonNumber = modMatch ? Number(modMatch[1]) : 1
+        const episodeNumber = epMatch ? Number(epMatch[1]) : 1
+        const seasonId = `${energiaShowId}-season-${seasonNumber}`
+        upsertSeason.run(seasonId, energiaShowId, seasonNumber)
+        upsertEpisode.run(`${row.id}-episode`, seasonId, row.id, episodeNumber, `Aula ${episodeNumber}`)
+        markEpisode.run(row.id)
       }
     }
 
@@ -2109,17 +2248,6 @@ function reconcileMisclassifiedEpisodes() {
         AND deleted_at IS NULL
         AND lower(relative_path) LIKE '%south park%'
     `).all()
-    const upsertSeason = database.prepare(`
-      INSERT INTO seasons (id, show_id, season_number)
-      VALUES (?, ?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `)
-    const upsertEpisode = database.prepare(`
-      INSERT INTO episodes (id, season_id, media_item_id, episode_number, title)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `)
-    const markEpisode = database.prepare(`UPDATE media_items SET kind = 'episode' WHERE id = ?`)
     // Prune orphan show rows that have zero episodes
     database.prepare(`
       DELETE FROM artwork_candidates

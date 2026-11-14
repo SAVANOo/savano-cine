@@ -65,10 +65,14 @@ export function ProfileModal({ open, profile, onClose, onSaved }: ProfileModalPr
       <form className="flex flex-col gap-6" onSubmit={submit}>
         <div className="flex flex-wrap items-center gap-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4">
           <span
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[var(--sc-radius-md)] text-2xl font-black text-white shadow-lg"
+            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[var(--sc-radius-md)] text-2xl font-black text-white shadow-lg"
             style={{ background: previewStyle.background }}
           >
-            {previewStyle.badge}
+            {previewStyle.imageUrl ? (
+              <img src={previewStyle.imageUrl} alt={name || 'Avatar'} className="h-full w-full object-cover" />
+            ) : (
+              previewStyle.badge
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <label className="block text-xs font-semibold text-[var(--sc-text-secondary)]">
@@ -112,10 +116,10 @@ export function ProfileModal({ open, profile, onClose, onSaved }: ProfileModalPr
                       }`}
                     >
                       <span
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--sc-radius-sm)] text-base font-bold text-white"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[var(--sc-radius-sm)] text-base font-bold text-white"
                         style={{ background: option.gradient }}
                       >
-                        {option.badge}
+                        <img src={option.imageUrl} alt={option.label} className="h-full w-full object-cover" />
                       </span>
                       <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">
                         {option.label}

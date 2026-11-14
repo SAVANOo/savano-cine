@@ -64,7 +64,10 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onT
 
         {/* Top badges */}
         <div className="pointer-events-none absolute inset-x-2.5 top-2.5 flex items-center justify-between gap-1.5">
-          <Badge tone="dark">{item.kind}</Badge>
+          <div className="flex items-center gap-1">
+            <Badge tone="dark">{item.kind}</Badge>
+            {item.sourceStatus === 'offline' && <Badge tone="accent">Offline</Badge>}
+          </div>
           {hasSubtitles && <Badge tone="dark">CC</Badge>}
         </div>
 

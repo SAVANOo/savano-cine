@@ -32,6 +32,7 @@ export type AvatarOption = {
   label: string
   gradient: string
   badge: string
+  imageUrl: string
 }
 
 export type AvatarGroup = {
@@ -43,45 +44,45 @@ export const PROFILE_AVATAR_GROUPS: AvatarGroup[] = [
   {
     series: 'Os Clássicos',
     options: [
-      { key: 'savino', label: 'Savino', gradient: 'linear-gradient(145deg, #e85a82, #8b4ed1)', badge: 'S' },
-      { key: 'ruby', label: 'Cinema', gradient: 'linear-gradient(145deg, #ef4444, #991b1b)', badge: '▶' },
-      { key: 'amber', label: 'Pipoca', gradient: 'linear-gradient(145deg, #f59e0b, #b45309)', badge: '★' },
-      { key: 'cyan', label: 'Noturno', gradient: 'linear-gradient(145deg, #06b6d4, #1e3a8a)', badge: '☾' },
+      { key: 'savino', label: 'Savino', gradient: 'linear-gradient(145deg, #e85a82, #8b4ed1)', badge: 'S', imageUrl: '/avatars/savino.svg' },
+      { key: 'ruby', label: 'Cinema', gradient: 'linear-gradient(145deg, #ef4444, #991b1b)', badge: '▶', imageUrl: '/avatars/ruby.svg' },
+      { key: 'amber', label: 'Pipoca', gradient: 'linear-gradient(145deg, #f59e0b, #b45309)', badge: '★', imageUrl: '/avatars/amber.svg' },
+      { key: 'cyan', label: 'Noturno', gradient: 'linear-gradient(145deg, #06b6d4, #1e3a8a)', badge: '☾', imageUrl: '/avatars/cyan.svg' },
     ],
   },
   {
     series: 'South Park',
     options: [
-      { key: 'cartman', label: 'Cartman', gradient: 'linear-gradient(145deg, #38bdf8 0 35%, #dc2626 36% 70%, #facc15 71%)', badge: 'C' },
-      { key: 'south-park', label: 'Stan', gradient: 'linear-gradient(145deg, #2563eb 0 38%, #dc2626 39% 65%, #78350f 66%)', badge: 'S' },
-      { key: 'kyle', label: 'Kyle', gradient: 'linear-gradient(145deg, #22c55e 0 40%, #ea580c 41% 100%)', badge: 'K' },
-      { key: 'kenny', label: 'Kenny', gradient: 'linear-gradient(145deg, #f97316, #9a3412)', badge: 'M' },
+      { key: 'cartman', label: 'Cartman', gradient: 'linear-gradient(145deg, #38bdf8 0 35%, #dc2626 36% 70%, #facc15 71%)', badge: 'C', imageUrl: '/avatars/cartman.svg' },
+      { key: 'south-park', label: 'Stan', gradient: 'linear-gradient(145deg, #2563eb 0 38%, #dc2626 39% 65%, #78350f 66%)', badge: 'S', imageUrl: '/avatars/south-park.svg' },
+      { key: 'kyle', label: 'Kyle', gradient: 'linear-gradient(145deg, #22c55e 0 40%, #ea580c 41% 100%)', badge: 'K', imageUrl: '/avatars/kyle.svg' },
+      { key: 'kenny', label: 'Kenny', gradient: 'linear-gradient(145deg, #f97316, #9a3412)', badge: 'M', imageUrl: '/avatars/kenny.svg' },
     ],
   },
   {
     series: 'Ben 10',
     options: [
-      { key: 'ben-10', label: 'Omnitrix', gradient: 'linear-gradient(145deg, #a3e635 0 38%, #18181b 39% 100%)', badge: '10' },
-      { key: 'chama', label: 'Chama', gradient: 'linear-gradient(145deg, #fde047, #dc2626)', badge: '🔥' },
-      { key: 'xlr8', label: 'XLR8', gradient: 'linear-gradient(145deg, #0ea5e9, #0f172a)', badge: '⚡' },
-      { key: 'diamante', label: 'Diamante', gradient: 'linear-gradient(145deg, #2dd4bf, #0f766e)', badge: '◆' },
+      { key: 'ben-10', label: 'Omnitrix', gradient: 'linear-gradient(145deg, #a3e635 0 38%, #18181b 39% 100%)', badge: '10', imageUrl: '/avatars/ben-10.svg' },
+      { key: 'chama', label: 'Chama', gradient: 'linear-gradient(145deg, #fde047, #dc2626)', badge: '🔥', imageUrl: '/avatars/chama.svg' },
+      { key: 'xlr8', label: 'XLR8', gradient: 'linear-gradient(145deg, #0ea5e9, #0f172a)', badge: '⚡', imageUrl: '/avatars/xlr8.svg' },
+      { key: 'diamante', label: 'Diamante', gradient: 'linear-gradient(145deg, #2dd4bf, #0f766e)', badge: '◆', imageUrl: '/avatars/diamante.svg' },
     ],
   },
   {
     series: 'Gravity Falls',
     options: [
-      { key: 'dipper', label: 'Dipper', gradient: 'linear-gradient(145deg, #3b82f6 0 42%, #e2e8f0 43% 100%)', badge: '🌲' },
-      { key: 'mabel', label: 'Mabel', gradient: 'linear-gradient(145deg, #ec4899, #8b5cf6)', badge: '★' },
-      { key: 'bill', label: 'Bill', gradient: 'linear-gradient(145deg, #facc15, #ca8a04)', badge: '▲' },
-      { key: 'soos', label: 'Soos', gradient: 'linear-gradient(145deg, #84cc16, #3f6212)', badge: '?' },
+      { key: 'dipper', label: 'Dipper', gradient: 'linear-gradient(145deg, #3b82f6 0 42%, #e2e8f0 43% 100%)', badge: '🌲', imageUrl: '/avatars/dipper.svg' },
+      { key: 'mabel', label: 'Mabel', gradient: 'linear-gradient(145deg, #ec4899, #8b5cf6)', badge: '★', imageUrl: '/avatars/mabel.svg' },
+      { key: 'bill', label: 'Bill', gradient: 'linear-gradient(145deg, #facc15, #ca8a04)', badge: '▲', imageUrl: '/avatars/bill.svg' },
+      { key: 'soos', label: 'Soos', gradient: 'linear-gradient(145deg, #84cc16, #3f6212)', badge: '?', imageUrl: '/avatars/soos.svg' },
     ],
   },
 ]
 
-export function getAvatarStyle(avatarKey: string): { background: string; badge: string } {
+export function getAvatarStyle(avatarKey: string): { background: string; badge: string; imageUrl?: string } {
   for (const group of PROFILE_AVATAR_GROUPS) {
     const found = group.options.find((opt) => opt.key === avatarKey)
-    if (found) return { background: found.gradient, badge: found.badge }
+    if (found) return { background: found.gradient, badge: found.badge, imageUrl: found.imageUrl }
   }
   return { background: 'linear-gradient(145deg, #e85a82, #8b4ed1)', badge: avatarKey.slice(0, 1).toUpperCase() || 'S' }
 }
@@ -91,6 +92,7 @@ export type PlayableMedia = {
   url: string
   subtitleUrl?: string
   mediaId?: string
+  needsTranscode?: boolean
   overview?: string
   year?: number
   startPosition?: number
@@ -114,6 +116,7 @@ export function findNextEpisode(item: LibraryItem, currentMediaId?: string): Pla
     url: next.ep.mediaUrl!,
     subtitleUrl: next.ep.subtitleUrl,
     mediaId: next.ep.mediaId,
+    needsTranscode: next.ep.needsTranscode,
     overview: item.overview,
     year: item.year,
     startPosition: 0,
@@ -132,6 +135,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
       url: item.resume.mediaUrl,
       subtitleUrl: item.resume.subtitleUrl ?? item.subtitleUrl,
       mediaId: item.resume.mediaId ?? item.mediaId,
+      needsTranscode: item.resume.needsTranscode ?? item.needsTranscode,
       overview: item.overview,
       year: item.year,
       startPosition: restart ? 0 : item.resume.position,
@@ -145,6 +149,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
       url: item.mediaUrl,
       subtitleUrl: item.subtitleUrl,
       mediaId: item.mediaId,
+      needsTranscode: item.needsTranscode,
       overview: item.overview,
       year: item.year,
       startPosition: restart ? 0 : undefined,
@@ -159,6 +164,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
         url: first.mediaUrl,
         subtitleUrl: first.subtitleUrl,
         mediaId: first.mediaId,
+        needsTranscode: first.needsTranscode,
         overview: item.overview,
         year: item.year,
         startPosition: restart ? 0 : undefined,

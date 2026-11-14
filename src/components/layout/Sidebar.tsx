@@ -119,10 +119,14 @@ export function Sidebar({
           className="flex w-full items-center gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-2.5 text-left transition hover:border-white/25 cursor-pointer"
         >
           <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--sc-radius-sm)] text-sm font-bold text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[var(--sc-radius-sm)] text-sm font-bold text-white"
             style={{ background: activeStyle.background }}
           >
-            {activeStyle.badge}
+            {activeStyle.imageUrl ? (
+              <img src={activeStyle.imageUrl} alt={activeProfile.name} className="h-full w-full object-cover" />
+            ) : (
+              activeStyle.badge
+            )}
           </span>
           <span className="min-w-0 flex-1">
             <strong className="block truncate text-sm font-semibold text-white">
@@ -158,10 +162,14 @@ export function Sidebar({
                     }`}
                   >
                     <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[11px] font-bold text-white"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-bold text-white"
                       style={{ background: style.background }}
                     >
-                      {style.badge}
+                      {style.imageUrl ? (
+                        <img src={style.imageUrl} alt={profile.name} className="h-full w-full object-cover" />
+                      ) : (
+                        style.badge
+                      )}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{profile.name}</span>
                     {selected && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />}

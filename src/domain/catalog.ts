@@ -42,6 +42,9 @@ export type Episode = {
   mediaUrl?: string
   subtitleUrl?: string
   mediaId?: string
+  needsTranscode?: boolean
+  sourceName?: string
+  sourceStatus?: 'online' | 'offline'
 }
 
 export type ResumeInfo = {
@@ -56,6 +59,7 @@ export type ResumeInfo = {
   mediaId: string
   mediaUrl: string
   subtitleUrl?: string
+  needsTranscode?: boolean
 }
 
 export type Season = {
@@ -71,6 +75,7 @@ export type MediaVersion = {
   subtitleUrl?: string
   meta: string
   detail: string
+  needsTranscode?: boolean
 }
 
 export type LibraryItem = {
@@ -83,6 +88,9 @@ export type LibraryItem = {
   overview?: string
   genres?: string[]
   posterClass: string
+  sourceName?: string
+  sourceStatus?: 'online' | 'offline'
+  needsTranscode?: boolean
   artwork: Artwork
   tags?: string[]
   rating?: Rating
