@@ -22,6 +22,8 @@ function App() {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({ archived: [], titleChanges: [] })
+  const [catalogRefresh, setCatalogRefresh] = useState<CatalogRefreshStatus>({ state: 'idle', sourceIds: [], results: [] })
+  const lastRefreshState = useRef(catalogRefresh.state)
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -56,6 +58,13 @@ function App() {
       .catch(() => undefined)
   }, [activeProfileId])
 
+  const updateCatalog = useCallback(() => {
+    fetch('/api/catalog/refresh', { method: 'POST' })
+      .then((response) => response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || 'Não foi possível iniciar a atualização.'))))
+      .then(setCatalogRefresh)
+      .catch((error: Error) => setCatalogRefresh((current) => ({ ...current, state: 'failed', error: error.message })))
+  }, [])
+
   useEffect(() => {
     Promise.all([
       fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`).then((response) => response.ok ? response.json() : Promise.reject(response)),
@@ -69,6 +78,24 @@ function App() {
       console.warn('API local indisponível; usando o catálogo de demonstração.')
     })
   }, [activeProfileId])
+
+  useEffect(() => {
+    const refreshStatus = () => fetch('/api/catalog/refresh/status')
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((status: CatalogRefreshStatus) => {
+        setCatalogRefresh(status)
+        if (status.state === 'succeeded' && lastRefreshState.current !== 'succeeded') {
+          refreshCatalog()
+          fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)).then(setSources).catch(() => undefined)
+          refreshReview()
+        }
+        lastRefreshState.current = status.state
+      })
+      .catch(() => undefined)
+    refreshStatus()
+    const timer = window.setInterval(refreshStatus, 1000)
+    return () => window.clearInterval(timer)
+  }, [refreshCatalog, refreshReview])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -163,7 +190,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} />
         <main className="content">
           <button className="back-button controller-focus" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
@@ -205,7 +232,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -322,6 +349,8 @@ function Sidebar({
   onReview,
   historyCount,
   onHistory,
+  catalogRefresh,
+  onCatalogRefresh,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
@@ -332,6 +361,8 @@ function Sidebar({
   onReview: () => void
   historyCount: number
   onHistory: () => void
+  catalogRefresh: CatalogRefreshStatus
+  onCatalogRefresh: () => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
@@ -370,6 +401,12 @@ function Sidebar({
           ))}
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
+        <button className="settings-button controller-focus" type="button" onClick={onCatalogRefresh} disabled={catalogRefresh.state === 'running'}>
+          ⚙ Atualizar catálogo
+        </button>
+        <small className="catalog-refresh-status" role="status">
+          {catalogRefresh.state === 'running' ? 'Atualização em andamento…' : catalogRefresh.state === 'succeeded' ? 'Catálogo atualizado.' : catalogRefresh.state === 'failed' ? `Falha: ${catalogRefresh.error}` : 'Configurações e catálogo'}
+        </small>
         <button className="settings-button controller-focus" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
         <button className="settings-button controller-focus" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
       </div>
@@ -389,6 +426,15 @@ function Sidebar({
     )}
     </>
   )
+}
+
+type CatalogRefreshStatus = {
+  state: 'idle' | 'running' | 'succeeded' | 'failed'
+  startedAt?: string | null
+  finishedAt?: string | null
+  sourceIds: string[]
+  results: Array<{ sourceId: string; status: string; message: string }>
+  error?: string | null
 }
 
 type CatalogHistory = {

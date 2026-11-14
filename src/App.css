@@ -411,6 +411,19 @@ textarea:focus-visible,
   cursor: pointer;
 }
 
+.settings-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.catalog-refresh-status {
+  display: block;
+  margin: -8px 0 4px 10px;
+  color: #777b8d;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .review-backdrop {
   position: fixed;
   inset: 0;

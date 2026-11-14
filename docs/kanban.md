@@ -17,6 +17,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; backdrops TMDB opcionais por correspondência exata, com fallback para poster |
 | Média | Histórico e restauração de alterações | Tela operacional lista arquivados e títulos alterados; restauração lógica validada por API |
 | Alta | Diagnóstico operacional | `npm run doctor` verifica SQLite, fontes, catálogo, artes, legendas e runtimes sem alterar dados |
+| Alta | Atualização segura do catálogo pela interface | Sidebar dispara o importador existente por fonte, com status e bloqueio de concorrência; sem operações físicas |
 
 ## Próximo ciclo
 
@@ -55,6 +56,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Lint e build executados após as últimas alterações.
 - Diagnóstico operacional em português com códigos de saída `0` (OK), `1` (avisos) e `2` (falha bloqueante),
   sem exposição de segredos e sem escrita no catálogo ou no acervo.
+- Atualização controlada do catálogo pela sidebar, reutilizando o importador somente leitura,
+  com status via API e bloqueio de execuções concorrentes.
 
 ## Regras do quadro
 

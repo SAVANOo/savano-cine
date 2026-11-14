@@ -64,6 +64,14 @@ npm run import -- "E:\\Filmes"
 npm run api
 ```
 
+Enquanto a API estiver ativa, a sidebar oferece **Atualizar catálogo**. A ação reutiliza o
+importador existente em modo somente leitura do acervo: percorre cada fonte online
+sequencialmente, preserva caminhos e não move, renomeia ou apaga arquivos físicos. O endpoint
+`POST /api/catalog/refresh` retorna `202` e bloqueia uma segunda execução enquanto a primeira
+está em andamento; `GET /api/catalog/refresh/status` informa estado, fontes, resultado e erro
+sem expor caminhos adicionais. Se a API estiver indisponível, a interface mantém o catálogo
+de demonstração/fallback já carregado e não tenta alterar arquivos.
+
 O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.
 
 `npm run doctor` executa um diagnóstico operacional somente leitura em português. Ele verifica o

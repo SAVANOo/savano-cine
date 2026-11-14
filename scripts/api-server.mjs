@@ -20,6 +20,15 @@ if (!existsSync(databasePath)) {
 const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
+const catalogRefresh = {
+  state: 'idle',
+  startedAt: null,
+  finishedAt: null,
+  sourceIds: [],
+  results: [],
+  error: null,
+  process: null,
+}
 
 createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host}`)
@@ -60,6 +69,34 @@ createServer(async (request, response) => {
     `).all()
 
     return send(response, 200, sources)
+  }
+
+  if (requestUrl.pathname === '/api/catalog/refresh/status' && request.method === 'GET') {
+    return send(response, 200, refreshStatus())
+  }
+
+  if (requestUrl.pathname === '/api/catalog/refresh' && request.method === 'POST') {
+    if (catalogRefresh.state === 'running') {
+      return send(response, 409, { error: 'Uma atualização do catálogo já está em andamento.', ...refreshStatus() })
+    }
+
+    refreshSourceStatuses()
+    const requestedSourceId = requestUrl.searchParams.get('sourceId')
+    const sources = database.prepare(`
+      SELECT id, root_path AS rootPath, status
+      FROM media_sources
+      WHERE status = 'online' AND (? IS NULL OR id = ?)
+      ORDER BY id
+    `).all(requestedSourceId, requestedSourceId)
+    if (requestedSourceId && sources.length === 0) {
+      return send(response, 404, { error: 'Fonte online não encontrada.' })
+    }
+    if (sources.length === 0) {
+      return send(response, 409, { error: 'Nenhuma fonte online disponível para atualizar.' })
+    }
+
+    startCatalogRefresh(sources)
+    return send(response, 202, refreshStatus())
   }
 
   if (requestUrl.pathname === '/api/progress' && request.method === 'GET') {
@@ -338,6 +375,7 @@ function refreshSourceStatuses() {
       ...source,
       root_relative_path: source.root_relative_path || getRootRelativePath(source.root_path),
     }
+
     const mounted = findMountedSource(sourceWithRelativePath)
     if (mounted && existsSync(mounted.rootPath)) {
       const label = mounted.volumeLabel || source.volume_label || path.basename(mounted.rootPath)
@@ -382,6 +420,69 @@ function refreshSourceStatuses() {
       )
     }
   }
+
+}
+
+function refreshStatus() {
+  const { process: _process, ...status } = catalogRefresh
+  return status
+}
+
+function startCatalogRefresh(sources) {
+  catalogRefresh.state = 'running'
+  catalogRefresh.startedAt = new Date().toISOString()
+  catalogRefresh.finishedAt = null
+  catalogRefresh.sourceIds = sources.map((source) => source.id)
+  catalogRefresh.results = []
+  catalogRefresh.error = null
+  void runCatalogRefresh(sources)
+}
+
+async function runCatalogRefresh(sources) {
+  try {
+    for (const source of sources) {
+      const result = await runImporter(source)
+      catalogRefresh.results.push(result)
+    }
+    catalogRefresh.state = 'succeeded'
+  } catch (error) {
+    catalogRefresh.state = 'failed'
+    catalogRefresh.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    catalogRefresh.finishedAt = new Date().toISOString()
+    catalogRefresh.process = null
+  }
+}
+
+function runImporter(source) {
+  return new Promise((resolve, reject) => {
+    const importer = spawn(process.execPath, [
+      path.resolve(root, 'import-catalog.mjs'),
+      source.rootPath,
+    ], {
+      cwd: path.resolve(root, '..'),
+      windowsHide: true,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    catalogRefresh.process = importer
+    let stdout = ''
+    let stderr = ''
+    importer.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+    importer.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    importer.once('error', (error) => reject(error))
+    importer.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Importador terminou com código ${code}.`))
+        return
+      }
+      resolve({
+        sourceId: source.id,
+        status: 'succeeded',
+        message: stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'Fonte atualizada.',
+      })
+    })
+  })
 }
 
 function ensureColumn(table, column, definition) {
