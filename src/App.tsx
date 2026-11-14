@@ -37,6 +37,8 @@ function readCachedCatalog(profileId: string): LibraryItem[] | null {
   }
 }
 
+const TODAY_KEY = new Date().toISOString().slice(0, 10)
+
 function getInitialDeepLinkId(): string | null {
   const match = window.location.pathname.match(/^\/(?:series|movies)\/([^/]+)/)
   return match ? decodeURIComponent(match[1]) : null
@@ -341,10 +343,63 @@ export function App() {
   const isFilteredView =
     activeKind !== 'Todos' || activeGenre !== 'Todos' || sortOrder !== 'default' || unwatchedOnly || query.trim().length > 0
 
+  const dailySeed = useMemo(() => {
+    const raw = `${activeProfileId}:${TODAY_KEY}`
+    let hash = 2166136261
+    for (let i = 0; i < raw.length; i += 1) {
+      hash ^= raw.charCodeAt(i)
+      hash = Math.imul(hash, 16777619)
+    }
+    return hash >>> 0
+  }, [activeProfileId])
+
+  const recommendedItems = useMemo(() => {
+    const preferredGenres = new Map<string, number>()
+    for (const item of catalog) {
+      const weight =
+        (item.inWatchlist ? 3 : 0) +
+        ((item.progress ?? 0) > 0 ? 2 : 0) +
+        ((item.rating?.score ?? 0) >= 4 ? 3 : 0)
+      if (weight <= 0) continue
+      for (const genre of item.genres ?? []) {
+        const key = genre.toLowerCase()
+        preferredGenres.set(key, (preferredGenres.get(key) ?? 0) + weight)
+      }
+    }
+
+    const hashId = (id: string) => {
+      let h = dailySeed
+      for (let i = 0; i < id.length; i += 1) {
+        h ^= id.charCodeAt(i)
+        h = Math.imul(h, 16777619)
+      }
+      return (h >>> 0) % 1000
+    }
+
+    return [...catalog]
+      .filter((item) => (item.progress ?? 0) < 90)
+      .map((item) => {
+        const genreScore = (item.genres ?? []).reduce(
+          (acc, g) => acc + (preferredGenres.get(g.toLowerCase()) ?? 0),
+          0,
+        )
+        const artBonus = item.artwork.posterUrl || item.artwork.bannerUrl ? 2 : 0
+        const jitter = hashId(item.id) / 1000
+        return { item, score: genreScore + artBonus + jitter }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 18)
+      .map((entry) => entry.item)
+  }, [catalog, dailySeed])
+
   const heroItems = useMemo(() => {
     const withArt = catalog.filter((item) => item.artwork.bannerUrl || item.artwork.posterUrl)
-    return (withArt.length > 0 ? withArt : catalog).slice(0, 6)
-  }, [catalog])
+    const pool = withArt.length > 0 ? withArt : catalog
+    if (pool.length <= 6) return pool
+    const offset = dailySeed % pool.length
+    const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
+    return rotated.slice(0, 6)
+  }, [catalog, dailySeed])
 
   const continueWatching = useMemo(
     () => catalog.filter((item) => Boolean(item.resume) || (item.progress ?? 0) > 0),
@@ -591,7 +646,8 @@ export function App() {
 
             <MediaCarousel
               title="Recomendados para você"
-              items={catalog.slice(0, 18)}
+              subtitle="Baseado no seu perfil e rotacionado diariamente"
+              items={recommendedItems}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
               onToggleWatchlist={(target) => void toggleWatchlist(target)}

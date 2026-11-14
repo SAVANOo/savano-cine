@@ -86,6 +86,14 @@ for (const show of shows) {
   downloaded += 1
 }
 
+const artworkRows = database.prepare('SELECT id, remote_url FROM artwork').all()
+const deleteBadArtwork = database.prepare('DELETE FROM artwork WHERE id = ?')
+for (const row of artworkRows) {
+  if (row.remote_url && isPlaceholderImage(row.remote_url)) {
+    deleteBadArtwork.run(row.id)
+  }
+}
+
 const movies = database.prepare(`
   SELECT id, title, year, tags_json FROM media_items
   WHERE kind = 'movie'
@@ -117,7 +125,7 @@ let movieMetadataUpdated = 0
 for (const movie of movies) {
   let imdbData = null
   if (!hasLocalArtwork(movie.id, 'poster')) {
-    imdbData = await fetchImdbSuggestion(movie.title)
+    imdbData = await fetchImdbSuggestion(movie.title, movie.year)
     if (imdbData?.posterUrl) {
       updateMovie.run(imdbData.year, null, JSON.stringify([]), movie.id)
       const ok = await downloadMovieArtwork(movie, 'poster', imdbData.posterUrl, 'imdb', imdbData.id)
@@ -365,13 +373,14 @@ function isPlaceholderImage(url) {
     !lower ||
     lower.endsWith('.svg') ||
     lower.includes('nenhuma_imagem') ||
+    lower.includes('image_missing') ||
     lower.includes('no_image') ||
     lower.includes('question_book') ||
     lower.includes('ambox')
   )
 }
 
-async function fetchImdbSuggestion(title) {
+async function fetchImdbSuggestion(title, movieYear = null) {
   const base = title.replace(/\s+/g, ' ').trim()
   const candidates = [base]
   if (base.includes(' - ')) {
@@ -392,8 +401,11 @@ async function fetchImdbSuggestion(title) {
       const payload = await response.json()
       const items = Array.isArray(payload?.d) ? payload.d : []
       const withImage = items.filter((entry) => entry?.i?.imageUrl && !isPlaceholderImage(entry.i.imageUrl))
+      const isMovieLike = (entry) =>
+        entry.q === 'feature' || entry.q === 'video' || entry.q === 'TV movie' || entry.q === 'TV special'
       const best =
-        withImage.find((entry) => entry.q === 'feature' || entry.q === 'TV movie' || entry.q === 'TV special') ??
+        (typeof movieYear === 'number' ? withImage.find((entry) => isMovieLike(entry) && entry.y === movieYear) : null) ??
+        withImage.find(isMovieLike) ??
         withImage[0]
       if (!best?.i?.imageUrl) continue
       const resized = String(best.i.imageUrl).replace(/\._V1_.*\.jpg$/i, '._V1_UX500_.jpg')
