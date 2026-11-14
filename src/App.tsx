@@ -22,6 +22,9 @@ function App() {
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [reviewError, setReviewError] = useState('')
   const [reviewOpen, setReviewOpen] = useState(false)
+  const [artworkReviewOpen, setArtworkReviewOpen] = useState(false)
+  const [artworkCandidates, setArtworkCandidates] = useState<ArtworkCandidateGroup[]>([])
+  const [artworkCandidatesError, setArtworkCandidatesError] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({ archived: [], titleChanges: [] })
   const [catalogRefresh, setCatalogRefresh] = useState<CatalogRefreshStatus>({ state: 'idle', sourceIds: [], results: [] })
@@ -55,10 +58,25 @@ function App() {
       .catch(() => setCatalogHistory({ archived: [], titleChanges: [] }))
   }, [])
 
+  const refreshArtworkCandidates = useCallback(() => {
+    fetch('/api/artwork/candidates')
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => null)
+          throw new Error(body?.error || 'Não foi possível carregar os candidatos de arte.')
+        }
+        return response.json()
+      })
+      .then(setArtworkCandidates)
+      .then(() => setArtworkCandidatesError(''))
+      .catch((error: Error) => setArtworkCandidatesError(error.message))
+  }, [])
+
   useEffect(() => {
     refreshReview()
     refreshHistory()
-  }, [refreshReview, refreshHistory])
+    refreshArtworkCandidates()
+  }, [refreshArtworkCandidates, refreshHistory, refreshReview])
 
   const refreshCatalog = useCallback(() => {
     fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`)
@@ -159,6 +177,11 @@ function App() {
         return
       }
 
+      if (event.key === 'Escape' && artworkReviewOpen) {
+        setArtworkReviewOpen(false)
+        return
+      }
+
       if (event.key === '/' && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT') {
         event.preventDefault()
         document.querySelector<HTMLInputElement>('.search-box input')?.focus()
@@ -167,7 +190,7 @@ function App() {
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [historyOpen, reviewOpen, selectedMedia, selectedShow])
+  }, [artworkReviewOpen, historyOpen, reviewOpen, selectedMedia, selectedShow])
 
   useEffect(() => {
     document.title = selectedMedia
@@ -213,6 +236,26 @@ function App() {
     window.history.pushState({}, '', '/inicio')
   }
 
+  const searchArtworkForItem = async (item: LibraryItem) => {
+    const targetType = item.kind === 'Série' ? 'show' : 'movie'
+    const targetId = item.kind === 'Série' ? item.id : (item.mediaId ?? item.id)
+    setArtworkCandidatesError('')
+    try {
+      const response = await fetch('/api/artwork/candidates/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetType, targetId, query: item.title }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Não foi possível buscar candidatos de arte.')
+      if (Array.isArray(body?.groups)) setArtworkCandidates(body.groups)
+      else refreshArtworkCandidates()
+    } catch (error) {
+      setArtworkCandidatesError(error instanceof Error ? error.message : 'Não foi possível buscar candidatos de arte.')
+    }
+    setArtworkReviewOpen(true)
+  }
+
   useEffect(() => {
     const syncRoute = () => {
       const match = window.location.pathname.match(/^\/(series|filmes)\/(.+)$/)
@@ -230,12 +273,12 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} />
         <main className="content">
           <button className="back-button controller-focus" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
-          <ShowHeader show={selectedShow} profileId={activeProfileId} onPlay={setSelectedMedia} />
+          <ShowHeader key={selectedShow.id} show={selectedShow} profileId={activeProfileId} onPlay={setSelectedMedia} onSearchArtwork={searchArtworkForItem} onCatalogUpdated={refreshCatalog} onArchived={() => { refreshCatalog(); refreshHistory(); closeShow() }} />
           {selectedShow.kind === 'Série' && <section className="episodes-section">
             <div className="season-header">
               <div>
@@ -263,8 +306,9 @@ function App() {
             </div>
           </section>}
         </main>
-        {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
+        {selectedMedia && <VideoPlayer key={selectedMedia.mediaId ?? selectedMedia.url} media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
         {reviewOpen && <ReviewPanel items={reviewItems} error={reviewError} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
+        {artworkReviewOpen && <ArtworkReviewPanel groups={artworkCandidates} error={artworkCandidatesError} onRefresh={() => { refreshArtworkCandidates(); refreshCatalog() }} onClose={() => setArtworkReviewOpen(false)} />}
         {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
       </div>
     )
@@ -272,7 +316,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -347,8 +391,9 @@ function App() {
           )}
         </section>
       </main>
-      {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
+      {selectedMedia && <VideoPlayer key={selectedMedia.mediaId ?? selectedMedia.url} media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
       {reviewOpen && <ReviewPanel items={reviewItems} error={reviewError} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
+      {artworkReviewOpen && <ArtworkReviewPanel groups={artworkCandidates} error={artworkCandidatesError} onRefresh={() => { refreshArtworkCandidates(); refreshCatalog() }} onClose={() => setArtworkReviewOpen(false)} />}
       {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
     </div>
   )
@@ -387,10 +432,13 @@ function Sidebar({
   onProfilesChange,
   reviewCount,
   onReview,
+  artworkCount,
+  onArtworkReview,
   historyCount,
   onHistory,
   catalogRefresh,
   onCatalogRefresh,
+  onSourceAdded,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
@@ -399,14 +447,41 @@ function Sidebar({
   onProfilesChange: (profiles: Profile[]) => void
   reviewCount: number
   onReview: () => void
+  artworkCount: number
+  onArtworkReview: () => void
   historyCount: number
   onHistory: () => void
   catalogRefresh: CatalogRefreshStatus
   onCatalogRefresh: () => void
+  onSourceAdded?: () => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
   const [editingProfile, setEditingProfile] = useState<Profile | null | undefined>(undefined)
+  const [addingSource, setAddingSource] = useState(false)
+  const [sourcePathInput, setSourcePathInput] = useState('')
+  const [sourceNameInput, setSourceNameInput] = useState('')
+  const [sourceError, setSourceError] = useState('')
+
+  const submitNewSource = async (event: FormEvent) => {
+    event.preventDefault()
+    setSourceError('')
+    try {
+      const response = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: sourcePathInput, name: sourceNameInput }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Não foi possível cadastrar a fonte.')
+      setSourcePathInput('')
+      setSourceNameInput('')
+      setAddingSource(false)
+      onSourceAdded?.()
+    } catch (error) {
+      setSourceError(error instanceof Error ? error.message : 'Não foi possível cadastrar a fonte.')
+    }
+  }
 
   return (
     <>
@@ -441,6 +516,17 @@ function Sidebar({
           ))}
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
+        <button className="settings-button controller-focus" type="button" onClick={() => setAddingSource((value) => !value)}>
+          + Adicionar fonte
+        </button>
+        {addingSource && (
+          <form className="source-add-form" onSubmit={submitNewSource}>
+            <input value={sourcePathInput} onChange={(event) => setSourcePathInput(event.target.value)} placeholder="D:\\Filmes ou https://..." aria-label="Caminho ou URL da fonte" required />
+            <input value={sourceNameInput} onChange={(event) => setSourceNameInput(event.target.value)} placeholder="Nome opcional" aria-label="Nome da fonte" />
+            {sourceError && <small className="form-error" role="alert">{sourceError}</small>}
+            <button className="settings-button controller-focus" type="submit">Salvar fonte</button>
+          </form>
+        )}
         <button className="settings-button controller-focus" type="button" onClick={onCatalogRefresh} disabled={catalogRefresh.state === 'running'}>
           ⚙ Atualizar catálogo
         </button>
@@ -448,6 +534,7 @@ function Sidebar({
           {catalogRefresh.state === 'running' ? 'Atualização em andamento…' : catalogRefresh.state === 'succeeded' ? 'Catálogo atualizado.' : catalogRefresh.state === 'failed' ? `Falha: ${catalogRefresh.error}` : 'Configurações e catálogo'}
         </small>
         <button className="settings-button controller-focus" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
+        <button className="settings-button controller-focus" type="button" onClick={onArtworkReview}>🖼 Arte {artworkCount > 0 ? `(${artworkCount})` : ''}</button>
         <button className="settings-button controller-focus" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
       </div>
     </aside>
@@ -475,6 +562,113 @@ type CatalogRefreshStatus = {
   sourceIds: string[]
   results: Array<{ sourceId: string; status: string; message: string }>
   error?: string | null
+}
+
+type ArtworkCandidate = {
+  id: string
+  provider: string
+  providerId: string
+  title: string
+  year?: number
+  overview?: string
+  posterUrl?: string
+  backdropUrl?: string
+  language?: string
+}
+
+type ArtworkCandidateGroup = {
+  targetType: 'movie' | 'show'
+  targetId: string
+  title: string
+  year?: number
+  candidates: ArtworkCandidate[]
+}
+
+function ArtworkReviewPanel({
+  groups,
+  error,
+  onRefresh,
+  onClose,
+}: {
+  groups: ArtworkCandidateGroup[]
+  error: string
+  onRefresh: () => void
+  onClose: () => void
+}) {
+  const [savingId, setSavingId] = useState('')
+  const [actionError, setActionError] = useState('')
+
+  const act = async (candidateId: string, operation: 'approve' | 'reject') => {
+    setSavingId(candidateId)
+    setActionError('')
+    try {
+      const response = await fetch(`/api/artwork/candidates/${encodeURIComponent(candidateId)}/${operation}`, { method: 'POST' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Não foi possível processar o candidato de arte.')
+      }
+      onRefresh()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Não foi possível processar o candidato de arte.')
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  return (
+    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Revisão de correspondências de arte" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="review-heading">
+          <div>
+            <p className="eyebrow">METADADOS E ARTE</p>
+            <h2>Revisão de correspondências</h2>
+          </div>
+          <button className="controller-focus" type="button" autoFocus aria-label="Fechar revisão de arte" onClick={onClose}>×</button>
+        </div>
+        <p className="review-note">
+          Correspondências ambíguas não são aplicadas automaticamente. Confirme o candidato correto antes de salvar a arte e a sinopse no catálogo.
+        </p>
+        {error && <p className="form-error" role="alert">Falha ao carregar candidatos: {error}</p>}
+        {actionError && <p className="form-error" role="alert">{actionError}</p>}
+        {groups.length === 0 && (
+          <p className="empty-state">Nenhuma correspondência ambígua aguardando confirmação. Execute `npm run artwork` para coletar metadados e candidatos.</p>
+        )}
+        <div className="review-list">
+          {groups.map((group) => (
+            <article className="review-item artwork-group" key={`${group.targetType}:${group.targetId}`}>
+              <div>
+                <strong>{group.title} {group.year ? `(${group.year})` : ''}</strong>
+                <small>{group.targetType === 'show' ? 'Série' : 'Filme'} · {group.candidates.length} candidato(s)</small>
+              </div>
+              <div className="artwork-candidates-grid">
+                {group.candidates.map((candidate) => {
+                  const preview = candidate.posterUrl || candidate.backdropUrl
+                  return (
+                    <div className="artwork-candidate-card" key={candidate.id}>
+                      {preview && <img className="artwork-candidate-preview" src={preview} alt={candidate.title} />}
+                      <div className="artwork-candidate-body">
+                        <strong>{candidate.title} {candidate.year ? `(${candidate.year})` : ''}</strong>
+                        <small>{candidate.provider.toUpperCase()}{candidate.language ? ` · ${candidate.language}` : ''}</small>
+                        {candidate.overview && <p>{candidate.overview.slice(0, 180)}{candidate.overview.length > 180 ? '…' : ''}</p>}
+                        <div className="review-actions">
+                          <button type="button" className="controller-focus" disabled={savingId === candidate.id} onClick={() => void act(candidate.id, 'approve')}>
+                            Confirmar e aplicar
+                          </button>
+                          <button type="button" className="controller-focus" disabled={savingId === candidate.id} onClick={() => void act(candidate.id, 'reject')}>
+                            Descartar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 type CatalogHistory = {
@@ -693,7 +887,68 @@ function ProfileEditor({
   )
 }
 
-function ShowHeader({ show, profileId, onPlay }: { show: LibraryItem; profileId: string; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
+function ShowHeader({
+  show,
+  profileId,
+  onPlay,
+  onSearchArtwork,
+  onCatalogUpdated,
+  onArchived,
+}: {
+  show: LibraryItem
+  profileId: string
+  onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void
+  onSearchArtwork?: (show: LibraryItem) => void
+  onCatalogUpdated?: () => void
+  onArchived?: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(show.title)
+  const [draftYear, setDraftYear] = useState(show.year ? String(show.year) : '')
+  const [draftOverview, setDraftOverview] = useState(show.overview ?? '')
+  const [draftTags, setDraftTags] = useState((show.tags ?? []).join(', '))
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
+  const targetId = show.kind === 'Série' ? show.id : (show.mediaId ?? show.id)
+
+  const saveMetadata = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+    setEditError('')
+    try {
+      const response = await fetch(`/api/catalog/${encodeURIComponent(targetId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draftTitle,
+          year: draftYear ? Number(draftYear) : null,
+          overview: draftOverview,
+          tags: draftTags.split(',').map((tag) => tag.trim()).filter(Boolean),
+        }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Não foi possível salvar os metadados.')
+      setEditing(false)
+      onCatalogUpdated?.()
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar os metadados.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const archiveItem = async () => {
+    if (!show.mediaId) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/catalog/${encodeURIComponent(show.mediaId)}/archive`, { method: 'POST' })
+      if (response.ok) onArchived?.()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <section className="show-header">
       <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
@@ -712,7 +967,25 @@ function ShowHeader({ show, profileId, onPlay }: { show: LibraryItem; profileId:
         </div>
         {show.kind === 'Filme' && <p className="subtitle-summary">{show.subtitles?.length ? `Legendas locais: ${show.subtitles.map((subtitle) => subtitle.label).join(', ')}` : 'Sem legenda local cadastrada'}</p>}
         <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
-        {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
+        <div className="detail-actions">
+          {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
+          {onSearchArtwork && <button className="settings-button controller-focus" type="button" onClick={() => onSearchArtwork(show)}>🖼 Buscar arte/metadados</button>}
+          <button className="settings-button controller-focus" type="button" onClick={() => setEditing((value) => !value)}>✎ Editar metadados</button>
+          {show.kind === 'Filme' && show.mediaId && <button className="settings-button controller-focus" type="button" disabled={saving} onClick={() => void archiveItem()}>Arquivar</button>}
+        </div>
+        {editing && (
+          <form className="metadata-edit-form" onSubmit={saveMetadata}>
+            <label>Título<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} required /></label>
+            <label>Ano<input type="number" min="1900" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /></label>
+            {show.kind === 'Filme' && <label>Tags (separadas por vírgula)<input value={draftTags} onChange={(event) => setDraftTags(event.target.value)} /></label>}
+            <label>Sinopse<textarea rows={3} value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} /></label>
+            {editError && <small className="form-error" role="alert">{editError}</small>}
+            <div className="detail-actions">
+              <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar metadados'}</button>
+              <button className="settings-button" type="button" onClick={() => setEditing(false)}>Cancelar</button>
+            </div>
+          </form>
+        )}
       </div>
     </section>
   )
@@ -827,6 +1100,11 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
   const [playbackUrl, setPlaybackUrl] = useState(media.url)
   const [rate, setRate] = useState(1)
   const [volume, setVolume] = useState(1)
+  const [onlineSubtitlesOpen, setOnlineSubtitlesOpen] = useState(false)
+  const [onlineSubtitlesLoading, setOnlineSubtitlesLoading] = useState(false)
+  const [onlineSubtitlesMessage, setOnlineSubtitlesMessage] = useState('')
+  const [onlineSubtitlesResults, setOnlineSubtitlesResults] = useState<Array<{ fileId: number; language: string; release: string; downloads: number; hearingImpaired: boolean }>>([])
+  const [downloadingSubtitleId, setDownloadingSubtitleId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!media.mediaId) return
@@ -867,16 +1145,12 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
   }, [media.subtitleUrl])
 
   useEffect(() => {
-    setStreamInfo(null)
-    setAudioStream('')
-    setSubtitleStream('')
-    setPlaybackUrl(media.url)
     if (!media.mediaId) return
     fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
       .then((response) => response.ok ? response.json() : null)
       .then(setStreamInfo)
       .catch(() => setStreamInfo(null))
-  }, [media.mediaId, media.url])
+  }, [media.mediaId])
 
   const changeAudioStream = (value: string) => {
     setAudioStream(value)
@@ -929,6 +1203,54 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
     void videoRef.current?.requestFullscreen()
   }
 
+  const searchOnlineSubtitles = async () => {
+    if (!media.mediaId) return
+    setOnlineSubtitlesLoading(true)
+    setOnlineSubtitlesMessage('')
+    try {
+      const response = await fetch(`/api/media/${encodeURIComponent(media.mediaId)}/subtitles/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: media.title }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Não foi possível buscar legendas online.')
+      setOnlineSubtitlesResults(Array.isArray(body?.results) ? body.results : [])
+      if (body?.message) setOnlineSubtitlesMessage(body.message)
+      else if (Array.isArray(body?.results) && body.results.length === 0) setOnlineSubtitlesMessage('Nenhuma legenda encontrada no OpenSubtitles.')
+    } catch (error) {
+      setOnlineSubtitlesMessage(error instanceof Error ? error.message : 'Erro ao consultar OpenSubtitles.')
+    } finally {
+      setOnlineSubtitlesLoading(false)
+    }
+  }
+
+  const confirmDownloadSubtitle = async (candidate: { fileId: number; language: string; release: string; hearingImpaired: boolean }) => {
+    if (!media.mediaId) return
+    setDownloadingSubtitleId(candidate.fileId)
+    setOnlineSubtitlesMessage('')
+    try {
+      const response = await fetch(`/api/media/${encodeURIComponent(media.mediaId)}/subtitles/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId: candidate.fileId,
+          language: candidate.language,
+          label: `${candidate.language.toUpperCase()} (${candidate.release.slice(0, 28)})`,
+          hearingImpaired: candidate.hearingImpaired,
+        }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Não foi possível baixar a legenda.')
+      if (Array.isArray(body?.tracks)) setSubtitleTracks(body.tracks)
+      setOnlineSubtitlesMessage('Legenda baixada e registrada com sucesso.')
+    } catch (error) {
+      setOnlineSubtitlesMessage(error instanceof Error ? error.message : 'Erro ao baixar legenda.')
+    } finally {
+      setDownloadingSubtitleId(null)
+    }
+  }
+
   return (
     <div className="player-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="player-modal" role="dialog" aria-modal="true" aria-label={`Reproduzindo ${media.title}`} onMouseDown={(event) => event.stopPropagation()}>
@@ -938,6 +1260,15 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
         </div>
         <video ref={videoRef} className="video-player" src={playbackUrl} controls autoPlay playsInline onLoadedMetadata={restorePosition} onTimeUpdate={saveProgress} onEnded={saveProgress}>
           {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
+          {media.mediaId && streamInfo?.available && capabilities?.ffmpeg && streamInfo.subtitles.map((track) => (
+            <track
+              key={`embedded-${track.index}`}
+              kind="subtitles"
+              srcLang={track.language || 'und'}
+              label={`Embutida · ${track.title || track.language || `Faixa ${track.index + 1}`}`}
+              src={`/api/media/${encodeURIComponent(media.mediaId!)}/subtitles/embedded/${track.index}`}
+            />
+          ))}
         </video>
         <div className="player-controls">
           <button type="button" onClick={() => seek(-10)}>↶ 10s</button>
@@ -958,8 +1289,32 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
             <option value="">Original</option>
             {streamInfo.subtitles.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
           </select></label>}
+          {media.mediaId && <button type="button" onClick={() => { const next = !onlineSubtitlesOpen; setOnlineSubtitlesOpen(next); if (next && onlineSubtitlesResults.length === 0) void searchOnlineSubtitles() }}>Legendas online</button>}
           <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
         </div>
+        {onlineSubtitlesOpen && (
+          <div className="subtitle-search-box">
+            <div className="subtitle-search-header">
+              <strong>OpenSubtitles (com confirmação)</strong>
+              <button type="button" disabled={onlineSubtitlesLoading} onClick={() => void searchOnlineSubtitles()}>
+                {onlineSubtitlesLoading ? 'Buscando…' : 'Buscar novamente'}
+              </button>
+            </div>
+            {onlineSubtitlesMessage && <small>{onlineSubtitlesMessage}</small>}
+            {onlineSubtitlesResults.length > 0 && (
+              <div className="subtitle-search-list">
+                {onlineSubtitlesResults.map((item) => (
+                  <div className="subtitle-search-item" key={item.fileId}>
+                    <span>{item.language.toUpperCase()} · {item.release} ({item.downloads} downloads){item.hearingImpaired ? ' · CC' : ''}</span>
+                    <button type="button" disabled={downloadingSubtitleId === item.fileId} onClick={() => void confirmDownloadSubtitle(item)}>
+                      {downloadingSubtitleId === item.fileId ? 'Baixando…' : 'Baixar legenda'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {streamInfo?.available && <small>
           Faixas internas detectadas: {streamInfo.audio.length} áudio(s) e {streamInfo.subtitles.length} legenda(s).
           A seleção usa transcodificação MP4 quando FFmpeg está disponível.

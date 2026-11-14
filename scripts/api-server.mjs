@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
@@ -6,6 +7,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
+import { getAdapterForSource } from './source-adapters.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -20,6 +22,7 @@ if (!existsSync(databasePath)) {
 const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
+ensureArtworkCandidatesTable()
 refreshSourceStatuses()
 const catalogRefresh = {
   state: 'idle',
@@ -57,6 +60,60 @@ createServer(async (request, response) => {
         { source: runtime.source, reason: runtime.reason },
       ])),
     })
+  }
+
+  if (requestUrl.pathname === '/api/sources' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const rawPath = typeof body.path === 'string' ? body.path.trim() : ''
+    const customName = typeof body.name === 'string' ? body.name.trim() : ''
+    if (!rawPath) {
+      return send(response, 400, { error: 'Informe o caminho da pasta ou a URL do servidor autorizado.' })
+    }
+    const adapter = getAdapterForSource(rawPath)
+    if (adapter.kind === 'self_hosted') {
+      const id = `source-${slugify(customName || rawPath) || Date.now()}`
+      const status = await adapter.checkAvailability({ root_path: rawPath })
+      const name = customName || new URL(rawPath).host
+      database.prepare(`
+        INSERT INTO media_sources (id, name, root_path, removable, status)
+        VALUES (?, ?, ?, 0, ?)
+        ON CONFLICT(root_path) DO UPDATE SET name = excluded.name, status = excluded.status
+      `).run(id, name, rawPath.replace(/\/+$/, ''), status)
+      return send(response, 201, { id, name, path: rawPath.replace(/\/+$/, ''), status, adapter: adapter.kind })
+    }
+
+    const resolvedPath = path.resolve(rawPath)
+    if (!existsSync(resolvedPath) || !statSync(resolvedPath).isDirectory()) {
+      return send(response, 400, { error: 'Pasta local não encontrada ou inacessível.' })
+    }
+    const described = adapter.describeNewSource(resolvedPath, customName)
+    const id = `source-${slugify(described.name) || Date.now()}`
+    database.prepare(`
+      INSERT INTO media_sources (id, name, root_path, root_relative_path, volume_id, volume_label, removable, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(root_path) DO UPDATE SET
+        name = excluded.name,
+        root_relative_path = excluded.root_relative_path,
+        volume_id = excluded.volume_id,
+        volume_label = excluded.volume_label,
+        removable = excluded.removable,
+        status = excluded.status
+    `).run(
+      id,
+      described.name,
+      described.rootPath,
+      described.rootRelativePath,
+      described.volumeId,
+      described.volumeLabel,
+      described.removable,
+      described.status,
+    )
+    return send(response, 201, { id, name: described.name, path: described.rootPath, status: described.status, adapter: adapter.kind })
   }
 
   if (requestUrl.pathname === '/api/sources') {
@@ -319,6 +376,50 @@ createServer(async (request, response) => {
     return send(response, 200, { status: 'archived' })
   }
 
+  const editCatalogMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)$/)
+  if (editCatalogMatch && request.method === 'PATCH') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const targetId = decodeURIComponent(editCatalogMatch[1])
+    const movie = database.prepare('SELECT id, title, year, overview, tags_json FROM media_items WHERE id = ? AND deleted_at IS NULL').get(targetId)
+    if (movie) {
+      const nextTitle = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : movie.title
+      const nextYear = body.year === null || body.year === '' ? null : Number.isInteger(Number(body.year)) ? Number(body.year) : movie.year
+      const nextOverview = typeof body.overview === 'string' ? body.overview.trim() : movie.overview
+      const nextTags = Array.isArray(body.tags)
+        ? JSON.stringify(body.tags.filter((tag) => typeof tag === 'string' && tag.trim()).map((tag) => tag.trim()))
+        : movie.tags_json
+
+      if (nextTitle !== movie.title) {
+        database.prepare(`
+          INSERT INTO media_item_title_history (id, media_item_id, old_title, new_title, reason)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(`title-edit-${movie.id}-${Date.now()}`, movie.id, movie.title, nextTitle, 'edição manual na interface')
+      }
+      database.prepare(`
+        UPDATE media_items
+        SET title = ?, year = ?, overview = ?, tags_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(nextTitle, nextYear, nextOverview || null, nextTags, movie.id)
+      return send(response, 200, { status: 'updated', id: movie.id, title: nextTitle })
+    }
+
+    const show = database.prepare('SELECT id, title, year, overview FROM shows WHERE id = ?').get(targetId)
+    if (show) {
+      const nextTitle = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : show.title
+      const nextYear = body.year === null || body.year === '' ? null : Number.isInteger(Number(body.year)) ? Number(body.year) : show.year
+      const nextOverview = typeof body.overview === 'string' ? body.overview.trim() : show.overview
+      database.prepare('UPDATE shows SET title = ?, year = ?, overview = ? WHERE id = ?').run(nextTitle, nextYear, nextOverview || null, show.id)
+      return send(response, 200, { status: 'updated', id: show.id, title: nextTitle })
+    }
+
+    return send(response, 404, { error: 'Item do catálogo não encontrado.' })
+  }
+
   const mediaMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)$/)
   if (mediaMatch) {
     return streamMedia(mediaMatch[1], request, response)
@@ -335,8 +436,35 @@ createServer(async (request, response) => {
   }
 
   const subtitleListMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles$/)
-  if (subtitleListMatch) {
+  if (subtitleListMatch && request.method === 'GET') {
     return send(response, 200, findSubtitleTracks(subtitleListMatch[1]))
+  }
+
+  const embeddedSubtitleMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles\/embedded\/(\d+)$/)
+  if (embeddedSubtitleMatch && request.method === 'GET') {
+    return streamEmbeddedSubtitle(embeddedSubtitleMatch[1], Number(embeddedSubtitleMatch[2]), request, response)
+  }
+
+  const subtitleSearchMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles\/search$/)
+  if (subtitleSearchMatch && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    return searchOpenSubtitles(subtitleSearchMatch[1], body, response)
+  }
+
+  const subtitleDownloadMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/subtitles\/download$/)
+  if (subtitleDownloadMatch && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    return downloadOpenSubtitle(subtitleDownloadMatch[1], body, response)
   }
 
   const subtitleMatch = requestUrl.pathname.match(/^\/api\/subtitle\/([^/]+)$/)
@@ -352,6 +480,42 @@ createServer(async (request, response) => {
   const movieArtworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/movie\/([^/]+)\/(poster|banner)$/)
   if (movieArtworkMatch) {
     return streamArtwork('movie', movieArtworkMatch[1], movieArtworkMatch[2], response)
+  }
+
+  if (requestUrl.pathname === '/api/artwork/candidates' && request.method === 'GET') {
+    return send(response, 200, listPendingArtworkCandidates())
+  }
+
+  if (requestUrl.pathname === '/api/artwork/candidates/search' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const targetType = body.targetType === 'show' ? 'show' : body.targetType === 'movie' ? 'movie' : ''
+    const targetId = typeof body.targetId === 'string' ? body.targetId : ''
+    const query = typeof body.query === 'string' ? body.query.trim() : ''
+    if (!targetType || !targetId) {
+      return send(response, 400, { error: 'Alvo inválido para busca de arte.' })
+    }
+    const result = await searchArtworkCandidatesForTarget(targetType, targetId, query)
+    if (result.error) return send(response, result.status || 404, { error: result.error })
+    return send(response, 200, result)
+  }
+
+  const approveCandidateMatch = requestUrl.pathname.match(/^\/api\/artwork\/candidates\/([^/]+)\/approve$/)
+  if (approveCandidateMatch && request.method === 'POST') {
+    const result = await approveArtworkCandidate(decodeURIComponent(approveCandidateMatch[1]))
+    if (result.error) return send(response, result.status || 400, { error: result.error })
+    return send(response, 200, result)
+  }
+
+  const rejectCandidateMatch = requestUrl.pathname.match(/^\/api\/artwork\/candidates\/([^/]+)\/reject$/)
+  if (rejectCandidateMatch && request.method === 'POST') {
+    const result = rejectArtworkCandidate(decodeURIComponent(rejectCandidateMatch[1]))
+    if (result.error) return send(response, result.status || 404, { error: result.error })
+    return send(response, 200, result)
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
@@ -996,6 +1160,213 @@ function srtToVtt(content) {
   return `WEBVTT\n\n${content.replace(/\r?\n/g, '\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`
 }
 
+function resolveMediaFile(mediaId) {
+  const media = database.prepare(`
+    SELECT m.id, m.title, m.relative_path AS relativePath, m.extension, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ? AND m.deleted_at IS NULL
+  `).get(mediaId)
+
+  if (!media) return { error: 'Mídia não encontrada.', status: 404 }
+  const rootPath = path.resolve(media.rootPath)
+  const filePath = path.resolve(rootPath, media.relativePath)
+  if (filePath === rootPath || !filePath.startsWith(`${rootPath}${path.sep}`)) {
+    return { error: 'Caminho de mídia inválido.', status: 400 }
+  }
+  return { media, filePath, rootPath }
+}
+
+function streamEmbeddedSubtitle(mediaId, streamIndex, request, response) {
+  const resolved = resolveMediaFile(mediaId)
+  if (resolved.error) return send(response, resolved.status, { error: resolved.error })
+  if (!Number.isInteger(streamIndex) || streamIndex < 0) {
+    return send(response, 400, { error: 'Índice de faixa de legenda inválido.' })
+  }
+  if (!existsSync(resolved.filePath)) {
+    return send(response, 404, { error: 'Arquivo de mídia indisponível.' })
+  }
+
+  const runtime = detectRuntime('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  if (!runtime.available) {
+    return send(response, 503, { error: 'FFmpeg indisponível para extrair legenda embutida.' })
+  }
+
+  const executable = process.env.CINE_FFMPEG_PATH?.trim() || 'ffmpeg.exe'
+  const child = spawn(executable, [
+    '-v', 'error',
+    '-i', resolved.filePath,
+    '-map', `0:${streamIndex}`,
+    '-f', 'webvtt',
+    'pipe:1',
+  ], { windowsHide: true })
+
+  let sentHeaders = false
+  const killTimer = setTimeout(() => child.kill('SIGKILL'), 20_000)
+  request.on('close', () => {
+    clearTimeout(killTimer)
+    if (!child.killed) child.kill('SIGKILL')
+  })
+
+  child.stdout.on('data', (chunk) => {
+    if (!sentHeaders) {
+      sentHeaders = true
+      response.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8' })
+    }
+    response.write(chunk)
+  })
+
+  child.on('error', () => {
+    clearTimeout(killTimer)
+    if (!sentHeaders) send(response, 500, { error: 'Falha ao executar FFmpeg para legenda embutida.' })
+    else response.end()
+  })
+
+  child.on('close', (code) => {
+    clearTimeout(killTimer)
+    if (!sentHeaders) {
+      if (code !== 0) return send(response, 422, { error: 'Não foi possível extrair esta faixa como legenda de texto.' })
+      response.writeHead(200, { 'Content-Type': 'text/vtt; charset=utf-8' })
+    }
+    response.end()
+  })
+}
+
+async function searchOpenSubtitles(mediaId, body, response) {
+  const resolved = resolveMediaFile(mediaId)
+  if (resolved.error) return send(response, resolved.status, { error: resolved.error })
+
+  const apiKey = process.env.OPENSUBTITLES_API_KEY?.trim()
+  if (!apiKey) {
+    return send(response, 200, {
+      configured: false,
+      provider: 'opensubtitles',
+      results: [],
+      message: 'Configure OPENSUBTITLES_API_KEY para buscar legendas no OpenSubtitles.',
+    })
+  }
+
+  const query = typeof body?.query === 'string' && body.query.trim() ? body.query.trim() : resolved.media.title
+  const languages = typeof body?.language === 'string' && body.language.trim() ? body.language.trim() : 'pt-br,pt,en'
+  const userAgent = process.env.OPENSUBTITLES_USER_AGENT?.trim() || 'SavanoCine v1.0'
+
+  try {
+    const searchUrl = `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(query)}&languages=${encodeURIComponent(languages)}`
+    const apiResponse = await fetch(searchUrl, {
+      headers: {
+        'Api-Key': apiKey,
+        'User-Agent': userAgent,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!apiResponse.ok) {
+      return send(response, 502, { error: `OpenSubtitles respondeu HTTP ${apiResponse.status}.` })
+    }
+    const payload = await apiResponse.json()
+    const items = Array.isArray(payload.data) ? payload.data : []
+    const results = items
+      .map((entry) => {
+        const attrs = entry.attributes || {}
+        const firstFile = Array.isArray(attrs.files) ? attrs.files[0] : null
+        if (!firstFile?.file_id) return null
+        return {
+          fileId: firstFile.file_id,
+          language: attrs.language || 'und',
+          release: attrs.release || firstFile.file_name || query,
+          downloads: Number(attrs.download_count || 0),
+          hearingImpaired: Boolean(attrs.hearing_impaired),
+        }
+      })
+      .filter(Boolean)
+      .slice(0, 12)
+
+    return send(response, 200, {
+      configured: true,
+      provider: 'opensubtitles',
+      results,
+    })
+  } catch {
+    return send(response, 502, { error: 'Não foi possível consultar o OpenSubtitles.' })
+  }
+}
+
+async function downloadOpenSubtitle(mediaId, body, response) {
+  const resolved = resolveMediaFile(mediaId)
+  if (resolved.error) return send(response, resolved.status, { error: resolved.error })
+
+  const apiKey = process.env.OPENSUBTITLES_API_KEY?.trim()
+  if (!apiKey) {
+    return send(response, 400, { error: 'OPENSUBTITLES_API_KEY não configurada.' })
+  }
+
+  const fileId = Number(body?.fileId)
+  const language = typeof body?.language === 'string' && /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(body.language.trim())
+    ? body.language.trim().toLowerCase()
+    : 'und'
+  const hearingImpaired = body?.hearingImpaired ? 1 : 0
+  if (!Number.isInteger(fileId) || fileId <= 0) {
+    return send(response, 400, { error: 'Identificador de legenda inválido.' })
+  }
+
+  const userAgent = process.env.OPENSUBTITLES_USER_AGENT?.trim() || 'SavanoCine v1.0'
+  try {
+    const linkRes = await fetch('https://api.opensubtitles.com/api/v1/download', {
+      method: 'POST',
+      headers: {
+        'Api-Key': apiKey,
+        'User-Agent': userAgent,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ file_id: fileId }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!linkRes.ok) {
+      return send(response, 502, { error: `Falha ao solicitar download no OpenSubtitles (HTTP ${linkRes.status}).` })
+    }
+    const linkData = await linkRes.json()
+    if (!linkData?.link || !/^https?:\/\//i.test(linkData.link)) {
+      return send(response, 502, { error: 'Link de download inválido retornado pelo OpenSubtitles.' })
+    }
+
+    const fileRes = await fetch(linkData.link, { signal: AbortSignal.timeout(10_000) })
+    if (!fileRes.ok) {
+      return send(response, 502, { error: 'Não foi possível baixar o arquivo de legenda.' })
+    }
+    const content = await fileRes.text()
+
+    const directory = path.dirname(resolved.filePath)
+    const videoStem = path.basename(resolved.filePath, path.extname(resolved.filePath))
+    const subtitleFilename = `${videoStem}.${language}.srt`
+    const subtitlePath = path.resolve(directory, subtitleFilename)
+    if (!subtitlePath.startsWith(`${directory}${path.sep}`)) {
+      return send(response, 400, { error: 'Destino de legenda inválido.' })
+    }
+    await writeFile(subtitlePath, content, 'utf8')
+
+    const trackId = `sub-${mediaId}-${subtitleFilename}`
+    const label = typeof body?.label === 'string' && body.label.trim() ? body.label.trim() : `${language.toUpperCase()} (OpenSubtitles)`
+    database.prepare(`
+      INSERT INTO subtitle_tracks (id, media_item_id, language, label, provider, remote_id, relative_path, embedded, hearing_impaired)
+      VALUES (?, ?, ?, ?, 'opensubtitles', ?, ?, 0, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        language = excluded.language,
+        label = excluded.label,
+        provider = excluded.provider,
+        remote_id = excluded.remote_id,
+        hearing_impaired = excluded.hearing_impaired
+    `).run(trackId, mediaId, language, label, String(fileId), subtitleFilename, hearingImpaired)
+
+    return send(response, 200, {
+      status: 'downloaded',
+      tracks: findSubtitleTracks(mediaId),
+    })
+  } catch {
+    return send(response, 502, { error: 'Erro ao baixar legenda do OpenSubtitles.' })
+  }
+}
+
 function streamMedia(mediaId, request, response) {
   const media = database.prepare(`
     SELECT m.relative_path AS relativePath, m.extension, s.root_path AS rootPath
@@ -1076,4 +1447,268 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
+}
+
+function ensureArtworkCandidatesTable() {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS artwork_candidates (
+      id TEXT PRIMARY KEY,
+      movie_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
+      show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      year INTEGER,
+      overview TEXT,
+      poster_url TEXT,
+      backdrop_url TEXT,
+      language TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CHECK ((movie_id IS NULL) != (show_id IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_artwork_candidates_status ON artwork_candidates(status);
+  `)
+}
+
+function listPendingArtworkCandidates() {
+  const rows = database.prepare(`
+    SELECT c.id, c.movie_id AS movieId, c.show_id AS showId, c.provider, c.provider_id AS providerId,
+      c.title, c.year, c.overview, c.poster_url AS posterUrl, c.backdrop_url AS backdropUrl, c.language,
+      COALESCE(m.title, s.title) AS targetTitle,
+      COALESCE(m.year, s.year) AS targetYear
+    FROM artwork_candidates c
+    LEFT JOIN media_items m ON m.id = c.movie_id AND m.deleted_at IS NULL
+    LEFT JOIN shows s ON s.id = c.show_id
+    WHERE c.status = 'pending'
+      AND (c.movie_id IS NULL OR m.id IS NOT NULL)
+      AND (c.show_id IS NULL OR s.id IS NOT NULL)
+    ORDER BY targetTitle, c.created_at DESC
+    LIMIT 300
+  `).all()
+
+  const groups = new Map()
+  for (const row of rows) {
+    const targetType = row.movieId ? 'movie' : 'show'
+    const targetId = row.movieId || row.showId
+    const key = `${targetType}:${targetId}`
+    if (!groups.has(key)) {
+      groups.set(key, {
+        targetType,
+        targetId,
+        title: row.targetTitle,
+        year: row.targetYear || undefined,
+        candidates: [],
+      })
+    }
+    groups.get(key).candidates.push({
+      id: row.id,
+      provider: row.provider,
+      providerId: row.providerId,
+      title: row.title,
+      year: row.year || undefined,
+      overview: row.overview || undefined,
+      posterUrl: row.posterUrl || undefined,
+      backdropUrl: row.backdropUrl || undefined,
+      language: row.language || undefined,
+    })
+  }
+  return [...groups.values()]
+}
+
+async function downloadCandidateImage(imageUrl, targetType, targetTitle, artworkType) {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return null
+  const response = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) })
+  if (!response.ok) return null
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.startsWith('image/')) return null
+  const extension = contentType.includes('png') ? 'png' : 'jpg'
+  const folder = targetType === 'show' ? 'shows' : 'movies'
+  const directory = path.resolve(root, '..', 'data', 'artwork', folder)
+  await mkdir(directory, { recursive: true })
+  const filename = `${slugify(targetTitle) || targetType}-${artworkType}.${extension}`
+  const relativePath = path.join('data', 'artwork', folder, filename)
+  await writeFile(path.resolve(root, '..', relativePath), Buffer.from(await response.arrayBuffer()))
+  return relativePath
+}
+
+async function approveArtworkCandidate(candidateId) {
+  const candidate = database.prepare(`
+    SELECT c.*, COALESCE(m.title, s.title) AS targetTitle
+    FROM artwork_candidates c
+    LEFT JOIN media_items m ON m.id = c.movie_id
+    LEFT JOIN shows s ON s.id = c.show_id
+    WHERE c.id = ?
+  `).get(candidateId)
+
+  if (!candidate || !candidate.targetTitle) {
+    return { status: 404, error: 'Candidato de arte não encontrado.' }
+  }
+
+  const targetType = candidate.movie_id ? 'movie' : 'show'
+  const targetId = candidate.movie_id || candidate.show_id
+
+  if (candidate.poster_url) {
+    const posterPath = await downloadCandidateImage(candidate.poster_url, targetType, candidate.targetTitle, 'poster')
+    if (posterPath) {
+      upsertArtworkRecord(targetType, targetId, 'poster', posterPath, candidate.poster_url, candidate.provider, candidate.provider_id)
+    }
+  }
+  if (candidate.backdrop_url) {
+    const bannerPath = await downloadCandidateImage(candidate.backdrop_url, targetType, candidate.targetTitle, 'banner')
+    if (bannerPath) {
+      upsertArtworkRecord(targetType, targetId, 'banner', bannerPath, candidate.backdrop_url, candidate.provider, candidate.provider_id)
+    }
+  }
+
+  if (targetType === 'movie') {
+    database.prepare(`
+      UPDATE media_items
+      SET year = COALESCE(year, ?),
+          overview = COALESCE(NULLIF(?, ''), overview),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(candidate.year || null, candidate.overview || '', targetId)
+    database.prepare(`UPDATE artwork_candidates SET status = 'rejected' WHERE movie_id = ? AND id != ? AND status = 'pending'`).run(targetId, candidateId)
+  } else {
+    database.prepare(`
+      UPDATE shows
+      SET year = COALESCE(year, ?),
+          overview = COALESCE(NULLIF(?, ''), overview)
+      WHERE id = ?
+    `).run(candidate.year || null, candidate.overview || '', targetId)
+    database.prepare(`UPDATE artwork_candidates SET status = 'rejected' WHERE show_id = ? AND id != ? AND status = 'pending'`).run(targetId, candidateId)
+  }
+
+  database.prepare(`UPDATE artwork_candidates SET status = 'approved' WHERE id = ?`).run(candidateId)
+  return { status: 'approved', id: candidateId }
+}
+
+function upsertArtworkRecord(targetType, targetId, artworkType, localPath, remoteUrl, provider, providerId) {
+  const artId = `art-${targetId}-${artworkType}`
+  const movieId = targetType === 'movie' ? targetId : null
+  const showId = targetType === 'show' ? targetId : null
+  database.prepare(`
+    INSERT INTO artwork (id, movie_id, show_id, local_path, remote_url, provider, provider_id, source, verified, artwork_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'local', 1, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      local_path = excluded.local_path,
+      remote_url = excluded.remote_url,
+      provider = excluded.provider,
+      provider_id = excluded.provider_id,
+      source = excluded.source,
+      verified = excluded.verified,
+      artwork_type = excluded.artwork_type
+  `).run(artId, movieId, showId, localPath, remoteUrl, provider, String(providerId), artworkType)
+}
+
+function rejectArtworkCandidate(candidateId) {
+  const result = database.prepare(`UPDATE artwork_candidates SET status = 'rejected' WHERE id = ?`).run(candidateId)
+  if (!result.changes) return { status: 404, error: 'Candidato de arte não encontrado.' }
+  return { status: 'rejected', id: candidateId }
+}
+
+async function searchArtworkCandidatesForTarget(targetType, targetId, customQuery) {
+  const target = targetType === 'movie'
+    ? database.prepare('SELECT id, title FROM media_items WHERE id = ? AND deleted_at IS NULL').get(targetId)
+    : database.prepare('SELECT id, title FROM shows WHERE id = ?').get(targetId)
+  if (!target) return { status: 404, error: 'Item do catálogo não encontrado.' }
+
+  const query = customQuery || target.title
+  const insert = database.prepare(`
+    INSERT INTO artwork_candidates (
+      id, movie_id, show_id, provider, provider_id, title, year, overview, poster_url, backdrop_url, language, status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      year = COALESCE(excluded.year, artwork_candidates.year),
+      overview = COALESCE(excluded.overview, artwork_candidates.overview),
+      poster_url = COALESCE(excluded.poster_url, artwork_candidates.poster_url),
+      backdrop_url = COALESCE(excluded.backdrop_url, artwork_candidates.backdrop_url),
+      language = COALESCE(excluded.language, artwork_candidates.language),
+      status = 'pending'
+  `)
+
+  let added = 0
+  if (targetType === 'show') {
+    const response = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(8000) })
+    if (response.ok) {
+      const results = (await response.json()) || []
+      for (const entry of results.slice(0, 5)) {
+        const show = entry?.show
+        if (!show?.id) continue
+        const posterUrl = show.image?.original || show.image?.medium || null
+        insert.run(
+          `cand-${targetId}-tvmaze-${show.id}`,
+          null,
+          targetId,
+          'tvmaze',
+          String(show.id),
+          show.name || query,
+          show.premiered ? Number(show.premiered.slice(0, 4)) : null,
+          show.summary ? show.summary.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : null,
+          posterUrl,
+          posterUrl,
+          show.language || null,
+        )
+        added += 1
+      }
+    }
+  } else {
+    for (const language of ['pt', 'en']) {
+      const api = `https://${language}.wikipedia.org/w/api.php`
+      const search = await fetch(`${api}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`, { signal: AbortSignal.timeout(8000) })
+      if (!search.ok) continue
+      const pages = (await search.json()).query?.search || []
+      for (const page of pages) {
+        const details = await fetch(`${api}?action=query&prop=extracts|pageimages&piprop=original&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`, { signal: AbortSignal.timeout(8000) })
+        if (!details.ok) continue
+        const pageData = (await details.json()).query?.pages?.[page.pageid]
+        const overview = pageData?.extract?.trim() || null
+        const posterUrl = pageData?.original?.source || null
+        if (!overview && !posterUrl) continue
+        insert.run(
+          `cand-${targetId}-wikipedia-${language}:${page.pageid}`,
+          targetId,
+          null,
+          'wikipedia',
+          `${language}:${page.pageid}`,
+          page.title,
+          null,
+          overview,
+          posterUrl,
+          null,
+          language,
+        )
+        added += 1
+      }
+    }
+    const tmdbApiKey = process.env.TMDB_API_KEY?.trim()
+    if (tmdbApiKey) {
+      const search = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${encodeURIComponent(tmdbApiKey)}&query=${encodeURIComponent(query)}&include_adult=false&language=pt-BR`, { signal: AbortSignal.timeout(8000) })
+      if (search.ok) {
+        const results = (await search.json()).results || []
+        for (const candidate of results.slice(0, 5)) {
+          if (!candidate.id || (!candidate.poster_path && !candidate.backdrop_path && !candidate.overview)) continue
+          insert.run(
+            `cand-${targetId}-tmdb-${candidate.id}`,
+            targetId,
+            null,
+            'tmdb',
+            String(candidate.id),
+            candidate.title || candidate.original_title || query,
+            candidate.release_date ? Number(candidate.release_date.slice(0, 4)) : null,
+            candidate.overview || null,
+            candidate.poster_path ? `https://image.tmdb.org/t/p/w500${candidate.poster_path}` : null,
+            candidate.backdrop_path ? `https://image.tmdb.org/t/p/w1280${candidate.backdrop_path}` : null,
+            'pt-BR',
+          )
+          added += 1
+        }
+      }
+    }
+  }
+
+  return { added, groups: listPendingArtworkCandidates() }
 }

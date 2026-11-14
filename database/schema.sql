@@ -100,6 +100,23 @@ CREATE TABLE IF NOT EXISTS artwork (
   CHECK ((movie_id IS NULL) != (show_id IS NULL))
 );
 
+CREATE TABLE IF NOT EXISTS artwork_candidates (
+  id TEXT PRIMARY KEY,
+  movie_id TEXT REFERENCES media_items(id) ON DELETE CASCADE,
+  show_id TEXT REFERENCES shows(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  year INTEGER,
+  overview TEXT,
+  poster_url TEXT,
+  backdrop_url TEXT,
+  language TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK ((movie_id IS NULL) != (show_id IS NULL))
+);
+
 CREATE TABLE IF NOT EXISTS subtitle_tracks (
   id TEXT PRIMARY KEY,
   media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -151,3 +168,4 @@ CREATE INDEX IF NOT EXISTS idx_media_items_source ON media_items(source_id);
 CREATE INDEX IF NOT EXISTS idx_media_items_kind ON media_items(kind);
 CREATE INDEX IF NOT EXISTS idx_episodes_season ON episodes(season_id);
 CREATE INDEX IF NOT EXISTS idx_sources_status ON media_sources(status);
+CREATE INDEX IF NOT EXISTS idx_artwork_candidates_status ON artwork_candidates(status);
