@@ -8,15 +8,15 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 ## Em andamento
 
-_Nenhuma tarefa bloqueante no momento._
+| Prioridade | Cartão | Próxima verificação |
+| --- | --- | --- |
+| Alta | Player compatível com o acervo | Integrar FFmpeg/VLC para formatos e múltiplas faixas de áudio |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
 | Alta | Arte e metadados de filmes | Buscar poster, banner, ano, sinopse e gêneros com fonte pública configurável, sem alterar o arquivo físico |
-| Alta | Player compatível com o acervo | Detectar formatos não suportados pelo navegador e preparar conversão/transcodificação via FFmpeg/VLC |
-| Alta | Progresso por perfil | Salvar posição, duração e assistido por perfil, com retomada real no botão Continuar |
 | Média | Tela de revisão | Aprovar, corrigir, ignorar ou transformar itens classificados como `review` |
 
 ## Backlog
@@ -45,6 +45,7 @@ _Nenhuma tarefa bloqueante no momento._
 - Títulos exibidos normalizados sem codecs, release tags e distribuidores.
 - Tags iniciais, histórico de títulos e soft delete no banco.
 - Download local de capas de séries sem duplicação por episódio.
+- Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Lint e build executados após as últimas alterações.
 
 ## Regras do quadro
