@@ -88,6 +88,13 @@ A resposta nunca inclui o caminho físico. Sem FFprobe, retorna `available: fals
 listas vazias, mantendo o player web atual funcionando; a interface não promete seleção
 de faixas nesse caso.
 
+`GET /api/media/:mediaId/transcode?format=mp4` prepara um stream MP4 fragmentado sob demanda
+com FFmpeg, usando `spawn` sem shell, `stdout` e nenhum arquivo temporário. O endpoint valida
+o ID, a mídia ativa e o confinamento ao diretório da fonte antes de iniciar o processo. Sem
+FFmpeg, responde `200` com `{ "available": false, "reason": "ffmpeg-not-found" }`; Range não
+é aplicado ao stream transcodificado, mas o streaming progressivo continua disponível. A
+reprodução web existente não é redirecionada automaticamente para evitar regressões.
+
 `npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
 Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
 Wikipedia configurável e recua para português e inglês:

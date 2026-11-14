@@ -10,7 +10,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Player compatível com o acervo | Endpoint seguro de análise FFprobe implementado; ambiente atual sem FFprobe/FFmpeg mantém capacidade indisponível |
+| Alta | Player compatível com o acervo | Endpoint de transcoding MP4 sob demanda preparado com FFmpeg; ambiente atual sem FFmpeg mantém `available: false` |
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
@@ -47,6 +47,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
 - Endpoint seguro de análise de faixas com FFprobe, sem shell injection ou exposição de caminhos absolutos; fallback explícito quando o runtime está ausente.
+- Endpoint de transcoding MP4 sob demanda com `spawn` sem shell, stream por `stdout`, validação de mídia/confinamento e fallback explícito sem FFmpeg.
 - Fontes removíveis com volume/ID persistido e atualização online/offline independente da letra da unidade,
   usando consulta nativa segura do Windows quando disponível e fallback para o caminho conhecido.
 - Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.

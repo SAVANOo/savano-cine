@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
-import { execFile, spawnSync } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
 import path from 'node:path'
@@ -39,6 +39,7 @@ createServer(async (request, response) => {
     return send(response, 200, {
       browser: true,
       ffmpeg: runtimes.ffmpeg.available,
+      transcoding: runtimes.ffmpeg.available,
       ffprobe: runtimes.ffprobe.available,
       vlc: runtimes.vlc.available,
       diagnostics: Object.fromEntries(Object.entries(runtimes).map(([name, runtime]) => [
@@ -285,6 +286,11 @@ createServer(async (request, response) => {
     return streamMedia(mediaMatch[1], request, response)
   }
 
+  const transcodeMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/transcode$/)
+  if (transcodeMatch && request.method === 'GET') {
+    return transcodeMedia(transcodeMatch[1], request, response)
+  }
+
   const streamInfoMatch = requestUrl.pathname.match(/^\/api\/media\/([^/]+)\/streams$/)
   if (streamInfoMatch && request.method === 'GET') {
     return analyzeMediaStreams(streamInfoMatch[1], response)
@@ -420,6 +426,109 @@ function isExecutableFile(candidatePath) {
   } catch {
     return false
   }
+}
+
+function getRuntimeExecutable(environmentVariable, commandName) {
+  return process.env[environmentVariable]?.trim() || commandName
+}
+
+async function transcodeMedia(mediaId, request, response) {
+  if (typeof mediaId !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/.test(mediaId)) {
+    return send(response, 400, { error: 'mediaId inválido.' })
+  }
+
+  const format = requestUrlFormat(request)
+  if (format !== 'mp4') {
+    return send(response, 400, { error: 'Formato de transcodificação inválido.' })
+  }
+
+  const media = database.prepare(`
+    SELECT m.relative_path AS relativePath, s.root_path AS rootPath
+    FROM media_items m
+    JOIN media_sources s ON s.id = m.source_id
+    WHERE m.id = ? AND m.deleted_at IS NULL
+  `).get(mediaId)
+  if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const filePath = path.resolve(media.rootPath, media.relativePath)
+  const rootPath = path.resolve(media.rootPath)
+  if (filePath === rootPath || !filePath.startsWith(`${rootPath}${path.sep}`)) {
+    return send(response, 400, { error: 'Caminho de mídia inválido.' })
+  }
+
+  try {
+    if (!statSync(filePath).isFile()) return send(response, 404, { error: 'Arquivo indisponível.' })
+  } catch {
+    return send(response, 404, { error: 'Arquivo indisponível.' })
+  }
+
+  const runtime = detectRuntime('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  if (!runtime.available) {
+    return send(response, 200, {
+      available: false,
+      reason: 'ffmpeg-not-found',
+      format,
+    })
+  }
+
+  if (request.headers.range) {
+    return send(response, 416, {
+      error: 'Range não está disponível para o stream transcodificado.',
+      available: true,
+    })
+  }
+
+  const executable = getRuntimeExecutable('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  const transcoder = spawn(executable, [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-nostdin',
+    '-i', filePath,
+    '-map', '0:v:0?',
+    '-map', '0:a:0?',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '160k',
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    '-f', 'mp4',
+    'pipe:1',
+  ], {
+    windowsHide: true,
+    shell: false,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+
+  let headersSent = false
+  const abort = () => {
+    if (!transcoder.killed) transcoder.kill()
+  }
+  request.once('close', abort)
+  response.once('close', abort)
+  transcoder.once('error', () => {
+    if (!headersSent) send(response, 503, { available: false, reason: 'ffmpeg-failed' })
+    else response.destroy()
+  })
+  transcoder.once('close', (code) => {
+    request.off('close', abort)
+    response.off('close', abort)
+    if (!headersSent && code !== 0) send(response, 503, { available: false, reason: 'ffmpeg-failed' })
+  })
+
+  response.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Cache-Control': 'no-store',
+    'Accept-Ranges': 'none',
+    'Transfer-Encoding': 'chunked',
+  })
+  headersSent = true
+  return transcoder.stdout.pipe(response)
+}
+
+function requestUrlFormat(request) {
+  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
+  return requestUrl.searchParams.get('format') || 'mp4'
 }
 
 async function analyzeMediaStreams(mediaId, response) {

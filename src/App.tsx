@@ -17,7 +17,7 @@ function App() {
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
   const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string } | null>(null)
-  const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
+  const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
   const [reviewItems, setReviewItems] = useState<Array<{ id: string; title: string; kind: string; reason?: string; relativePath: string; sourceName: string; sourcePath: string }>>([])
   const [reviewOpen, setReviewOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -684,7 +684,7 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
   )
 }
 
-function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; capabilities: { ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
+function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedPosition = useRef(0)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
@@ -787,7 +787,7 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
         </small>}
         <small>{capabilities?.ffmpeg || capabilities?.vlc
           ? 'FFmpeg/VLC disponível; o player web atual mantém reprodução compatível sem prometer seleção avançada.'
-          : 'Player web ativo. FFprobe/FFmpeg não disponível: faixas internas não são analisadas e o player atual permanece inalterado.'}</small>
+          : 'Player web ativo. FFmpeg não disponível: transcoding sob demanda indisponível; a reprodução atual permanece inalterada.'}</small>
       </section>
     </div>
   )
