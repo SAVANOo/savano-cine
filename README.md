@@ -75,6 +75,13 @@ O comando `import` cria `data/catalog.db` localmente e importa os caminhos encon
 
 Com o catálogo importado, `npm run api` inicia a API local em `http://127.0.0.1:4174`; o Vite encaminha as chamadas `/api` automaticamente durante o desenvolvimento.
 
+`/api/player/capabilities` detecta automaticamente `ffmpeg.exe`, `ffprobe.exe` e `vlc.exe`
+no PATH do Windows. As variáveis `CINE_FFMPEG_PATH`, `CINE_FFPROBE_PATH` e
+`CINE_VLC_PATH` têm prioridade quando apontam para arquivos existentes. A rota retorna
+somente disponibilidade e diagnóstico seguro da origem (`environment`, `path` ou `none`);
+não expõe caminhos absolutos. Nenhum runtime é instalado e nenhum transcoding é executado
+por essa detecção.
+
 `npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
 Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
 Wikipedia configurável e recua para português e inglês:

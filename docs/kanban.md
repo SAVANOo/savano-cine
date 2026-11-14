@@ -10,7 +10,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Player compatível com o acervo | FFmpeg/VLC ainda não instalado; backend já expõe capacidades e aguarda runtime |
+| Alta | Player compatível com o acervo | Capacidades detectam variáveis prioritárias e PATH; nenhum runtime disponível no ambiente atual |
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |

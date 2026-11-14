@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -28,11 +29,20 @@ createServer(async (request, response) => {
   }
 
   if (requestUrl.pathname === '/api/player/capabilities') {
+    const runtimes = {
+      ffmpeg: detectRuntime('CINE_FFMPEG_PATH', 'ffmpeg.exe'),
+      ffprobe: detectRuntime('CINE_FFPROBE_PATH', 'ffprobe.exe'),
+      vlc: detectRuntime('CINE_VLC_PATH', 'vlc.exe'),
+    }
     return send(response, 200, {
       browser: true,
-      ffmpeg: Boolean(process.env.CINE_FFMPEG_PATH && existsSync(process.env.CINE_FFMPEG_PATH)),
-      ffprobe: Boolean(process.env.CINE_FFPROBE_PATH && existsSync(process.env.CINE_FFPROBE_PATH)),
-      vlc: Boolean(process.env.CINE_VLC_PATH && existsSync(process.env.CINE_VLC_PATH)),
+      ffmpeg: runtimes.ffmpeg.available,
+      ffprobe: runtimes.ffprobe.available,
+      vlc: runtimes.vlc.available,
+      diagnostics: Object.fromEntries(Object.entries(runtimes).map(([name, runtime]) => [
+        name,
+        { source: runtime.source, reason: runtime.reason },
+      ])),
     })
   }
 
@@ -366,6 +376,42 @@ function ensureColumn(table, column, definition) {
     database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) throw error
+  }
+}
+
+function detectRuntime(environmentVariable, commandName) {
+  const configuredPath = process.env[environmentVariable]?.trim()
+  if (configuredPath) {
+    return isExecutableFile(configuredPath)
+      ? { available: true, source: 'environment', reason: 'configured-path' }
+      : { available: false, source: 'environment', reason: 'configured-path-not-found' }
+  }
+
+  if (process.platform === 'win32') {
+    const result = spawnSync('where.exe', [commandName], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    if (result.status === 0 && result.stdout?.split(/\r?\n/).some((candidate) => isExecutableFile(candidate.trim()))) {
+      return { available: true, source: 'path', reason: 'found-on-path' }
+    }
+  } else {
+    const result = spawnSync(commandName, ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+    if (result.status === 0) return { available: true, source: 'path', reason: 'found-on-path' }
+  }
+
+  return { available: false, source: 'none', reason: 'not-found' }
+}
+
+function isExecutableFile(candidatePath) {
+  try {
+    return Boolean(candidatePath) && statSync(candidatePath).isFile()
+  } catch {
+    return false
   }
 }
 

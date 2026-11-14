@@ -773,7 +773,7 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
         </div>
         <small>{capabilities?.ffmpeg || capabilities?.vlc
           ? 'FFmpeg/VLC disponível: suporte avançado de áudio será ativado na próxima etapa.'
-          : 'Player web ativo. Para múltiplos áudios e formatos incompatíveis, configure FFmpeg ou VLC no ambiente local.'}</small>
+          : 'Player web ativo. Para múltiplos áudios e formatos incompatíveis, instale FFmpeg/VLC e deixe-os no PATH ou configure os caminhos locais.'}</small>
       </section>
     </div>
   )
