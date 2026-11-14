@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import { profiles as mockProfiles } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource, Profile } from './domain/catalog'
@@ -16,11 +16,11 @@ function App() {
   const [sources, setSources] = useState(mockSources)
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
-  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string } | null>(null)
+  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string } | null>(null)
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/library').then((response) => response.ok ? response.json() : Promise.reject(response)),
+      fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`).then((response) => response.ok ? response.json() : Promise.reject(response)),
       fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)),
       fetch('/api/profiles').then((response) => response.ok ? response.json() : Promise.reject(response)),
     ]).then(([remoteLibrary, remoteSources, remoteProfiles]) => {
@@ -30,7 +30,7 @@ function App() {
     }).catch(() => {
       console.warn('API local indisponível; usando o catálogo de demonstração.')
     })
-  }, [])
+  }, [activeProfileId])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -140,7 +140,7 @@ function App() {
             </div>
           </section>}
         </main>
-        {selectedMedia && <VideoPlayer media={selectedMedia} onClose={() => setSelectedMedia(null)} />}
+        {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} onClose={() => setSelectedMedia(null)} />}
       </div>
     )
   }
@@ -214,7 +214,7 @@ function App() {
           )}
         </section>
       </main>
-      {selectedMedia && <VideoPlayer media={selectedMedia} onClose={() => setSelectedMedia(null)} />}
+      {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} onClose={() => setSelectedMedia(null)} />}
     </div>
   )
 }
@@ -409,7 +409,7 @@ function ProfileEditor({
   )
 }
 
-function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
+function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
   return (
     <section className="show-header">
       <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
@@ -426,7 +426,7 @@ function ShowHeader({ show, onPlay }: { show: LibraryItem; onPlay: (media: { tit
           <span>{show.detail}</span>
           {show.genres?.map((genre) => <span key={genre}>{genre}</span>)}
         </div>
-        {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl })}>▶ Assistir</button>}
+        {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
       </div>
     </section>
   )
@@ -458,7 +458,7 @@ function MediaCard({ item, onOpen }: { item: LibraryItem; onOpen: (item: Library
   )
 }
 
-function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string; subtitleUrl?: string }) => void }) {
+function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void }) {
   const watched = episode.progress !== undefined
 
   return (
@@ -477,17 +477,48 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
         </div>
         {watched && <span className="episode-progress"><span style={{ width: `${episode.progress}%` }} /></span>}
       </div>
-      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl, subtitleUrl: episode.subtitleUrl })}>{watched ? 'Continuar' : 'Assistir'}</button>
+      <button className="episode-play controller-focus" type="button" onClick={() => episode.mediaUrl && onPlay({ title: episode.title, url: episode.mediaUrl, subtitleUrl: episode.subtitleUrl, mediaId: episode.mediaId })}>{watched ? 'Continuar' : 'Assistir'}</button>
     </article>
   )
 }
 
-function VideoPlayer({ media, onClose }: { media: { title: string; url: string; subtitleUrl?: string }; onClose: () => void }) {
+function VideoPlayer({ media, profileId, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const lastSavedPosition = useRef(0)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
   const [subtitleUrl, setSubtitleUrl] = useState('')
   const [rate, setRate] = useState(1)
   const [volume, setVolume] = useState(1)
+
+  useEffect(() => {
+    if (!media.mediaId) return
+    fetch(`/api/progress?profileId=${encodeURIComponent(profileId)}&mediaId=${encodeURIComponent(media.mediaId)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((progress) => {
+        if (progress?.position && videoRef.current) videoRef.current.currentTime = progress.position
+      })
+      .catch(() => undefined)
+  }, [media.mediaId, profileId])
+
+  const saveProgress = useCallback(() => {
+    const video = videoRef.current
+    if (!video || !media.mediaId || video.duration === Infinity || Number.isNaN(video.duration)) return
+    if (Math.abs(video.currentTime - lastSavedPosition.current) < 5 && video.currentTime < video.duration - 2) return
+    lastSavedPosition.current = video.currentTime
+    void fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId,
+        mediaId: media.mediaId,
+        position: video.currentTime,
+        duration: video.duration,
+        watched: video.currentTime >= video.duration * 0.9,
+      }),
+    })
+  }, [media.mediaId, profileId])
+
+  useEffect(() => () => saveProgress(), [saveProgress])
 
   useEffect(() => {
     if (!media.subtitleUrl) return
@@ -522,7 +553,7 @@ function VideoPlayer({ media, onClose }: { media: { title: string; url: string; 
           <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
           <button className="player-close" type="button" aria-label="Fechar player" onClick={onClose}>×</button>
         </div>
-        <video ref={videoRef} className="video-player" src={media.url} controls autoPlay playsInline>
+        <video ref={videoRef} className="video-player" src={media.url} controls autoPlay playsInline onTimeUpdate={saveProgress} onEnded={saveProgress}>
           {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
         </video>
         <div className="player-controls">

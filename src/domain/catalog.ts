@@ -41,6 +41,7 @@ export type Episode = {
   subtitles: SubtitleTrack[]
   mediaUrl?: string
   subtitleUrl?: string
+  mediaId?: string
 }
 
 export type Season = {
@@ -65,6 +66,7 @@ export type LibraryItem = {
   seasons?: Season[]
   mediaUrl?: string
   subtitleUrl?: string
+  mediaId?: string
 }
 
 export type MediaSource = {

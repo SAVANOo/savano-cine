@@ -61,6 +61,37 @@ createServer(async (request, response) => {
       return send(response, 200, { id, name, avatarKey, isKids: 0 })
     }
 
+    if (requestUrl.pathname === '/api/progress' && request.method === 'GET') {
+      const progress = database.prepare(`
+        SELECT position_seconds AS position, duration_seconds AS duration, watched
+        FROM watch_progress
+        WHERE profile_id = ? AND media_item_id = ?
+      `).get(requestUrl.searchParams.get('profileId'), requestUrl.searchParams.get('mediaId'))
+      return send(response, 200, progress || null)
+    }
+
+    if (requestUrl.pathname === '/api/progress' && request.method === 'POST') {
+      let body
+      try {
+        body = await readJson(request)
+      } catch {
+        return send(response, 400, { error: 'JSON inválido.' })
+      }
+      const position = Math.max(0, Math.floor(Number(body.position) || 0))
+      const duration = Math.max(0, Math.floor(Number(body.duration) || 0))
+      const watched = body.watched ? 1 : 0
+      database.prepare(`
+        INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(profile_id, media_item_id) DO UPDATE SET
+          position_seconds = excluded.position_seconds,
+          duration_seconds = excluded.duration_seconds,
+          watched = excluded.watched,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(body.profileId, body.mediaId, position, duration, watched)
+      return send(response, 200, { position, duration, watched: Boolean(watched) })
+    }
+
     const profiles = database.prepare(`
       SELECT id, name, avatar_key AS avatarKey, is_kids AS isKids
       FROM profiles
@@ -71,7 +102,7 @@ createServer(async (request, response) => {
   }
 
   if (requestUrl.pathname === '/api/library') {
-    return send(response, 200, await buildLibrary())
+    return send(response, 200, await buildLibrary(requestUrl.searchParams.get('profileId')))
   }
 
   const archiveMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)\/archive$/)
@@ -110,17 +141,19 @@ createServer(async (request, response) => {
   console.log(`Savano Cine API em http://127.0.0.1:${port}`)
 })
 
-async function buildLibrary() {
+async function buildLibrary(profileId) {
   const items = database.prepare(`
     SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
+      p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
       (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster
     FROM media_items
+    LEFT JOIN watch_progress p ON p.media_item_id = media_items.id AND p.profile_id = ?
     WHERE kind = 'movie'
       AND classification_status IN ('auto', 'approved')
       AND deleted_at IS NULL
     ORDER BY title COLLATE NOCASE
     LIMIT 500
-  `).all().map((item) => ({
+  `).all(profileId).map((item) => ({
     id: item.id,
     title: item.title,
     kind: 'Filme',
@@ -132,9 +165,11 @@ async function buildLibrary() {
     posterClass: 'poster-default',
     mediaUrl: `/api/media/${item.id}`,
     subtitleUrl: `/api/media/${item.id}/subtitles`,
+    mediaId: item.id,
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
     ...(item.hasPoster ? { artwork: { source: 'local', posterUrl: `/api/artwork/movie/${item.id}/poster`, verified: true } } : {}),
+    progress: item.progressDuration ? Math.round((item.progressPosition / item.progressDuration) * 100) : undefined,
   }))
 
   const shows = database.prepare(`
@@ -160,12 +195,14 @@ async function buildLibrary() {
     `).all(show.id).map((season) => ({
       number: season.number,
       episodes: database.prepare(`
-        SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename
+        SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename,
+          p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration
         FROM episodes e
         JOIN media_items m ON m.id = e.media_item_id
+        LEFT JOIN watch_progress p ON p.media_item_id = m.id AND p.profile_id = ?
         WHERE e.season_id = ? AND m.deleted_at IS NULL
         ORDER BY number
-      `).all(season.id).map((episode) => ({
+      `).all(profileId, season.id).map((episode) => ({
         id: episode.id,
         season: season.number,
         number: episode.number,
@@ -175,6 +212,9 @@ async function buildLibrary() {
         subtitles: [{ language: 'pt-BR', label: 'Nenhuma faixa cadastrada', available: false }],
         mediaUrl: `/api/media/${episode.mediaId}`,
         subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
+        mediaId: episode.mediaId,
+        progress: episode.progressDuration ? Math.round((episode.progressPosition / episode.progressDuration) * 100) : undefined,
+        position: episode.progressPosition ? `${Math.floor(episode.progressPosition / 60)} min` : undefined,
       })),
     }))
 
