@@ -6,6 +6,7 @@ import { messages } from './config/messages'
 import './App.css'
 
 type LibraryFilter = 'Tudo' | MediaKind | string
+const SOURCE_REFRESH_INTERVAL_MS = 30_000
 
 function App() {
   const [activeFilter, setActiveFilter] = useState<LibraryFilter>('Tudo')
@@ -66,6 +67,12 @@ function App() {
       .catch(() => undefined)
   }, [activeProfileId])
 
+  const refreshSources = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch('/api/sources', { signal })
+    if (!response.ok) throw new Error('Não foi possível atualizar o estado das fontes.')
+    setSources(await response.json() as MediaSource[])
+  }, [])
+
   const updateCatalog = useCallback(() => {
     fetch('/api/catalog/refresh', { method: 'POST' })
       .then((response) => response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || 'Não foi possível iniciar a atualização.'))))
@@ -76,16 +83,41 @@ function App() {
   useEffect(() => {
     Promise.all([
       fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`).then((response) => response.ok ? response.json() : Promise.reject(response)),
-      fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)),
       fetch('/api/profiles').then((response) => response.ok ? response.json() : Promise.reject(response)),
-    ]).then(([remoteLibrary, remoteSources, remoteProfiles]) => {
+    ]).then(([remoteLibrary, remoteProfiles]) => {
       setCatalog(remoteLibrary)
-      setSources(remoteSources)
       setProfiles(remoteProfiles)
     }).catch(() => {
       console.warn('API local indisponível; usando o catálogo de demonstração.')
     })
   }, [activeProfileId])
+
+  useEffect(() => {
+    let disposed = false
+    let requestInFlight = false
+    const controller = new AbortController()
+    const refresh = async () => {
+      if (disposed || requestInFlight) return
+      requestInFlight = true
+      try {
+        await refreshSources(controller.signal)
+      } catch (error) {
+        if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
+          console.warn('Não foi possível atualizar o estado das fontes.')
+        }
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), SOURCE_REFRESH_INTERVAL_MS)
+    return () => {
+      disposed = true
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [refreshSources])
 
   useEffect(() => {
     const refreshStatus = () => fetch('/api/catalog/refresh/status')
@@ -94,7 +126,7 @@ function App() {
         setCatalogRefresh(status)
         if (status.state === 'succeeded' && lastRefreshState.current !== 'succeeded') {
           refreshCatalog()
-          fetch('/api/sources').then((response) => response.ok ? response.json() : Promise.reject(response)).then(setSources).catch(() => undefined)
+          refreshSources().catch(() => undefined)
           refreshReview()
         }
         lastRefreshState.current = status.state
@@ -103,7 +135,7 @@ function App() {
     refreshStatus()
     const timer = window.setInterval(refreshStatus, 1000)
     return () => window.clearInterval(timer)
-  }, [refreshCatalog, refreshReview])
+  }, [refreshCatalog, refreshReview, refreshSources])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {

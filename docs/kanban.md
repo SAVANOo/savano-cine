@@ -53,6 +53,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
   usando consulta nativa segura do Windows quando disponível e fallback para o caminho conhecido.
 - Status das fontes atualizado automaticamente ao iniciar a API e ao consultar `/api/sources`, sem
   remover registros offline ou alterar arquivos físicos.
+- Interface atualiza `/api/sources` a cada 30 segundos, sem recarregar a página ou duplicar timers,
+  preservando o fallback e limpando a consulta ao desmontar; avisos e contagens refletem o estado atual.
 - Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.
 - Lint e build executados após as últimas alterações.
 - Diagnóstico operacional em português com códigos de saída `0` (OK), `1` (avisos) e `2` (falha bloqueante),
