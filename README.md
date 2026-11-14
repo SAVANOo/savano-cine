@@ -58,12 +58,21 @@ Verificações disponíveis:
 ```bash
 npm run lint
 npm run build
+npm run doctor
 npm run scan -- "D:\\Filmes" --limit 20
 npm run import -- "E:\\Filmes"
 npm run api
 ```
 
 O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.
+
+`npm run doctor` executa um diagnóstico operacional somente leitura em português. Ele verifica o
+SQLite e seu schema, fontes cadastradas e online/offline, contagens de filmes, séries e itens em
+revisão, artes locais, legendas registradas e a disponibilidade de FFmpeg, FFprobe e VLC. O código
+de saída é `0` quando tudo está disponível, `1` quando há avisos operacionais (como uma fonte
+offline ou runtime ausente) e `2` quando o banco não existe, está ilegível ou tem schema incompatível.
+O comando não imprime valores de variáveis de ambiente, não expõe segredos e não altera dados nem
+arquivos físicos.
 
 Fontes em volumes Windows persistem o identificador do volume, rótulo e caminho relativo. A API
 reconsulta os volumes montados para reconhecer uma unidade reconectada com outra letra; quando a
