@@ -36,7 +36,9 @@ export function ShowDetailView({
   onArchived,
 }: ShowDetailViewProps) {
   const seasons = show.seasons ?? []
-  const [selectedSeasonNumber, setSelectedSeasonNumber] = useState(seasons[0]?.number ?? 1)
+  const [selectedSeasonNumber, setSelectedSeasonNumber] = useState(
+    show.resume?.season ?? seasons[0]?.number ?? 1,
+  )
   const [activeTab, setActiveTab] = useState<'related' | 'details'>(
     seasons.length > 0 ? 'details' : 'related',
   )
@@ -295,43 +297,68 @@ export function ShowDetailView({
                     ))}
                   </div>
                   <div className="flex flex-col gap-2">
-                    {activeSeason.episodes.map((ep: Episode) => (
-                      <div
-                        key={ep.id}
-                        className="flex items-center justify-between gap-4 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3.5 transition hover:border-white/25"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-[var(--sc-accent)]">
-                              E{ep.number}
-                            </span>
-                            <strong className="truncate text-sm text-white">{ep.title}</strong>
+                    {activeSeason.episodes.map((ep: Episode) => {
+                      const isResumeEpisode =
+                        Boolean(show.resume?.mediaId && ep.mediaId === show.resume.mediaId) ||
+                        (show.resume?.season === ep.season && show.resume?.episode === ep.number)
+                      const epProgress = Math.max(0, Math.min(100, ep.progress ?? 0))
+                      return (
+                        <div
+                          key={ep.id}
+                          className={`relative overflow-hidden flex items-center justify-between gap-4 rounded-[var(--sc-radius-md)] border p-3.5 transition ${
+                            isResumeEpisode
+                              ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)]'
+                              : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/25'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-bold text-[var(--sc-accent)]">
+                                E{ep.number}
+                              </span>
+                              <strong className="truncate text-sm text-white">{ep.title}</strong>
+                              {isResumeEpisode && (
+                                <Badge tone="accent">Assistindo agora</Badge>
+                              )}
+                              {!isResumeEpisode && epProgress >= 90 && (
+                                <Badge tone="neutral">Visto</Badge>
+                              )}
+                            </div>
+                            <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-muted)]">
+                              {ep.duration} · {ep.filename}
+                            </p>
                           </div>
-                          <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-muted)]">
-                            {ep.duration} · {ep.filename}
-                          </p>
+                          {ep.mediaUrl && (
+                            <Button
+                              variant={isResumeEpisode ? 'primary' : 'light'}
+                              size="sm"
+                              onClick={() =>
+                                onPlayMedia({
+                                  title: `${show.title} — T${ep.season}:E${ep.number} ${ep.title}`,
+                                  url: ep.mediaUrl!,
+                                  subtitleUrl: ep.subtitleUrl,
+                                  mediaId: ep.mediaId,
+                                  overview: show.overview,
+                                  year: show.year,
+                                  startPosition: isResumeEpisode ? show.resume?.position : 0,
+                                })
+                              }
+                            >
+                              <Play className="h-3.5 w-3.5 fill-current" />
+                              {isResumeEpisode ? 'Retome' : 'Assistir'}
+                            </Button>
+                          )}
+                          {(epProgress > 0 || isResumeEpisode) && (
+                            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-white/15">
+                              <div
+                                className="h-full bg-[var(--sc-accent)]"
+                                style={{ width: `${Math.max(epProgress, isResumeEpisode ? 15 : 0)}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
-                        {ep.mediaUrl && (
-                          <Button
-                            variant="light"
-                            size="sm"
-                            onClick={() =>
-                              onPlayMedia({
-                                title: `${show.title} — T${ep.season}:E${ep.number} ${ep.title}`,
-                                url: ep.mediaUrl!,
-                                subtitleUrl: ep.subtitleUrl,
-                                mediaId: ep.mediaId,
-                                overview: show.overview,
-                                year: show.year,
-                              })
-                            }
-                          >
-                            <Play className="h-3.5 w-3.5 fill-current" />
-                            Assistir
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </>
               ) : (

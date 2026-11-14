@@ -34,6 +34,7 @@ body {
   margin: 0;
   background: var(--sc-bg-canvas);
   color: var(--sc-text-primary);
+  cursor: var(--sc-cursor-default);
 }
 
 button,
@@ -43,6 +44,9 @@ textarea {
   font-family: inherit;
 }
 
+button,
+a,
+select,
 .sc-clickable-card {
   cursor: var(--sc-cursor-play);
 }

@@ -18,7 +18,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Baixa | Polimento de ícones, atalhos de teclado/controle no player e testes E2E | Refinar micro-interações do player (atalhos de espaço/setas) e automatizar teste E2E na interface |
+| Alta | Buscar capas faltantes para filmes ainda sem pôster | Executar `npm run artwork` / botão **Buscar capas faltantes** no Painel Admin e confirmar candidatos pendentes |
+| Baixa | Atalhos avançados de teclado/controle no player | Refinar micro-interações do player (atalhos de espaço/setas) |
 
 ## Backlog
 
@@ -80,6 +81,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Editor de perfil estilo Netflix com grupos de avatares temáticos por série (`Os Clássicos`, `South Park`, `Ben 10`, `Gravity Falls` em `src/domain/uiHelpers.ts`), transição com fade ao trocar de perfil, cursor temático nos cards clicáveis, filtros compactos com dropdown e gêneros traduzidos para PT-BR, correção do botão fechar `×` do modal de revisão de arte e marca **Savano Cine** clicável na sidebar (recolhendo para apenas o ícone `S` em telas menores).
 - Adoção de Tailwind CSS v4 (`@tailwindcss/vite`), `lucide-react` e Design System padronizado (`src/styles/tokens.css`, `src/index.css` e primitivos em `src/components/ui/`: `Button`, `Badge`, `Modal`, `StarRating`), além da modularização completa do frontend em `src/components/`.
 - Experiência de Home e navegação estilo Netflix / HBO Max / Prime Video: `HeroCarousel` rotativo com **▶ Assistir / Retome** + **ⓘ Mais informações**, carrosséis horizontais (`Continue assistindo` em 16:9 com barra de progresso, `Recomendados`, `Filmes`, `Séries` e gêneros), cards com clique na capa para reprodução direta e clique em `ⓘ` para detalhes, e `ShowDetailView` com abas **Você também pode gostar** e **Detalhes / Episódios** + botão **Reiniciar**.
+- Suíte de testes automatizados: testes unitários em `node --test` (`tests/unit/clean-title.test.mjs`) e testes E2E com Playwright (`tests/e2e/critical-flows.spec.ts`) cobrindo Home, clique duplo nos cards (play vs detalhes), Painel Admin, Editor de Perfil e deep-link `/series/show-south-park`.
+- Limpeza automática de títulos (`cleanTitle` + `sanitizeExistingTitles`) removendo tags de release (`AndreTPF`, `WOLVERDONFILMES`, `TDF`, `thepiratefilmes`, `BLUDV`) e anos no final do título, Painel Admin dedicado (`AdminView`) com botão `Buscar capas faltantes` (`POST /api/artwork/fetch`), cursor temático global, cache `sessionStorage` na Home, marcador de episódio ativo (`Assistindo agora`) e suporte a deep-links `/series/:id`.
 
 ## Regras do quadro
 

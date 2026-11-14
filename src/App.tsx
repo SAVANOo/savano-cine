@@ -1,17 +1,15 @@
 import { Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AdminView } from './components/admin/AdminView'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
 import { Sidebar } from './components/layout/Sidebar'
 import { MediaCard } from './components/media/MediaCard'
 import { ShowDetailView } from './components/media/ShowDetailView'
-import {
-  ArtworkReviewModal,
-  HistoryModal,
-  ReviewModal,
-  type ArtworkCandidateGroup,
-  type CatalogHistory,
-  type CatalogRefreshStatus,
+import type {
+  ArtworkCandidateGroup,
+  CatalogHistory,
+  CatalogRefreshStatus,
 } from './components/modals/CatalogModals'
 import { VideoPlayer } from './components/player/VideoPlayer'
 import { ProfileModal } from './components/profile/ProfileModal'
@@ -27,18 +25,37 @@ import {
   type PlayableMedia,
 } from './domain/uiHelpers'
 
-const SOURCE_REFRESH_INTERVAL_MS = 30_000
+function readCachedCatalog(profileId: string): LibraryItem[] | null {
+  try {
+    const raw = sessionStorage.getItem(`sc_catalog_${profileId}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function getInitialDeepLinkId(): string | null {
+  const match = window.location.pathname.match(/^\/(?:series|movies)\/([^/]+)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
 
 export function App() {
   const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [query, setQuery] = useState('')
-  const [selectedShow, setSelectedShow] = useState<LibraryItem | null>(null)
-  const [catalog, setCatalog] = useState<LibraryItem[]>(mockLibrary)
+  const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs'>('review')
+
+  const [activeProfileId, setActiveProfileId] = useState('profile-savio')
+  const [catalog, setCatalog] = useState<LibraryItem[]>(
+    () => readCachedCatalog('profile-savio') ?? mockLibrary,
+  )
   const [sources, setSources] = useState<MediaSource[]>(mockSources)
   const [sourcesError, setSourcesError] = useState('')
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
-  const [activeProfileId, setActiveProfileId] = useState('profile-savio')
   const [profileFading, setProfileFading] = useState(false)
 
   const [selectedMedia, setSelectedMedia] = useState<PlayableMedia | null>(null)
@@ -51,11 +68,8 @@ export function App() {
 
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [reviewError, setReviewError] = useState('')
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const [artworkReviewOpen, setArtworkReviewOpen] = useState(false)
   const [artworkCandidates, setArtworkCandidates] = useState<ArtworkCandidateGroup[]>([])
   const [artworkCandidatesError, setArtworkCandidatesError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({
     archived: [],
     titleChanges: [],
@@ -69,12 +83,23 @@ export function App() {
   const [editingProfile, setEditingProfile] = useState<Profile | undefined>(undefined)
   const lastRefreshState = useRef(catalogRefresh.state)
 
+  const selectedShow = useMemo(
+    () => (selectedShowId ? catalog.find((item) => item.id === selectedShowId || item.mediaId === selectedShowId) ?? null : null),
+    [catalog, selectedShowId],
+  )
+
+  const setSelectedShow = useCallback((item: LibraryItem | null) => {
+    setSelectedShowId(item?.id ?? null)
+  }, [])
+
   const handleProfileChange = useCallback(
     (nextId: string) => {
       if (nextId === activeProfileId) return
       setProfileFading(true)
+      const cached = readCachedCatalog(nextId)
+      if (cached) setCatalog(cached)
       setActiveProfileId(nextId)
-      window.setTimeout(() => setProfileFading(false), 260)
+      window.setTimeout(() => setProfileFading(false), 240)
     },
     [activeProfileId],
   )
@@ -137,7 +162,14 @@ export function App() {
   const refreshCatalogAndSources = useCallback(() => {
     fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`)
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then(setCatalog)
+      .then((items: LibraryItem[]) => {
+        setCatalog(items)
+        try {
+          sessionStorage.setItem(`sc_catalog_${activeProfileId}`, JSON.stringify(items))
+        } catch {
+          // ignore quota exceeded
+        }
+      })
       .catch(() => undefined)
 
     fetch('/api/sources')
@@ -156,8 +188,6 @@ export function App() {
   useEffect(() => {
     refreshProfiles()
     refreshCatalogAndSources()
-    const interval = window.setInterval(refreshCatalogAndSources, SOURCE_REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(interval)
   }, [refreshCatalogAndSources, refreshProfiles])
 
   useEffect(() => {
@@ -171,7 +201,8 @@ export function App() {
         .catch(() => undefined)
     }
     poll()
-    const timer = window.setInterval(poll, catalogRefresh.state === 'running' ? 2000 : 12000)
+    if (catalogRefresh.state !== 'running') return () => { active = false }
+    const timer = window.setInterval(poll, 2000)
     return () => {
       active = false
       window.clearInterval(timer)
@@ -190,9 +221,7 @@ export function App() {
       if (event.key === 'Escape') {
         if (selectedMedia) setSelectedMedia(null)
         else if (profileEditorOpen) setProfileEditorOpen(false)
-        else if (reviewOpen) setReviewOpen(false)
-        else if (artworkReviewOpen) setArtworkReviewOpen(false)
-        else if (historyOpen) setHistoryOpen(false)
+        else if (adminOpen) setAdminOpen(false)
         else if (selectedShow) setSelectedShow(null)
       }
       if (
@@ -206,7 +235,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [artworkReviewOpen, historyOpen, profileEditorOpen, reviewOpen, selectedMedia, selectedShow])
+  }, [adminOpen, profileEditorOpen, selectedMedia, selectedShow])
 
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
@@ -222,16 +251,17 @@ export function App() {
       const targetType = item.kind === 'Série' ? 'show' : 'movie'
       const targetId = item.kind === 'Série' ? item.id : item.mediaId || item.id
       try {
-        await fetch('/api/artwork/search', {
+        await fetch('/api/artwork/candidates/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ targetType, targetId }),
         })
         refreshArtworkCandidates()
         refreshCatalogAndSources()
-        setArtworkReviewOpen(true)
-      } catch {
-        setArtworkReviewOpen(true)
+      } finally {
+        setAdminTab('artwork')
+        setAdminOpen(true)
+        setSelectedShow(null)
       }
     },
     [refreshArtworkCandidates, refreshCatalogAndSources],
@@ -296,8 +326,12 @@ export function App() {
 
   const goHome = useCallback(() => {
     setSelectedShow(null)
+    setAdminOpen(false)
     setActiveGenre('Todos')
     setQuery('')
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/')
+    }
   }, [])
 
   return (
@@ -322,12 +356,11 @@ export function App() {
           setActiveKind('Todos')
           goHome()
         }}
-        onOpenReview={() => setReviewOpen(true)}
-        onOpenArtworkReview={() => {
-          refreshArtworkCandidates()
-          setArtworkReviewOpen(true)
+        onOpenAdmin={() => {
+          setSelectedShow(null)
+          setAdminOpen(true)
         }}
-        onOpenHistory={() => setHistoryOpen(true)}
+        adminActive={adminOpen}
         onRefreshCatalog={() => void fetch('/api/catalog/refresh', { method: 'POST' })}
         onSourceAdded={refreshCatalogAndSources}
         refreshing={catalogRefresh.state === 'running'}
@@ -338,54 +371,65 @@ export function App() {
               ? 'Catálogo atualizado.'
               : catalogRefresh.error || ''
         }
-        reviewCount={reviewItems.length}
-        artworkCount={artworkCandidates.length}
-        historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length}
+        adminBadgeCount={reviewItems.length + artworkCandidates.length}
       />
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-8 sm:py-7">
         {/* Top Search & Genre Filter Bar */}
-        <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
-            <input
-              id="sc-search-input"
-              type="search"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setSelectedShow(null)
-              }}
-              placeholder="Buscar filmes, séries ou gêneros (/)"
-              className="h-10 w-full rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] pr-4 pl-10 text-sm text-white placeholder:text-[var(--sc-text-muted)] focus:border-white/35 focus:outline-none"
-            />
-          </div>
+        {!adminOpen && (
+          <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
+              <input
+                id="sc-search-input"
+                type="search"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setSelectedShow(null)
+                }}
+                placeholder="Buscar filmes, séries ou gêneros (/)"
+                className="h-10 w-full rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] pr-4 pl-10 text-sm text-white placeholder:text-[var(--sc-text-muted)] focus:border-white/35 focus:outline-none"
+              />
+            </div>
 
-          <div className="flex items-center gap-3">
-            <select
-              aria-label="Filtrar por gênero"
-              value={activeGenre}
-              onChange={(event) => {
-                setActiveGenre(event.target.value)
-                setSelectedShow(null)
-              }}
-              className="h-10 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-4 text-xs font-semibold text-white focus:border-white/35 focus:outline-none cursor-pointer"
-            >
-              <option value="Todos">Todos os gêneros</option>
-              {genreOptions.map((genre) => (
-                <option key={genre} value={genre}>
-                  {translateGenre(genre)}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-3">
+              <select
+                aria-label="Filtrar por gênero"
+                value={activeGenre}
+                onChange={(event) => {
+                  setActiveGenre(event.target.value)
+                  setSelectedShow(null)
+                }}
+                className="h-10 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-4 text-xs font-semibold text-white focus:border-white/35 focus:outline-none"
+              >
+                <option value="Todos">Todos os gêneros</option>
+                {genreOptions.map((genre) => (
+                  <option key={genre} value={genre}>
+                    {translateGenre(genre)}
+                  </option>
+                ))}
+              </select>
 
-            <span className="hidden text-xs text-[var(--sc-text-muted)] sm:inline">
-              {filteredItems.length} título(s)
-            </span>
-          </div>
-        </header>
+              <span className="hidden text-xs text-[var(--sc-text-muted)] sm:inline">
+                {filteredItems.length} título(s)
+              </span>
+            </div>
+          </header>
+        )}
 
-        {selectedShow ? (
+        {adminOpen ? (
+          <AdminView
+            initialTab={adminTab}
+            reviewItems={reviewItems}
+            reviewError={reviewError}
+            artworkGroups={artworkCandidates}
+            artworkError={artworkCandidatesError}
+            history={catalogHistory}
+            onBack={() => setAdminOpen(false)}
+            onRefreshAll={refreshCatalogAndSources}
+          />
+        ) : selectedShow ? (
           <ShowDetailView
             show={selectedShow}
             library={catalog}
@@ -502,32 +546,6 @@ export function App() {
           refreshProfiles()
           handleProfileChange(savedId)
         }}
-      />
-
-      <ReviewModal
-        open={reviewOpen}
-        items={reviewItems}
-        error={reviewError}
-        onRefresh={refreshCatalogAndSources}
-        onClose={() => setReviewOpen(false)}
-      />
-
-      <ArtworkReviewModal
-        open={artworkReviewOpen}
-        groups={artworkCandidates}
-        error={artworkCandidatesError}
-        onRefresh={() => {
-          refreshArtworkCandidates()
-          refreshCatalogAndSources()
-        }}
-        onClose={() => setArtworkReviewOpen(false)}
-      />
-
-      <HistoryModal
-        open={historyOpen}
-        history={catalogHistory}
-        onRefresh={refreshCatalogAndSources}
-        onClose={() => setHistoryOpen(false)}
       />
     </div>
   )

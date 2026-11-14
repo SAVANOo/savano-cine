@@ -8,6 +8,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 import { getAdapterForSource } from './source-adapters.mjs'
+import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -24,6 +25,7 @@ const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
 ignorePromotionalAds()
+sanitizeExistingTitles()
 refreshSourceStatuses()
 const catalogRefresh = {
   state: 'idle',
@@ -504,6 +506,10 @@ async function handleApiRequest(request, response) {
 
   if (requestUrl.pathname === '/api/artwork/candidates' && request.method === 'GET') {
     return send(response, 200, listPendingArtworkCandidates())
+  }
+
+  if (requestUrl.pathname === '/api/artwork/fetch' && request.method === 'POST') {
+    return send(response, 202, startArtworkFetch())
   }
 
   if (requestUrl.pathname === '/api/artwork/candidates/search' && request.method === 'POST') {
@@ -1825,4 +1831,48 @@ function ignorePromotionalAds() {
   } catch {
     // Mantém inicialização resiliente
   }
+}
+
+function sanitizeExistingTitles() {
+  try {
+    const movies = database.prepare('SELECT id, title FROM media_items WHERE deleted_at IS NULL').all()
+    const updateMovie = database.prepare('UPDATE media_items SET title = ? WHERE id = ?')
+    for (const row of movies) {
+      const cleaned = cleanTitle(row.title)
+      if (cleaned && cleaned !== row.title) {
+        updateMovie.run(cleaned, row.id)
+      }
+    }
+
+    const shows = database.prepare('SELECT id, title FROM shows').all()
+    const updateShow = database.prepare('UPDATE shows SET title = ? WHERE id = ?')
+    for (const row of shows) {
+      const cleaned = cleanTitle(row.title)
+      if (cleaned && cleaned !== row.title) {
+        updateShow.run(cleaned, row.id)
+      }
+    }
+  } catch {
+    // Mantém inicialização resiliente
+  }
+}
+
+let artworkFetchRunning = false
+function startArtworkFetch() {
+  if (artworkFetchRunning) {
+    return { status: 'running', message: 'Busca de capas já está em andamento.' }
+  }
+  artworkFetchRunning = true
+  const child = spawn(process.execPath, [path.resolve(root, 'fetch-artwork.mjs')], {
+    cwd: path.resolve(root, '..'),
+    stdio: 'ignore',
+    detached: false,
+  })
+  child.once('close', () => {
+    artworkFetchRunning = false
+  })
+  child.once('error', () => {
+    artworkFetchRunning = false
+  })
+  return { status: 'started', message: 'Busca de capas faltantes iniciada em segundo plano.' }
 }

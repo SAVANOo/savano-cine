@@ -37,7 +37,7 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails }: M
   }
 
   return (
-    <article className="group relative flex w-full flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] transition-all duration-200 hover:-translate-y-1 hover:border-white/25 hover:shadow-[var(--sc-shadow-card)]">
+    <article className="group relative flex w-full flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] transition-all duration-200 hover:border-white/30 hover:shadow-[var(--sc-shadow-card)]">
       {/* Cover / Direct Play Zone */}
       <button
         type="button"

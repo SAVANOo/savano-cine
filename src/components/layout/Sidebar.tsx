@@ -2,14 +2,12 @@ import {
   Check,
   ChevronDown,
   Film,
-  Flag,
   FolderPlus,
-  History,
   Home,
-  Image,
   Pencil,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Tv,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -27,16 +25,13 @@ type SidebarProps = {
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
-  onOpenReview: () => void
-  onOpenArtworkReview: () => void
-  onOpenHistory: () => void
+  onOpenAdmin: () => void
+  adminActive: boolean
   onRefreshCatalog: () => void
   onSourceAdded: () => void
   refreshing: boolean
   refreshStatus: string
-  reviewCount: number
-  artworkCount: number
-  historyCount: number
+  adminBadgeCount: number
 }
 
 /** Persistent navigation rail with responsive brand collapse, profiles, and catalog tools. */
@@ -50,16 +45,13 @@ export function Sidebar({
   onSelectProfile,
   onOpenProfileEditor,
   onGoHome,
-  onOpenReview,
-  onOpenArtworkReview,
-  onOpenHistory,
+  onOpenAdmin,
+  adminActive,
   onRefreshCatalog,
   onSourceAdded,
   refreshing,
   refreshStatus,
-  reviewCount,
-  artworkCount,
-  historyCount,
+  adminBadgeCount,
 }: SidebarProps) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [addingSource, setAddingSource] = useState(false)
@@ -209,7 +201,7 @@ export function Sidebar({
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {
-          const active = activeKind === key
+          const active = !adminActive && activeKind === key
           return (
             <button
               key={key}
@@ -229,14 +221,34 @@ export function Sidebar({
             </button>
           )
         })}
+
+        <button
+          type="button"
+          onClick={onOpenAdmin}
+          className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+            adminActive
+              ? 'bg-white/12 text-white'
+              : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span>Admin</span>
+          </span>
+          {adminBadgeCount > 0 && (
+            <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-bold text-red-200">
+              {adminBadgeCount}
+            </span>
+          )}
+        </button>
       </nav>
 
-      {/* Sources & Catalog Management */}
-      <div className="mt-auto hidden flex-col gap-3 border-t border-[var(--sc-border-subtle)] pt-4 lg:flex">
-        <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
+      {/* Compact Sources & Refresh */}
+      <div className="mt-auto hidden flex-col gap-2.5 border-t border-[var(--sc-border-subtle)] pt-3 lg:flex">
+        <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-white">
-              {sourcesError ? 'API indisponível' : `${sources.length} fonte(s)`}
+              {sourcesError ? 'API indisponível' : `${onlineCount}/${sources.length} fonte(s)`}
             </span>
             <span
               className={`h-2 w-2 rounded-full ${
@@ -244,10 +256,7 @@ export function Sidebar({
               }`}
             />
           </div>
-          <p className="mt-1 mb-0 text-[11px] text-[var(--sc-text-muted)]">
-            {sourcesError || `${onlineCount} conectada(s)`}
-          </p>
-          <div className="mt-2.5 flex flex-col gap-1.5">
+          <div className="mt-1.5 flex flex-col gap-1">
             {sources.map((source) => (
               <div key={source.id} className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="truncate text-[var(--sc-text-secondary)]">{source.name}</span>
@@ -257,14 +266,26 @@ export function Sidebar({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setAddingSource((value) => !value)}
-          className="flex items-center gap-2 rounded-[var(--sc-radius-sm)] px-2.5 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer"
-        >
-          <FolderPlus className="h-3.5 w-3.5" />
-          Adicionar fonte
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={onRefreshCatalog}
+            className="flex flex-1 items-center gap-1.5 rounded-[var(--sc-radius-sm)] px-2 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Atualizando...' : 'Atualizar'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddingSource((value) => !value)}
+            title="Adicionar fonte"
+            className="flex items-center gap-1 rounded-[var(--sc-radius-sm)] px-2 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+            Fonte
+          </button>
+        </div>
 
         {addingSource && (
           <form className="flex flex-col gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-2.5" onSubmit={submitSource}>
@@ -291,55 +312,7 @@ export function Sidebar({
           </form>
         )}
         {sourceStatus && <p className="m-0 px-2 text-[11px] text-[var(--sc-text-secondary)]">{sourceStatus}</p>}
-
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={onRefreshCatalog}
-            className="flex items-center gap-2 rounded-[var(--sc-radius-sm)] px-2.5 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Atualizando...' : 'Atualizar catálogo'}
-          </button>
-          {refreshStatus && <p className="m-0 px-2.5 text-[11px] text-[var(--sc-text-muted)]">{refreshStatus}</p>}
-
-          <button
-            type="button"
-            onClick={onOpenReview}
-            className="flex items-center justify-between rounded-[var(--sc-radius-sm)] px-2.5 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <Flag className="h-3.5 w-3.5" />
-              Revisão
-            </span>
-            <span>({reviewCount})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenArtworkReview}
-            className="flex items-center justify-between rounded-[var(--sc-radius-sm)] px-2.5 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <Image className="h-3.5 w-3.5" />
-              Arte
-            </span>
-            {artworkCount > 0 && <span>({artworkCount})</span>}
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenHistory}
-            className="flex items-center justify-between rounded-[var(--sc-radius-sm)] px-2.5 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-white cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <History className="h-3.5 w-3.5" />
-              Histórico
-            </span>
-            <span>({historyCount})</span>
-          </button>
-        </div>
+        {refreshStatus && <p className="m-0 px-2 text-[11px] text-[var(--sc-text-muted)]">{refreshStatus}</p>}
       </div>
     </aside>
   )

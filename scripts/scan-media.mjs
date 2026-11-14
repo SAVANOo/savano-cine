@@ -3,7 +3,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const mediaExtensions = new Set(['.avi', '.mkv', '.mp4', '.mov', '.rm', '.rmvb', '.webm'])
-export { collectMediaFiles, collectSubtitleTracks, classifyMedia }
+export { collectMediaFiles, collectSubtitleTracks, classifyMedia, cleanTitle }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [, , sourceArg, ...flags] = process.argv
@@ -275,20 +275,20 @@ function normalizeSegment(value) {
 }
 
 function cleanTitle(value) {
-  const year = value.match(/\b(19\d{2}|20\d{2})\b/)?.[1]
-  const cleaned = value
-    .replace(/[-_.\s]*(?:www\.)?bludv(?:\.com)?\b.*$/i, '')
-    .replace(/\b(?:x26[45]|h26[45]|hevc|avc|aac|dts|5[._ ]1|web[- ]?dl|web[- ]?rip|blu[- ]?ray|remux|720p|1080p|2160p|dublado|dual|nacional)\b/gi, '')
+  const cleaned = String(value || '')
+    .replace(/\((?:www\.|https?:\/\/)[^)]*\)/gi, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[-_.\s]*(?:www\.)?(?:bludv|thepiratefilmes|wolverdonfilmes|comando\.to|lapumia|andretpf|tdf)(?:\.[a-z]{2,})?\b.*$/i, '')
+    .replace(/[-_.\s]+\b(?:andretpf|wolverdonfilmes|tdf|bludv|thepiratefilmes)\b.*$/i, '')
+    .replace(/\b(?:x26[45]|h26[45]|hevc|avc|aac|dts|6ch|5[._ ]1|web[- ]?dl|web[- ]?rip|bdrip|blu[- ]?ray|remux|720p|1080p|2160p|dublado|dual|nacional)\b/gi, '')
     .replace(/[._]+/g, ' ')
+    .replace(/\s*\(\s*(?:19\d{2}|20\d{2})\s*\)\s*$/g, '')
+    .replace(/[-\s]+(?:19\d{2}|20\d{2})\s*$/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/[-\s]+$/, '')
+    .replace(/[-,\s]+$/, '')
     .trim()
 
-  if (year && cleaned.endsWith(year) && !cleaned.endsWith(`(${year})`)) {
-    return `${cleaned.slice(0, -year.length).trim()} (${year})`.trim()
-  }
-
-  return cleaned
+  return cleaned || String(value || '').trim()
 }
 
 function cleanEpisodeTitle(filename, episode) {
