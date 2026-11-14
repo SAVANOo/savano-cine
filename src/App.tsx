@@ -45,7 +45,7 @@ function getInitialDeepLinkId(): string | null {
 }
 
 export function App() {
-  const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série'>('Todos')
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série' | 'Continuar'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
@@ -320,7 +320,11 @@ export function App() {
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const list = catalog.filter((item) => {
-      if (activeKind !== 'Todos' && item.kind !== activeKind) return false
+      if (activeKind === 'Continuar') {
+        if (!item.resume && (item.progress ?? 0) <= 0) return false
+      } else if (activeKind !== 'Todos' && item.kind !== activeKind) {
+        return false
+      }
       if (activeGenre !== 'Todos' && !(item.genres ?? []).includes(activeGenre)) return false
       if (unwatchedOnly && (item.progress ?? 0) >= 90) return false
       if (!normalized) return true
@@ -377,7 +381,7 @@ export function App() {
     }
 
     return [...catalog]
-      .filter((item) => (item.progress ?? 0) < 90)
+      .filter((item) => (item.progress ?? 0) === 0 && !item.resume)
       .map((item) => {
         const genreScore = (item.genres ?? []).reduce(
           (acc, g) => acc + (preferredGenres.get(g.toLowerCase()) ?? 0),
@@ -590,7 +594,13 @@ export function App() {
           <section className="flex flex-col gap-5">
             <div className="flex items-baseline justify-between gap-4">
               <h1 className="m-0 text-xl font-bold text-white">
-                {activeKind === 'Todos' ? 'Resultados' : activeKind === 'Filme' ? 'Filmes' : 'Séries'}
+                {activeKind === 'Todos'
+                  ? 'Resultados'
+                  : activeKind === 'Continuar'
+                    ? 'Continuar assistindo'
+                    : activeKind === 'Filme'
+                      ? 'Filmes'
+                      : 'Séries'}
                 {activeGenre !== 'Todos' ? ` · ${translateGenre(activeGenre)}` : ''}
               </h1>
               <span className="text-xs text-[var(--sc-text-muted)]">

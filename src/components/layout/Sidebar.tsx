@@ -5,6 +5,7 @@ import {
   FolderPlus,
   Home,
   Pencil,
+  PlayCircle,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -20,8 +21,8 @@ type SidebarProps = {
   sourcesError: string
   activeProfile: Profile
   profiles: Profile[]
-  activeKind: 'Todos' | 'Filme' | 'Série'
-  onSelectKind: (kind: 'Todos' | 'Filme' | 'Série') => void
+  activeKind: 'Todos' | 'Filme' | 'Série' | 'Continuar'
+  onSelectKind: (kind: 'Todos' | 'Filme' | 'Série' | 'Continuar') => void
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
@@ -198,6 +199,7 @@ export function Sidebar({
       <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
         {[
           { key: 'Todos' as const, label: 'Início', icon: Home },
+          { key: 'Continuar' as const, label: 'Continuar assistindo', icon: PlayCircle },
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {
