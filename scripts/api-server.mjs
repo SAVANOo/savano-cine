@@ -36,6 +36,37 @@ createServer(async (request, response) => {
     return send(response, 200, sources)
   }
 
+  if (requestUrl.pathname === '/api/progress' && request.method === 'GET') {
+    const progress = database.prepare(`
+      SELECT position_seconds AS position, duration_seconds AS duration, watched
+      FROM watch_progress
+      WHERE profile_id = ? AND media_item_id = ?
+    `).get(requestUrl.searchParams.get('profileId'), requestUrl.searchParams.get('mediaId'))
+    return send(response, 200, progress || null)
+  }
+
+  if (requestUrl.pathname === '/api/progress' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const position = Math.max(0, Math.floor(Number(body.position) || 0))
+    const duration = Math.max(0, Math.floor(Number(body.duration) || 0))
+    const watched = body.watched ? 1 : 0
+    database.prepare(`
+      INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(profile_id, media_item_id) DO UPDATE SET
+        position_seconds = excluded.position_seconds,
+        duration_seconds = excluded.duration_seconds,
+        watched = excluded.watched,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(body.profileId, body.mediaId, position, duration, watched)
+    return send(response, 200, { position, duration, watched: Boolean(watched) })
+  }
+
   if (requestUrl.pathname === '/api/profiles') {
     if (request.method === 'POST') {
       let body
@@ -59,37 +90,6 @@ createServer(async (request, response) => {
       `).run(id, name, avatarKey)
 
       return send(response, 200, { id, name, avatarKey, isKids: 0 })
-    }
-
-    if (requestUrl.pathname === '/api/progress' && request.method === 'GET') {
-      const progress = database.prepare(`
-        SELECT position_seconds AS position, duration_seconds AS duration, watched
-        FROM watch_progress
-        WHERE profile_id = ? AND media_item_id = ?
-      `).get(requestUrl.searchParams.get('profileId'), requestUrl.searchParams.get('mediaId'))
-      return send(response, 200, progress || null)
-    }
-
-    if (requestUrl.pathname === '/api/progress' && request.method === 'POST') {
-      let body
-      try {
-        body = await readJson(request)
-      } catch {
-        return send(response, 400, { error: 'JSON inválido.' })
-      }
-      const position = Math.max(0, Math.floor(Number(body.position) || 0))
-      const duration = Math.max(0, Math.floor(Number(body.duration) || 0))
-      const watched = body.watched ? 1 : 0
-      database.prepare(`
-        INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(profile_id, media_item_id) DO UPDATE SET
-          position_seconds = excluded.position_seconds,
-          duration_seconds = excluded.duration_seconds,
-          watched = excluded.watched,
-          updated_at = CURRENT_TIMESTAMP
-      `).run(body.profileId, body.mediaId, position, duration, watched)
-      return send(response, 200, { position, duration, watched: Boolean(watched) })
     }
 
     const profiles = database.prepare(`

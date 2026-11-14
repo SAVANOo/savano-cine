@@ -17,6 +17,7 @@ await mkdir(path.dirname(databasePath), { recursive: true })
 const database = new DatabaseSync(databasePath)
 const schema = await readFile(path.resolve('database/schema.sql'), 'utf8')
 database.exec(schema)
+ensureProfileProgressTable()
 ensureColumn('media_items', 'tags_json', `TEXT NOT NULL DEFAULT '[]'`)
 ensureColumn('media_items', 'deleted_at', 'TEXT')
 database.exec(`
@@ -165,6 +166,28 @@ function ensureColumn(table, column, definition) {
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) throw error
   }
+}
+
+function ensureProfileProgressTable() {
+  const columns = database.prepare('PRAGMA table_info(watch_progress)').all().map((column) => column.name)
+  if (!columns.length || columns.includes('profile_id')) return
+
+  database.exec(`
+    ALTER TABLE watch_progress RENAME TO watch_progress_legacy;
+    CREATE TABLE watch_progress (
+      profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      media_item_id TEXT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+      position_seconds INTEGER NOT NULL DEFAULT 0 CHECK (position_seconds >= 0),
+      duration_seconds INTEGER,
+      watched INTEGER NOT NULL DEFAULT 0 CHECK (watched IN (0, 1)),
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (profile_id, media_item_id)
+    );
+    INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched, updated_at)
+    SELECT 'profile-savio', media_item_id, position_seconds, duration_seconds, watched, updated_at
+    FROM watch_progress_legacy;
+    DROP TABLE watch_progress_legacy;
+  `)
 }
 
 function buildTags(item) {
