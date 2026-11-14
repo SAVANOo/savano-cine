@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Info, Play } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Info, Play, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import { resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
@@ -9,10 +9,11 @@ type HeroCarouselProps = {
   items: LibraryItem[]
   onPlay: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
+  onToggleWatchlist?: (item: LibraryItem) => void
 }
 
 /** Netflix / Prime Video style rotating hero spotlight with Play + More Info CTAs. */
-export function HeroCarousel({ items, onPlay, onOpenDetails }: HeroCarouselProps) {
+export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }: HeroCarouselProps) {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
 
@@ -92,6 +93,12 @@ export function HeroCarousel({ items, onPlay, onOpenDetails }: HeroCarouselProps
               <Info className="h-4 w-4" />
               Mais informações
             </Button>
+            {onToggleWatchlist && (
+              <Button variant="secondary" size="lg" onClick={() => onToggleWatchlist(active)}>
+                {active.inWatchlist ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {active.inWatchlist ? 'Na minha lista' : 'Minha lista'}
+              </Button>
+            )}
           </div>
         </div>
 

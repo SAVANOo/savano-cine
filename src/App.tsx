@@ -246,6 +246,34 @@ export function App() {
     else setSelectedShow(item)
   }, [setSelectedShow])
 
+  const toggleWatchlist = useCallback(
+    async (item: LibraryItem) => {
+      const targetType = item.kind === 'Série' ? 'show' : 'movie'
+      const nextVal = !item.inWatchlist
+      setCatalog((prev) => {
+        const updated = prev.map((entry) =>
+          entry.id === item.id ? { ...entry, inWatchlist: nextVal } : entry,
+        )
+        try {
+          sessionStorage.setItem(`sc_catalog_${activeProfileId}`, JSON.stringify(updated))
+        } catch {
+          // ignore
+        }
+        return updated
+      })
+      try {
+        await fetch('/api/watchlist/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileId: activeProfileId, targetType, targetId: item.id }),
+        })
+      } catch {
+        // ignore offline fallback
+      }
+    },
+    [activeProfileId],
+  )
+
   const triggerArtworkSearch = useCallback(
     async (item: LibraryItem) => {
       const targetType = item.kind === 'Série' ? 'show' : 'movie'
@@ -300,6 +328,11 @@ export function App() {
 
   const continueWatching = useMemo(
     () => catalog.filter((item) => Boolean(item.resume) || (item.progress ?? 0) > 0),
+    [catalog],
+  )
+
+  const watchlistItems = useMemo(
+    () => catalog.filter((item) => Boolean(item.inWatchlist)),
     [catalog],
   )
 
@@ -438,6 +471,7 @@ export function App() {
             onPlayMedia={(media) => setSelectedMedia(media)}
             onPlayItem={playLibraryItem}
             onOpenDetails={(item) => setSelectedShow(item)}
+            onToggleWatchlist={(item) => void toggleWatchlist(item)}
             onSearchArtwork={(item) => void triggerArtworkSearch(item)}
             onCatalogUpdated={refreshCatalogAndSources}
             onArchived={() => {
@@ -469,6 +503,7 @@ export function App() {
                     item={item}
                     onPlay={playLibraryItem}
                     onOpenDetails={(target) => setSelectedShow(target)}
+                    onToggleWatchlist={(target) => void toggleWatchlist(target)}
                   />
                 ))}
               </div>
@@ -480,6 +515,7 @@ export function App() {
               items={heroItems}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
             <MediaCarousel
@@ -489,6 +525,16 @@ export function App() {
               variant="landscape"
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+            />
+
+            <MediaCarousel
+              title="Minha lista"
+              subtitle="Seus títulos salvos neste perfil"
+              items={watchlistItems}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
             <MediaCarousel
@@ -496,6 +542,7 @@ export function App() {
               items={catalog.slice(0, 18)}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
             <MediaCarousel
@@ -503,6 +550,7 @@ export function App() {
               items={moviesRow}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
             <MediaCarousel
@@ -510,6 +558,7 @@ export function App() {
               items={seriesRow}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
             {genreCarousels.map((row) => (
@@ -519,6 +568,7 @@ export function App() {
                 items={row.items}
                 onPlay={playLibraryItem}
                 onOpenDetails={(target) => setSelectedShow(target)}
+                onToggleWatchlist={(target) => void toggleWatchlist(target)}
               />
             ))}
           </div>
@@ -527,9 +577,11 @@ export function App() {
 
       {selectedMedia && (
         <VideoPlayer
+          key={selectedMedia.url}
           media={selectedMedia}
           profileId={activeProfile.id}
           capabilities={playerCapabilities}
+          onPlayNext={(next) => setSelectedMedia(next)}
           onClose={() => {
             setSelectedMedia(null)
             refreshCatalogAndSources()

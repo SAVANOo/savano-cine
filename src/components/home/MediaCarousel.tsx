@@ -10,6 +10,7 @@ type MediaCarouselProps = {
   variant?: 'poster' | 'landscape'
   onPlay: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
+  onToggleWatchlist?: (item: LibraryItem) => void
 }
 
 /** Horizontal streaming carousel row with smooth scroll arrows. */
@@ -20,6 +21,7 @@ export function MediaCarousel({
   variant = 'poster',
   onPlay,
   onOpenDetails,
+  onToggleWatchlist,
 }: MediaCarouselProps) {
   const trackRef = useRef<HTMLDivElement | null>(null)
 
@@ -69,6 +71,7 @@ export function MediaCarousel({
                 variant={variant}
                 onPlay={onPlay}
                 onOpenDetails={onOpenDetails}
+                onToggleWatchlist={onToggleWatchlist}
               />
             </div>
           ))}

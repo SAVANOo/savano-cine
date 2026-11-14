@@ -18,7 +18,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Alta | Buscar capas faltantes para filmes ainda sem pôster | Executar `npm run artwork` / botão **Buscar capas faltantes** no Painel Admin e confirmar candidatos pendentes |
+| Média | Busca de legendas OpenSubtitles na interface | Botão no detalhe/player para acionar `/api/media/:id/subtitles/search` e baixar legendas faltantes |
+| Baixa | Barra de controles 100% customizada no player | Substituir `<video controls>` nativo por timeline e volume integrados ao Design System |
 
 ## Backlog
 
@@ -83,6 +84,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Suíte de testes automatizados: testes unitários em `node --test` (`tests/unit/clean-title.test.mjs`) e testes E2E com Playwright (`tests/e2e/critical-flows.spec.ts`) cobrindo Home, clique duplo nos cards (play vs detalhes), Painel Admin, Editor de Perfil e deep-link `/series/show-south-park`.
 - Limpeza automática de títulos (`cleanTitle` + `sanitizeExistingTitles`) removendo tags de release (`AndreTPF`, `WOLVERDONFILMES`, `TDF`, `thepiratefilmes`, `BLUDV`) e anos no final do título, Painel Admin dedicado (`AdminView`) com botão `Buscar capas faltantes` (`POST /api/artwork/fetch`), cursor temático global, cache `sessionStorage` na Home, marcador de episódio ativo (`Assistindo agora`) e suporte a deep-links `/series/:id`.
 - Atalhos de teclado no player (`Espaço`/`K` para play/pause, `Setas` para ±10s, `F` para tela cheia), cache de 60s em `refreshSourceStatuses` no `GET /api/sources` e limpeza de warnings do `oxlint`.
+- Coleta de capas locais via `npm run artwork` (`data/artwork`), **Minha lista** por perfil (`POST /api/watchlist/toggle` + tabela `watchlist` + carrossel na Home + botão no Hero, Cards e Detalhes), avanço automático para o **Próximo episódio em 5s** no `VideoPlayer` e testes unitários de `uiHelpers.ts`.
 
 ## Regras do quadro
 

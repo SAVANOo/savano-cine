@@ -84,6 +84,7 @@ export type LibraryItem = {
   subtitles?: SubtitleTrack[]
   mediaId?: string
   resume?: ResumeInfo
+  inWatchlist?: boolean
 }
 
 export type MediaSource = {

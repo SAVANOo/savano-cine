@@ -184,9 +184,36 @@ try {
   })
   assert.equal(promoHits.length, 0, 'Biblioteca não deve expor vídeos promocionais/anúncios (1XBET)')
   console.log('PASS biblioteca livre de vídeos promocionais (1XBET/anúncios)')
+
+  // 8. Verificar toggle de Minha Lista por perfil
+  const toggleOn = await api('/api/watchlist/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      profileId: tempIds.profiles[0],
+      targetType: sampleMovie.kind === 'Série' ? 'show' : 'movie',
+      targetId: sampleMovie.id,
+    }),
+  })
+  assert.equal(toggleOn.status, 200)
+  assert.equal(toggleOn.body?.inWatchlist, true)
+
+  const toggleOff = await api('/api/watchlist/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      profileId: tempIds.profiles[0],
+      targetType: sampleMovie.kind === 'Série' ? 'show' : 'movie',
+      targetId: sampleMovie.id,
+    }),
+  })
+  assert.equal(toggleOff.status, 200)
+  assert.equal(toggleOff.body?.inWatchlist, false)
+  console.log('PASS toggle de Minha Lista por perfil persistido')
 } finally {
   database.prepare('DELETE FROM artwork_candidates WHERE id = ?').run(tempIds.candidateId)
   for (const profileId of tempIds.profiles) {
+    database.prepare('DELETE FROM watchlist WHERE profile_id = ?').run(profileId)
     database.prepare('DELETE FROM ratings WHERE profile_id = ?').run(profileId)
     database.prepare('DELETE FROM profiles WHERE id = ?').run(profileId)
   }

@@ -1,8 +1,8 @@
-import { ArrowLeft, Archive, Image, Pencil, Play, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Archive, Check, Image, Pencil, Play, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Episode, LibraryItem, Season } from '../../domain/catalog'
-import { getRelatedItems, resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
+import { findNextEpisode, getRelatedItems, resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { MediaCarousel } from '../home/MediaCarousel'
 import { Badge } from '../ui/Badge'
@@ -17,6 +17,7 @@ type ShowDetailViewProps = {
   onPlayMedia: (media: PlayableMedia) => void
   onPlayItem: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
+  onToggleWatchlist?: (item: LibraryItem) => void
   onSearchArtwork?: (show: LibraryItem) => void
   onCatalogUpdated: () => void
   onArchived: () => void
@@ -31,6 +32,7 @@ export function ShowDetailView({
   onPlayMedia,
   onPlayItem,
   onOpenDetails,
+  onToggleWatchlist,
   onSearchArtwork,
   onCatalogUpdated,
   onArchived,
@@ -161,6 +163,12 @@ export function ShowDetailView({
                 <Button variant="secondary" size="lg" onClick={() => onPlayMedia(restartable)}>
                   <RotateCcw className="h-4 w-4" />
                   Reiniciar
+                </Button>
+              )}
+              {onToggleWatchlist && (
+                <Button variant="secondary" size="lg" onClick={() => onToggleWatchlist(show)}>
+                  {show.inWatchlist ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  {show.inWatchlist ? 'Na minha lista' : 'Minha lista'}
                 </Button>
               )}
               {onSearchArtwork && (
@@ -341,6 +349,7 @@ export function ShowDetailView({
                                   overview: show.overview,
                                   year: show.year,
                                   startPosition: isResumeEpisode ? show.resume?.position : 0,
+                                  nextEpisode: findNextEpisode(show, ep.mediaId),
                                 })
                               }
                             >

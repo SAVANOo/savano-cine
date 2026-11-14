@@ -94,6 +94,31 @@ export type PlayableMedia = {
   overview?: string
   year?: number
   startPosition?: number
+  nextEpisode?: PlayableMedia
+}
+
+/** Find the sequential next playable episode in a series after `currentMediaId`. */
+export function findNextEpisode(item: LibraryItem, currentMediaId?: string): PlayableMedia | undefined {
+  if (!currentMediaId || !item.seasons?.length) return undefined
+  const flat: Array<{ season: number; ep: NonNullable<LibraryItem['seasons']>[number]['episodes'][number] }> = []
+  for (const season of item.seasons) {
+    for (const ep of season.episodes) {
+      if (ep.mediaUrl) flat.push({ season: season.number, ep })
+    }
+  }
+  const idx = flat.findIndex((entry) => entry.ep.mediaId === currentMediaId)
+  if (idx < 0 || idx + 1 >= flat.length) return undefined
+  const next = flat[idx + 1]
+  return {
+    title: `${item.title} — T${next.season}:E${next.ep.number} ${next.ep.title}`,
+    url: next.ep.mediaUrl!,
+    subtitleUrl: next.ep.subtitleUrl,
+    mediaId: next.ep.mediaId,
+    overview: item.overview,
+    year: item.year,
+    startPosition: 0,
+    nextEpisode: findNextEpisode(item, next.ep.mediaId),
+  }
 }
 
 /** Resolve the best playable stream for a movie or series (preferring active resume target). */
@@ -110,6 +135,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
       overview: item.overview,
       year: item.year,
       startPosition: restart ? 0 : item.resume.position,
+      nextEpisode: findNextEpisode(item, item.resume.mediaId),
     }
   }
 
@@ -136,6 +162,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
         overview: item.overview,
         year: item.year,
         startPosition: 0,
+        nextEpisode: findNextEpisode(item, first.mediaId),
       }
     }
   }

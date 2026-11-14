@@ -6,6 +6,7 @@ type VideoPlayerProps = {
   media: PlayableMedia
   profileId: string
   capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null
+  onPlayNext?: (next: PlayableMedia) => void
   onClose: () => void
 }
 
@@ -15,7 +16,7 @@ type StreamInfo = {
 }
 
 /** Netflix-style immersive player with auto-hiding overlays, paused screen, and Idioma | Legendas popover. */
-export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPlayerProps) {
+export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const lastSavedPosition = useRef(0)
   const pendingPosition = useRef<number | null>(media.startPosition ?? null)
@@ -32,6 +33,7 @@ export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPl
   const [trackMenuOpen, setTrackMenuOpen] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null)
 
   const scheduleHideControls = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
@@ -47,6 +49,16 @@ export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPl
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
     if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
   }, [])
+
+  useEffect(() => {
+    if (nextCountdown === null || !media.nextEpisode || !onPlayNext) return
+    if (nextCountdown <= 0) {
+      onPlayNext(media.nextEpisode)
+      return
+    }
+    const timer = window.setTimeout(() => setNextCountdown((c) => (c !== null ? c - 1 : null)), 1000)
+    return () => window.clearTimeout(timer)
+  }, [media.nextEpisode, nextCountdown, onPlayNext])
 
   useEffect(() => {
     if (!media.mediaId || (media.startPosition !== undefined && media.startPosition === 0)) return
@@ -227,7 +239,12 @@ export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPl
             }
           }}
           onTimeUpdate={saveProgress}
-          onEnded={saveProgress}
+          onEnded={() => {
+            saveProgress()
+            if (media.nextEpisode && onPlayNext) {
+              setNextCountdown(5)
+            }
+          }}
         >
           {selectedSubtitleUrl && (
             <track kind="subtitles" label="Legenda" src={selectedSubtitleUrl} default />
@@ -332,6 +349,33 @@ export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPl
               <span className="mt-5 inline-block rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
                 Pausado
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Netflix-style Next Episode Countdown */}
+        {nextCountdown !== null && media.nextEpisode && onPlayNext && (
+          <div className="absolute right-8 bottom-20 z-30 flex max-w-sm flex-col gap-3 rounded-[var(--sc-radius-lg)] border border-white/20 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
+            <p className="m-0 text-[11px] font-bold uppercase tracking-widest text-[var(--sc-accent)]">
+              Próximo episódio em {nextCountdown}s
+            </p>
+            <strong className="text-sm text-white">{media.nextEpisode.title}</strong>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => onPlayNext(media.nextEpisode!)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--sc-radius-sm)] bg-white px-3 py-2 text-xs font-bold text-neutral-950 hover:bg-white/90"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                Assistir agora
+              </button>
+              <button
+                type="button"
+                onClick={() => setNextCountdown(null)}
+                className="rounded-[var(--sc-radius-sm)] border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         )}

@@ -24,6 +24,7 @@ const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
+ensureWatchlistTable()
 ignorePromotionalAds()
 sanitizeExistingTitles()
 let lastSourceRefreshAt = 0
@@ -505,6 +506,26 @@ async function handleApiRequest(request, response) {
     return streamArtwork('movie', movieArtworkMatch[1], movieArtworkMatch[2], response)
   }
 
+  if (requestUrl.pathname === '/api/watchlist/toggle' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const profileId = typeof body.profileId === 'string' && body.profileId ? body.profileId : 'profile-savio'
+    const targetType = body.targetType === 'show' ? 'show' : 'movie'
+    const targetId = typeof body.targetId === 'string' ? body.targetId : ''
+    if (!targetId) return send(response, 400, { error: 'targetId obrigatório.' })
+    const existing = database.prepare('SELECT 1 FROM watchlist WHERE profile_id = ? AND target_type = ? AND target_id = ?').get(profileId, targetType, targetId)
+    if (existing) {
+      database.prepare('DELETE FROM watchlist WHERE profile_id = ? AND target_type = ? AND target_id = ?').run(profileId, targetType, targetId)
+      return send(response, 200, { inWatchlist: false })
+    }
+    database.prepare('INSERT INTO watchlist (profile_id, target_type, target_id) VALUES (?, ?, ?)').run(profileId, targetType, targetId)
+    return send(response, 200, { inWatchlist: true })
+  }
+
   if (requestUrl.pathname === '/api/artwork/candidates' && request.method === 'GET') {
     return send(response, 200, listPendingArtworkCandidates())
   }
@@ -921,6 +942,8 @@ async function analyzeMediaStreams(mediaId, response) {
 }
 
 async function buildLibrary(profileId) {
+  const watchlistRows = database.prepare('SELECT target_type, target_id FROM watchlist WHERE profile_id = ?').all(profileId)
+  const watchlistSet = new Set(watchlistRows.map((r) => `${r.target_type}:${r.target_id}`))
   const items = database.prepare(`
     SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
       p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
@@ -947,6 +970,7 @@ async function buildLibrary(profileId) {
     mediaUrl: `/api/media/${item.id}`,
     subtitleUrl: `/api/media/${item.id}/subtitles`,
     mediaId: item.id,
+    inWatchlist: watchlistSet.has(`movie:${item.id}`),
     subtitles: getSubtitleTracks(item.id),
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
@@ -1063,6 +1087,7 @@ async function buildLibrary(profileId) {
           subtitleUrl: `/api/media/${resumeEpisode.mediaId}/subtitles`,
         },
       } : {}),
+      inWatchlist: watchlistSet.has(`show:${show.id}`),
     })
   }
 
@@ -1817,6 +1842,18 @@ function readRecentErrorLogs() {
   } catch {
     return []
   }
+}
+
+function ensureWatchlistTable() {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      profile_id TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (profile_id, target_type, target_id)
+    )
+  `)
 }
 
 function ignorePromotionalAds() {

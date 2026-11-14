@@ -1,4 +1,4 @@
-import { Info, Play, Star } from 'lucide-react'
+import { Check, Info, Play, Plus, Star } from 'lucide-react'
 import type { LibraryItem } from '../../domain/catalog'
 import { resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
@@ -8,6 +8,7 @@ type MediaCardProps = {
   variant?: 'poster' | 'landscape'
   onPlay: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
+  onToggleWatchlist?: (item: LibraryItem) => void
 }
 
 /**
@@ -15,7 +16,7 @@ type MediaCardProps = {
  * - Clicking the cover/play area starts playback directly.
  * - Clicking the info button (or title/meta footer) opens the detail view.
  */
-export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails }: MediaCardProps) {
+export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onToggleWatchlist }: MediaCardProps) {
   const playable = Boolean(resolvePlayableMedia(item))
   const hasSubtitles =
     Boolean(item.subtitleUrl) ||
@@ -100,15 +101,32 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails }: M
             </p>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onOpenDetails(item)}
-            aria-label={`Mais informações sobre ${item.title}`}
-            title="Mais informações"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white/85 transition hover:border-white/40 hover:bg-white/20 hover:text-white cursor-pointer"
-          >
-            <Info className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {onToggleWatchlist && (
+              <button
+                type="button"
+                onClick={() => onToggleWatchlist(item)}
+                aria-label={item.inWatchlist ? `Remover ${item.title} da minha lista` : `Adicionar ${item.title} à minha lista`}
+                title={item.inWatchlist ? 'Na minha lista' : 'Adicionar à minha lista'}
+                className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                  item.inWatchlist
+                    ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)] text-white'
+                    : 'border-white/15 bg-white/8 text-white/85 hover:border-white/40 hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                {item.inWatchlist ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenDetails(item)}
+              aria-label={`Mais informações sobre ${item.title}`}
+              title="Mais informações"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white/85 transition hover:border-white/40 hover:bg-white/20 hover:text-white"
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--sc-text-muted)]">

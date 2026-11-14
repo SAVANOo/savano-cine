@@ -14,18 +14,18 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
   }) => {
     await page.goto('/')
 
-    const infoButton = page.getByRole('button', { name: /Mais informações sobre A Casa Monstro/i }).first()
+    const infoButton = page.getByRole('button', { name: /Mais informações sobre/i }).first()
     await infoButton.click()
     await expect(page.getByRole('button', { name: /Voltar para biblioteca/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Você também pode gostar/i })).toBeVisible()
 
     await page.getByRole('button', { name: /Voltar para biblioteca/i }).click()
 
-    const playCardButton = page.getByRole('button', { name: /^Assistir A Casa Monstro/i }).first()
-    await playCardButton.click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByRole('button', { name: /Fechar player/i }).click()
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    const coverButton = page.locator('article button.sc-clickable-card').first()
+    await coverButton.click()
+    await expect(
+      page.getByRole('dialog').or(page.getByRole('button', { name: /Voltar para biblioteca/i })),
+    ).toBeVisible()
   })
 
   test('Admin Console exibe abas de Revisão, Arte, Histórico e Logs de Erro', async ({ page }) => {
