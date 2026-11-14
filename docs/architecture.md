@@ -77,6 +77,8 @@ O catálogo não tratará todo arquivo de vídeo como filme:
 
 Itens com baixa certeza não serão forçados para filme. Eles entram como `other` com `classification_status = review`, preservando o caminho para decisão manual ou sugestão da IA. Conteúdos em pastas `Curtas` seguem essa regra como especiais: ficam fora da biblioteca principal, mas continuam vinculados ao caminho original para uma futura tela de extras.
 
+A tela de revisão oferece três decisões explícitas: **Corrigir como filme**, que aprova o item como `movie` e o inclui na biblioteca; **Aprovar como especial/outro**, que aprova como `other` e mantém o item fora da biblioteca principal; e **Ignorar**, que marca `classification_status = ignored`. Falhas da API são exibidas no próprio painel. Nenhuma decisão altera o arquivo físico.
+
 O scanner aceita temporadas numéricas (`Season 01`, `1ª Temporada`) e ordinais em português (`Primeira Temporada`, `Segunda Temporada`). Também reconhece identificadores de episódio `S01E01`, `S1EP01`, `1x01` e `01.01`.
 
 ## Rating e controle remoto

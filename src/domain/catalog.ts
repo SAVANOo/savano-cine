@@ -96,3 +96,13 @@ export type MediaSource = {
   volumeLabel?: string
   volumeId?: string
 }
+
+export type ReviewItem = {
+  id: string
+  title: string
+  kind: string
+  reason?: string
+  relativePath: string
+  sourceName: string
+  sourcePath: string
+}

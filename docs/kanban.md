@@ -11,7 +11,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
 | Alta | Player compatível com o acervo | Modal integrado a `/streams`; seleção de faixas usa transcoding MP4 quando FFprobe/FFmpeg estão disponíveis; ambiente atual informa indisponibilidade |
-| Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
 | Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; backdrops TMDB opcionais por correspondência exata, com fallback para poster |
@@ -58,6 +57,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
   sem exposição de segredos e sem escrita no catálogo ou no acervo.
 - Atualização controlada do catálogo pela sidebar, reutilizando o importador somente leitura,
   com status via API e bloqueio de execuções concorrentes.
+- Tela de revisão validada com 66 itens reais: ação de filme, especial/outro e ignorar têm destinos
+  distintos, erro `404` é retornado e exibido, e o caminho físico permanece inalterado.
 
 ## Regras do quadro
 

@@ -241,9 +241,9 @@ createServer(async (request, response) => {
       return send(response, 200, { status: 'ignored' })
     }
 
-    if (action === 'approve' || action === 'correct') {
+    if (action === 'correct_movie' || action === 'approve_other') {
       const title = typeof body.title === 'string' ? body.title.trim() : ''
-      const kind = body.kind === 'movie' ? 'movie' : 'other'
+      const kind = action === 'correct_movie' ? 'movie' : 'other'
       if (!title) return send(response, 400, { error: 'Título obrigatório.' })
       database.prepare(`
         UPDATE media_items
@@ -251,10 +251,10 @@ createServer(async (request, response) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(title, kind, id)
-      return send(response, 200, { status: 'approved', title, kind })
+      return send(response, 200, { status: 'approved', action, title, kind })
     }
 
-    return send(response, 400, { error: 'Ação de revisão inválida.' })
+    return send(response, 400, { error: 'Ação de revisão inválida. Escolha corrigir como filme, aprovar como especial/outro ou ignorar.' })
   }
 
   if (requestUrl.pathname === '/api/catalog/history' && request.method === 'GET') {

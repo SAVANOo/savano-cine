@@ -72,7 +72,9 @@ está em andamento; `GET /api/catalog/refresh/status` informa estado, fontes, re
 sem expor caminhos adicionais. Se a API estiver indisponível, a interface mantém o catálogo
 de demonstração/fallback já carregado e não tenta alterar arquivos.
 
-O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.
+O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; a tela **Revisão**
+permite decidir explicitamente entre corrigir como filme, aprovar como especial/outro ou ignorar.
+Erros da API aparecem no painel, e todas as decisões alteram somente o catálogo.
 
 `npm run doctor` executa um diagnóstico operacional somente leitura em português. Ele verifica o
 SQLite e seu schema, fontes cadastradas e online/offline, contagens de filmes, séries e itens em
