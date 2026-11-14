@@ -45,7 +45,7 @@ function expectJson(result) {
 
 function expectNoAbsolutePath(value) {
   const serialized = JSON.stringify(value)
-  if (/[A-Za-z]:[\\/]|\/(?:Users|home|mnt)\//i.test(serialized)) {
+  if (/(?:^|[^A-Za-z])[A-Za-z]:[\\/]|\/(?:Users|home|mnt)\//i.test(serialized)) {
     throw new Error('resposta expõe caminho físico')
   }
 }

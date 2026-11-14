@@ -18,7 +18,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Média | Troca de faixa de áudio com FFmpeg/FFprobe no ambiente | Garantir FFmpeg e FFprobe configurados no sistema (`CINE_FFMPEG_PATH`/`CINE_FFPROBE_PATH`) para habilitar troca real de faixa de áudio em MKV/MP4 multi-áudio |
+| Baixa | Polimento de ícones, atalhos de teclado/controle no player e testes E2E | Refinar micro-interações do player (atalhos de espaço/setas) e automatizar teste E2E na interface |
 
 ## Backlog
 
@@ -70,6 +70,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Primeira etapa de polimento visual do frontend: pôsteres tipográficos com título/ano para itens sem capa, badge `CC` para legendas disponíveis, fallback de poster no hero e bordas/sombras cinematográficas nos cards e hero.
 - Cabeçalho panorâmico com backdrop na página de detalhe, barra de controles do player com acabamento translúcido e estados vazios estilizados.
 - `SelfHostedSourceAdapter` integrado ao refresh do catálogo e ao streaming remoto (`302 Location`), validado em `scripts/verify-features.mjs`.
+- `FFmpeg` e `FFprobe` (`Gyan.FFmpeg 9.0.2`) instalados e disponíveis no `PATH`, validados via `npm run doctor` e `/api/player/capabilities`.
 
 ## Regras do quadro
 
