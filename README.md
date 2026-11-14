@@ -1,148 +1,123 @@
-# Cine Local
+# Savano Cine
 
-Interface local para organizar e assistir filmes e séries armazenados em discos locais e HDs externos.
+Transforme acervos pessoais de filmes e séries espalhados em HDs locais ou drives removíveis em uma **plataforma de streaming local estilo Netflix** — rápida, privada e **100% não destrutiva** (nenhum arquivo físico é movido, renomeado ou apagado).
 
-## Status
+---
 
-Aplicação local funcional em evolução incremental: o catálogo já usa SQLite, importa as fontes
-locais, abre séries por rota própria, reproduz arquivos pelo player HTTP e baixa capas de séries.
-O próximo ciclo é acompanhado no [Kanban](docs/kanban.md).
+## Demonstração
 
-O nome da aplicação é **Savano Cine**. O repositório continua com o nome técnico `cine-local` para manter o histórico inicial simples.
+<video src="docs/media/demo.webm" controls width="100%">
+  Veja o vídeo de demonstração em <a href="docs/media/demo.webm">docs/media/demo.webm</a>.
+</video>
 
-## Arquitetura planejada
+| Tela Inicial (Hero & Carrosséis) | Console Admin (Diagnóstico & Arte) |
+| --- | --- |
+| ![Tela inicial do Savano Cine](docs/media/home.png) | ![Console Admin do Savano Cine](docs/media/admin.png) |
 
-O projeto será organizado por responsabilidade, evitando uma camada única com regras de negócio misturadas à interface:
+---
+
+## Proposta e o que o projeto soluciona
+
+Quem mantém filmes e séries em HDs externos costuma enfrentar quatro problemas: pastas com nomes poluídos por tags de release, falta de capas/sinopses unificadas, séries com episódios misturados e perda de progresso ao assistir em diferentes momentos.
+
+O **Savano Cine** resolve isso com:
+
+- **Preservação total do acervo**: o scanner lê seus discos em modo somente-leitura. Limpeza de títulos, agrupamento de versões (`1080p` / `720p`), correções e arquivamentos ficam apenas no SQLite local (`data/catalog.db`), com histórico e restauração reversível.
+- **Capas e metadados locais**: busca pôsteres, sinopses e gêneros (IMDb, Wikipedia PT/EN, TVMaze e TMDB opcional) e salva tudo localmente em `data/artwork`, evitando depender de APIs externas a cada carregamento.
+- **Fontes removíveis resilientes**: reconhece HDs pelo identificador/volume do Windows e atualiza o status `online`/`offline` automaticamente sem apagar o catálogo quando o disco é desconectado.
+- **Perfis independentes**: múltiplos perfis com avatares temáticos, *Minha Lista*, avaliações e ponto de retomada separados por pessoa.
+- **Player completo**:
+  - Streaming HTTP com suporte a `Range` (seek instantâneo) e transcoding sob demanda via FFmpeg/FFprobe para troca de faixa de áudio mantendo a posição real na timeline.
+  - **Boost de volume até 300%** via Web Audio API (`GainNode` + limitador suave) para filmes com áudio baixo.
+  - Controle de velocidade (`0.75x` a `2x`), *Picture-in-Picture*, legendas locais `.srt`/`.vtt` ou embutidas, e miniaturas de preview na barra de progresso.
+- **Diagnóstico e manutenção simples**: ao baixar novos filmes no futuro, basta clicar em **Atualizar catálogo** (ou abrir **Admin → Arte & Metadados**) para escanear, limpar títulos, buscar capas faltantes e até copiar um prompt pronto caso algum arquivo atípico precise de ajuste.
+
+---
+
+## Como organizar seus arquivos
+
+Você não precisa renomear seus arquivos existentes para começar, mas seguir a estrutura abaixo garante classificação automática imediata:
 
 ```text
-src/
-├── domain/          # entidades e regras de mídia
-├── application/     # casos de uso: escanear, buscar, atualizar progresso
-├── infrastructure/  # filesystem, SQLite, VLC e APIs externas
-└── presentation/    # telas e componentes React
+D:\Filmes\
+├── A Casa Monstro (2006)\
+│   ├── A.Casa.Monstro.2006.1080p.mkv
+│   └── A.Casa.Monstro.2006.pt.srt
+├── Marvel\
+│   └── Vingadores Ultimato (2019)\
+│       └── Vingadores.Ultimato.2019.mkv
+└── South Park\
+    ├── 1\
+    │   ├── S01E01 - Cartman Tem uma Sonda Anal.mkv
+    │   └── S01E02 - Ganhe Peso 4000.mkv
+    └── Curtas\
+        └── Especial.mkv
 ```
 
-O protótipo atual mantém a tela principal em `src/App.tsx` para validar a experiência antes de extrair as próximas camadas.
+### Regras recomendadas
+- **Filmes**: podem ficar na raiz ou dentro de subpastas de franquias/gêneros (`Marvel/`, `DC/`, `Terror/`). Clipes promocionais de release são ignorados automaticamente.
+- **Séries**: coloque dentro de uma pasta com o nome da série e subpastas numéricas de temporada (`1`, `2`, `Season 01`, etc.) ou `Curtas` para especiais. Episódios com `SxxExx` ou `xx.yy` são agrupados automaticamente sob o mesmo card da série.
+- **Legendas**: salve `.srt` ou `.vtt` na mesma pasta com o mesmo prefixo do vídeo (ex.: `Filme.pt.srt`, `Filme.en.vtt`).
 
-## Decisões iniciais
+---
 
-- O repositório vive em `D:\Filmes\cine-local`, separado dos arquivos de mídia.
-- Os arquivos originais serão tratados como somente leitura pelo scanner.
-- Caminhos e fontes de mídia serão persistidos no banco; a interface não dependerá de renomear os arquivos.
-- A aplicação será local e monousuário, sem autenticação ou backend remoto.
-- A primeira integração de metadados será opcional e não bloqueará a reprodução offline.
-- O SQLite será a fonte de verdade do catálogo; CSV/TXT não serão usados como banco principal.
-- Uma caixa de entrada permitirá importar arquivos sem exigir organização manual prévia.
-- IA local será opcional e só poderá sugerir alterações; a confirmação final continuará sendo do usuário.
-- Capas serão tratadas como metadado substituível: primeiro arquivo local, depois fonte pública e, por último, geração por IA.
+## Como executar
 
-## Operação do projeto
+### Pré-requisitos
+- **Node.js 22+** (usa `node:sqlite` nativo).
+- *(Opcional)* **FFmpeg / FFprobe** no `PATH` (ou via `CINE_FFMPEG_PATH` / `CINE_FFPROBE_PATH`) para análise de faixas de áudio, transcoding MP4 e miniaturas na timeline.
 
-O Kanban em `docs/kanban.md` é a referência de execução. A revisão automática do estado,
-pendências e próximo incremento acontece a cada 2 minutos e 30 segundos de trabalho contínuo.
-- Legendas serão priorizadas nesta ordem: embutidas, arquivos locais, OpenSubtitles e seleção manual.
-- O importador associa somente arquivos `.srt` e `.vtt` na mesma pasta do vídeo, inferindo idiomas como
-  `pt-BR`, `en` e `es` pelo sufixo do nome. O player converte SRT para WebVTT em tempo de resposta;
-  legendas embutidas ficam reservadas para uma etapa futura com runtime externo.
-- A biblioteca principal só exibe filmes e séries aprovados; cursos, coleções e arquivos promocionais ficam em revisão.
-
-## Desenvolvimento
+### Passo a passo
 
 ```bash
+# 1. Instalar dependências
 npm install
+
+# 2. Escanear suas pastas de mídia (ex.: D:\Filmes e E:\Filmes)
+npm run scan
+
+# 3. Baixar capas, sinopses e gêneros localmente
+npm run artwork
+
+# 4. Iniciar a API (porta 4174) e o frontend (porta 5173) em terminais separados
+npm run api
 npm run dev
 ```
 
-Verificações disponíveis:
+No Windows, você também pode iniciar/reiniciar ambos os servidores em segundo plano com um comando:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch-cine-local.ps1
+```
+
+Acesse **`http://127.0.0.1:5173`** no navegador.
+
+### Variáveis de ambiente opcionais
+| Variável | Descrição |
+| --- | --- |
+| `CINE_API_PORT` | Porta da API local (padrão: `4174`). |
+| `TMDB_API_KEY` | Chave opcional do TMDB para banners widescreen extras. |
+| `OPENSUBTITLES_API_KEY` | Chave opcional para busca de legendas no OpenSubtitles. |
+| `CINE_FFMPEG_PATH` / `CINE_FFPROBE_PATH` | Caminho explícito para os binários do FFmpeg/FFprobe. |
+
+---
+
+## Adicionando novos filmes depois
+
+1. Copie os novos filmes ou episódios para as pastas configuradas.
+2. Clique em **Atualizar catálogo** na barra lateral: o sistema executa automaticamente o scanner, reconcilia episódios, limpa os títulos e dispara a busca de capas/sinopses.
+3. Para conferir se sobrou alguma pendência, abra **Admin → Arte & Metadados** para ver o **Diagnóstico do Catálogo** (`Sem capa`, `Sem sinopse`, `Sem gênero`, `Títulos suspeitos`) e, se necessário, clique em **Copiar prompt de correção**.
+
+---
+
+## Scripts de verificação e testes
 
 ```bash
-npm run lint
-npm run build
-npm run doctor
-npm run smoke
-npm run scan -- "D:\\Filmes" --limit 20
-npm run import -- "E:\\Filmes"
-npm run api
+npm run lint        # Verificação estática com oxlint
+npm run test:unit   # Testes unitários (limpeza de títulos e helpers)
+npm run build       # Build TypeScript + Vite
+npm run doctor      # Diagnóstico do ambiente, banco e fontes
+npm run smoke       # Smoke tests da API (15 verificações)
+npm run verify      # Verificação funcional ponta a ponta da API
+npm run test:e2e    # Suíte Playwright E2E dos fluxos críticos
 ```
-
-`npm run smoke` executa verificações somente de leitura contra a API local em
-`http://127.0.0.1:4174` (ou `CINE_API_URL`). Ele valida health, capabilities, fontes,
-biblioteca, revisão/histórico, leitura de progresso/rating e bloqueios básicos de mídia e
-legenda. Se a API não estiver disponível, o comando falha claramente; inicie antes com
-`npm run api`. O smoke test não grava no SQLite nem altera arquivos do acervo.
-
-Enquanto a API estiver ativa, a sidebar oferece **Atualizar catálogo**. A ação reutiliza o
-importador existente em modo somente leitura do acervo: percorre cada fonte online
-sequencialmente, preserva caminhos e não move, renomeia ou apaga arquivos físicos. O endpoint
-`POST /api/catalog/refresh` retorna `202` e bloqueia uma segunda execução enquanto a primeira
-está em andamento; `GET /api/catalog/refresh/status` informa estado, fontes, resultado e erro
-sem expor caminhos adicionais. Se a API estiver indisponível, a interface mantém o catálogo
-de demonstração/fallback já carregado e não tenta alterar arquivos.
-
-O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; a tela **Revisão**
-permite decidir explicitamente entre corrigir como filme, aprovar como especial/outro ou ignorar.
-Erros da API aparecem no painel, e todas as decisões alteram somente o catálogo.
-
-`npm run doctor` executa um diagnóstico operacional somente leitura em português. Ele verifica o
-SQLite e seu schema, fontes cadastradas e online/offline, contagens de filmes, séries e itens em
-revisão, artes locais, legendas registradas e a disponibilidade de FFmpeg, FFprobe e VLC. O código
-de saída é `0` quando tudo está disponível, `1` quando há avisos operacionais (como uma fonte
-offline ou runtime ausente) e `2` quando o banco não existe, está ilegível ou tem schema incompatível.
-O comando não imprime valores de variáveis de ambiente, não expõe segredos e não altera dados nem
-arquivos físicos.
-
-Fontes em volumes Windows persistem o identificador do volume, rótulo e caminho relativo. A API
-atualiza o status ao iniciar e a cada consulta a `/api/sources`, reconsultando os volumes montados
-para reconhecer uma unidade reconectada com outra letra; quando a consulta nativa não está
-disponível, mantém o fallback pelo caminho salvo. Nenhum arquivo físico é alterado.
-
-O schema SQLite inicial está em `database/schema.sql`. Ele ainda não é carregado automaticamente pela interface; essa será a próxima etapa do backend local.
-
-O comando `import` cria `data/catalog.db` localmente e importa os caminhos encontrados sem alterar os arquivos de mídia. A pasta `data/` fica fora do Git.
-
-Com o catálogo importado, `npm run api` inicia a API local em `http://127.0.0.1:4174`; o Vite encaminha as chamadas `/api` automaticamente durante o desenvolvimento.
-
-`/api/player/capabilities` detecta automaticamente `ffmpeg.exe`, `ffprobe.exe` e `vlc.exe`
-no PATH do Windows. As variáveis `CINE_FFMPEG_PATH`, `CINE_FFPROBE_PATH` e
-`CINE_VLC_PATH` têm prioridade quando apontam para arquivos existentes. A rota retorna
-somente disponibilidade e diagnóstico seguro da origem (`environment`, `path` ou `none`);
-não expõe caminhos absolutos. Nenhum runtime é instalado e nenhum transcoding é executado
-por essa detecção.
-
-`GET /api/media/:mediaId/streams` valida a mídia no catálogo e, quando o FFprobe está
-disponível, analisa faixas internas de áudio e legendas usando `execFile` sem shell.
-A resposta nunca inclui o caminho físico. Sem FFprobe, retorna `available: false` com
-listas vazias, mantendo o player web atual funcionando; a interface informa a indisponibilidade
-e mantém as legendas externas existentes. Quando FFprobe e FFmpeg estão disponíveis, o modal
-exibe as faixas detectadas e usa `/api/media/:mediaId/transcode?format=mp4&audioStream=...`
-(opcionalmente `subtitleStream=...`) para trocar a faixa sem fingir suporte nativo do navegador
-a MKV/AVI.
-
-`GET /api/media/:mediaId/transcode?format=mp4` prepara um stream MP4 fragmentado sob demanda
-com FFmpeg, usando `spawn` sem shell, `stdout` e nenhum arquivo temporário. O endpoint valida
-o ID, a mídia ativa e o confinamento ao diretório da fonte antes de iniciar o processo. Sem
-FFmpeg, responde `200` com `{ "available": false, "reason": "ffmpeg-not-found" }`; Range não
-é aplicado ao stream transcodificado, mas o streaming progressivo continua disponível. A
-reprodução web existente não é redirecionada automaticamente para evitar regressões.
-
-`npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
-Quando `TMDB_API_KEY` estiver configurada, a busca aceita somente um título exato no TMDB
-e baixa um backdrop separado quando a fonte pública fornecer `backdrop_path`. Sem uma
-correspondência única ou sem backdrop adequado, a interface usa o poster como fallback;
-nenhum vídeo ou arquivo do acervo é alterado.
-Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
-Wikipedia configurável e recua para português e inglês:
-
-```powershell
-$env:CINE_WIKIPEDIA_LANG = "en"
-npm run artwork
-```
-
-Para habilitar backdrops públicos de filmes:
-
-```powershell
-$env:TMDB_API_KEY = "sua-chave"
-npm run artwork
-```
-
-As capas e metadados são gravados apenas em `data/` e os arquivos físicos do acervo permanecem inalterados.
