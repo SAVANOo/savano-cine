@@ -46,6 +46,7 @@ export type Episode = {
 
 export type Season = {
   number: number
+  label?: string
   episodes: Episode[]
 }
 

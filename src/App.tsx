@@ -152,7 +152,7 @@ function App() {
                 >
                   {selectedShow.seasons?.map((season) => (
                     <option key={season.number} value={season.number}>
-                      {season.number.toString().padStart(2, '0')}
+                      {season.label ?? `Temporada ${season.number.toString().padStart(2, '0')}`}
                     </option>
                   ))}
                 </select>

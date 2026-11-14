@@ -70,11 +70,14 @@ function classifyMedia(filePath, sourceRoot) {
 
     if (/(^|[\\/])curtas([\\/]|$)/i.test(normalizedPath)) {
       return {
-        tipo: 'outro',
+        tipo: 'especial',
         titulo: cleanTitle(filename),
-        formato: path.extname(filename).slice(1).toLowerCase(),
+        temporada: 0,
+        episodio: 0,
+        formato: extension.slice(1),
         caminho: relativePath,
         motivo: 'special',
+        pastaSerie: inferSpecialSeriesFolder(relativePath),
       }
     }
 
@@ -82,7 +85,7 @@ function classifyMedia(filePath, sourceRoot) {
       return {
         tipo: 'outro',
         titulo: cleanTitle(filename),
-        formato: path.extname(filename).slice(1).toLowerCase(),
+        formato: extension.slice(1),
         caminho: relativePath,
         motivo: 'collection',
       }
@@ -92,7 +95,7 @@ function classifyMedia(filePath, sourceRoot) {
       return {
         tipo: 'outro',
         titulo: cleanTitle(filename),
-        formato: path.extname(filename).slice(1).toLowerCase(),
+        formato: extension.slice(1),
         caminho: relativePath,
         motivo: 'promotional',
       }
@@ -175,6 +178,16 @@ function inferSeriesFolder(relativePath) {
   }
 
   return segments[0]
+}
+
+function inferSpecialSeriesFolder(relativePath) {
+  const segments = relativePath.split(path.sep)
+  const specialIndex = segments.findIndex((segment) => normalizeSegment(segment) === 'curtas')
+  if (specialIndex <= 0) return segments[0]
+
+  const categoryNames = new Set(['animações', 'animacoes', 'filmes', 'series', 'séries'])
+  const candidateIndex = categoryNames.has(normalizeSegment(segments[0])) ? 1 : 0
+  return segments[candidateIndex] || segments[specialIndex - 1]
 }
 
 function parseSeasonNumber(segment) {

@@ -292,6 +292,7 @@ async function buildLibrary(profileId) {
       ORDER BY number
     `).all(show.id).map((season) => ({
       number: season.number,
+      label: season.number === 0 ? 'Curtas' : `Temporada ${season.number.toString().padStart(2, '0')}`,
       episodes: database.prepare(`
         SELECT e.id, e.episode_number AS number, e.title, m.id AS mediaId, m.relative_path AS filename,
           p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration

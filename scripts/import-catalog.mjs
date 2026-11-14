@@ -40,6 +40,20 @@ ensureProfileRatingsTable()
 const sourceId = `source-${slugify(sourcePath)}`
 const sourceName = `${path.basename(sourcePath) || sourcePath} (${sourcePath.slice(0, 2).toUpperCase()})`
 const files = await collectMediaFiles(sourcePath)
+const classifiedFiles = files.map((file) => ({ file, item: classifyMedia(file, sourcePath) }))
+const specialNumbers = new Map()
+const specialGroups = new Map()
+for (const entry of classifiedFiles) {
+  if (entry.item.tipo !== 'especial') continue
+  const key = normalize(entry.item.pastaSerie || path.basename(path.dirname(entry.file)))
+  const group = specialGroups.get(key) || []
+  group.push(entry)
+  specialGroups.set(key, group)
+}
+for (const group of specialGroups.values()) {
+  group.sort((left, right) => left.item.caminho.localeCompare(right.item.caminho))
+  group.forEach((entry, index) => specialNumbers.set(entry.file, index + 1))
+}
 
 database.prepare(`
   INSERT INTO media_sources (id, name, root_path, removable, status, last_scan_at)
@@ -96,8 +110,7 @@ let movies = 0
 
 database.exec('BEGIN')
 try {
-  for (const file of files) {
-    const item = classifyMedia(file, sourcePath)
+  for (const { file, item } of classifiedFiles) {
     const itemId = `media-${slugify(`${sourceId}-${item.caminho}`)}`
     const previous = findExistingTitle.get(itemId)
     if (previous && previous.title !== item.titulo) {
@@ -110,7 +123,7 @@ try {
       )
     }
     deleteEpisodeForMediaItem.run(itemId)
-    const kind = item.tipo === 'serie' ? 'episode' : item.tipo === 'outro' ? 'other' : 'movie'
+    const kind = item.tipo === 'serie' || item.tipo === 'especial' ? 'episode' : item.tipo === 'outro' ? 'other' : 'movie'
     const classificationStatus = item.tipo === 'outro' ? 'review' : 'auto'
     insertMovie.run(
       itemId,
@@ -124,17 +137,19 @@ try {
       path.extname(file).slice(1).toLowerCase(),
     )
 
-    if (item.tipo === 'serie' && item.temporada > 0 && item.episodio > 0) {
+    if (['serie', 'especial'].includes(item.tipo)) {
       const showTitle = item.pastaSerie || path.basename(path.dirname(file))
       const showId = `show-${slugify(showTitle)}`
-      const seasonId = `${showId}-season-${item.temporada}`
+      const seasonNumber = item.tipo === 'especial' ? 0 : item.temporada
+      const episodeNumber = item.tipo === 'especial' ? specialNumbers.get(file) : item.episodio
+      const seasonId = `${showId}-season-${seasonNumber}`
       insertShow.run(showId, showTitle, normalize(showTitle))
-      insertSeason.run(seasonId, showId, item.temporada)
+      insertSeason.run(seasonId, showId, seasonNumber)
       insertEpisode.run(
         `${itemId}-episode`,
         seasonId,
         itemId,
-        item.episodio,
+        episodeNumber,
         item.titulo,
       )
       episodes += 1

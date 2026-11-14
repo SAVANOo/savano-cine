@@ -27,7 +27,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Área | Cartão | Observação |
 | --- | --- | --- |
 | Catálogo | Histórico e restauração de alterações | Soft delete e títulos já possuem base no SQLite; falta uma tela operacional |
-| Séries | Especiais e extras | Exibir `Curtas` dentro da série sem misturar com temporadas normais |
 | Legendas | Scanner local e integração autorizada | Priorizar embutidas, arquivos próximos e depois provedores |
 | Interface | Navegação completa por controle | Foco, seleção, voltar, busca e player |
 | Fontes | Detecção automática de SSD offline/online | Identificar volume por ID, não apenas pela letra da unidade |
@@ -47,6 +46,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Tags iniciais, histórico de títulos e soft delete no banco.
 - Download local de capas de séries sem duplicação por episódio.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
+- Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.
 - Lint e build executados após as últimas alterações.
 
 ## Regras do quadro
