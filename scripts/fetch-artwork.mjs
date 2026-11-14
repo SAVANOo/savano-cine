@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 const databasePath = path.resolve('data/catalog.db')
 const artworkRoot = path.resolve('data/artwork')
 const database = new DatabaseSync(databasePath)
+const tmdbApiKey = process.env.TMDB_API_KEY?.trim()
 const configuredWikipediaLanguage = process.env.CINE_WIKIPEDIA_LANG?.trim().toLowerCase()
 const preferredWikipediaLanguage = /^[a-z]{2,3}(?:-[a-z]{2,4})?$/.test(configuredWikipediaLanguage || '')
   ? configuredWikipediaLanguage
@@ -12,6 +13,7 @@ const preferredWikipediaLanguage = /^[a-z]{2,3}(?:-[a-z]{2,4})?$/.test(configure
 const wikipediaLanguages = [...new Set([preferredWikipediaLanguage, 'pt', 'en'])]
 
 await mkdir(path.join(artworkRoot, 'shows'), { recursive: true })
+await mkdir(path.join(artworkRoot, 'movies'), { recursive: true })
 ensureColumn('artwork', 'artwork_type', `TEXT NOT NULL DEFAULT 'poster'`)
 ensureColumn('shows', 'genres_json', `TEXT NOT NULL DEFAULT '[]'`)
 ensureColumn('media_items', 'overview', 'TEXT')
@@ -89,44 +91,35 @@ const movies = database.prepare(`
         SELECT 1 FROM artwork
         WHERE artwork.movie_id = media_items.id AND artwork.artwork_type = 'poster'
       )
+      OR (? = 1 AND NOT EXISTS (
+        SELECT 1 FROM artwork
+        WHERE artwork.movie_id = media_items.id AND artwork.artwork_type = 'banner'
+      ))
     )
   ORDER BY title
-`).all()
+`).all(tmdbApiKey ? 1 : 0)
 const updateMovie = database.prepare(`
   UPDATE media_items
   SET year = COALESCE(?, year), overview = ?, genres_json = ?
   WHERE id = ?
 `)
-const upsertMovieArtwork = database.prepare(`
-  INSERT INTO artwork (id, movie_id, local_path, remote_url, provider, provider_id, source, verified, artwork_type)
-  VALUES (?, ?, ?, ?, ?, ?, 'local', 1, 'poster')
-  ON CONFLICT(id) DO UPDATE SET
-    local_path = excluded.local_path,
-    remote_url = excluded.remote_url,
-    provider = excluded.provider,
-    provider_id = excluded.provider_id,
-    source = excluded.source,
-    verified = excluded.verified
-`)
-
 for (const movie of movies) {
   const metadata = await fetchWikipedia(movie.title)
-  if (!metadata) continue
-  updateMovie.run(metadata.year, metadata.overview, JSON.stringify([]), movie.id)
-  if (metadata.imageUrl) {
-    const image = await fetch(metadata.imageUrl)
-    if (image.ok) {
-      const extension = image.headers.get('content-type')?.includes('png') ? 'png' : 'jpg'
-      const filename = `${slugify(movie.title)}-poster.${extension}`
-      const relativePath = path.join('data', 'artwork', 'movies', filename)
-      await mkdir(path.dirname(path.resolve(relativePath)), { recursive: true })
-      await writeFile(path.resolve(relativePath), Buffer.from(await image.arrayBuffer()))
-      upsertMovieArtwork.run(`art-${movie.id}-poster`, movie.id, relativePath, metadata.imageUrl, 'wikipedia', String(metadata.pageId))
+  if (metadata) {
+    updateMovie.run(metadata.year, metadata.overview, JSON.stringify([]), movie.id)
+    if (metadata.imageUrl && !hasLocalArtwork(movie.id, 'poster')) {
+      await downloadMovieArtwork(movie, 'poster', metadata.imageUrl, 'wikipedia', String(metadata.pageId))
+    }
+  }
+  if (tmdbApiKey) {
+    const tmdb = await fetchTmdbArtwork(movie.title)
+    if (tmdb?.backdropUrl && !hasLocalArtwork(movie.id, 'banner')) {
+      await downloadMovieArtwork(movie, 'banner', tmdb.backdropUrl, 'tmdb', String(tmdb.id))
     }
   }
 }
 
-console.log(`Arte baixada para ${downloaded} séries; metadados de filmes via Wikipedia (${wikipediaLanguages.join(' → ')}) em ${artworkRoot}`)
+console.log(`Arte baixada para ${downloaded} séries; filmes via Wikipedia${tmdbApiKey ? ' + TMDB para backdrops' : ''} em ${artworkRoot}`)
 
 function ensureColumn(table, column, definition) {
   try {
@@ -181,4 +174,51 @@ function normalizeTitle(value) {
     .replace(/\b(19\d{2}|20\d{2})\b/g, '')
     .replace(/[^a-z0-9]+/gi, '')
     .toLowerCase()
+}
+
+function hasLocalArtwork(movieId, artworkType) {
+  return Boolean(database.prepare(`
+    SELECT 1 FROM artwork
+    WHERE movie_id = ? AND artwork_type = ? AND source = 'local'
+    LIMIT 1
+  `).get(movieId, artworkType))
+}
+
+async function downloadMovieArtwork(movie, artworkType, imageUrl, provider, providerId) {
+  const image = await fetch(imageUrl)
+  if (!image.ok) return false
+  const extension = image.headers.get('content-type')?.includes('png') ? 'png' : 'jpg'
+  const filename = `${slugify(movie.title)}-${artworkType}.${extension}`
+  const relativePath = path.join('data', 'artwork', 'movies', filename)
+  await writeFile(path.resolve(relativePath), Buffer.from(await image.arrayBuffer()))
+  database.prepare(`
+    INSERT INTO artwork (id, movie_id, local_path, remote_url, provider, provider_id, source, verified, artwork_type)
+    VALUES (?, ?, ?, ?, ?, ?, 'local', 1, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      local_path = excluded.local_path,
+      remote_url = excluded.remote_url,
+      provider = excluded.provider,
+      provider_id = excluded.provider_id,
+      source = excluded.source,
+      verified = excluded.verified,
+      artwork_type = excluded.artwork_type
+  `).run(`art-${movie.id}-${artworkType}`, movie.id, relativePath, imageUrl, provider, providerId, artworkType)
+  return true
+}
+
+async function fetchTmdbArtwork(title) {
+  try {
+    const search = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${encodeURIComponent(tmdbApiKey)}&query=${encodeURIComponent(title)}&include_adult=false&language=pt-BR`)
+    if (!search.ok) return null
+    const results = (await search.json()).results || []
+    const normalized = normalizeTitle(title)
+    const exact = results.filter((candidate) => normalizeTitle(candidate.title || '') === normalized)
+    if (exact.length !== 1 || !exact[0].backdrop_path) return null
+    return {
+      id: exact[0].id,
+      backdropUrl: `https://image.tmdb.org/t/p/w1280${exact[0].backdrop_path}`,
+    }
+  } catch {
+    return null
+  }
 }

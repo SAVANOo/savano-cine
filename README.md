@@ -99,11 +99,22 @@ FFmpeg, responde `200` com `{ "available": false, "reason": "ffmpeg-not-found" }
 reprodução web existente não é redirecionada automaticamente para evitar regressões.
 
 `npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
+Quando `TMDB_API_KEY` estiver configurada, a busca aceita somente um título exato no TMDB
+e baixa um backdrop separado quando a fonte pública fornecer `backdrop_path`. Sem uma
+correspondência única ou sem backdrop adequado, a interface usa o poster como fallback;
+nenhum vídeo ou arquivo do acervo é alterado.
 Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
 Wikipedia configurável e recua para português e inglês:
 
 ```powershell
 $env:CINE_WIKIPEDIA_LANG = "en"
+npm run artwork
+```
+
+Para habilitar backdrops públicos de filmes:
+
+```powershell
+$env:TMDB_API_KEY = "sua-chave"
 npm run artwork
 ```
 

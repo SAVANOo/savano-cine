@@ -14,14 +14,14 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
-| Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; falta ampliar cobertura sem aceitar correspondências ambíguas |
+| Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; backdrops TMDB opcionais por correspondência exata, com fallback para poster |
 | Média | Histórico e restauração de alterações | Tela operacional lista arquivados e títulos alterados; restauração lógica validada por API |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Alta | Revisão de correspondências de arte | Exibir candidatos e permitir confirmação antes de aplicar metadados ambíguos |
+| Alta | Revisão de correspondências de arte | Exibir candidatos e permitir confirmação antes de aplicar metadados ambíguos; TMDB só aceita candidato único exato |
 
 ## Backlog
 

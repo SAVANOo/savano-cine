@@ -311,9 +311,9 @@ createServer(async (request, response) => {
     return streamArtwork('show', artworkMatch[1], artworkMatch[2], response)
   }
 
-  const movieArtworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/movie\/([^/]+)\/poster$/)
+  const movieArtworkMatch = requestUrl.pathname.match(/^\/api\/artwork\/movie\/([^/]+)\/(poster|banner)$/)
   if (movieArtworkMatch) {
-    return streamArtwork('movie', movieArtworkMatch[1], 'poster', response)
+    return streamArtwork('movie', movieArtworkMatch[1], movieArtworkMatch[2], response)
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
@@ -606,7 +606,8 @@ async function buildLibrary(profileId) {
   const items = database.prepare(`
     SELECT id, title, year, overview, genres_json, extension, tags_json, relative_path AS relativePath,
       p.position_seconds AS progressPosition, p.duration_seconds AS progressDuration,
-      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster
+      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster,
+      (SELECT 1 FROM artwork a WHERE a.movie_id = media_items.id AND a.artwork_type = 'banner' AND a.source = 'local' LIMIT 1) AS hasBanner
     FROM media_items
     LEFT JOIN watch_progress p ON p.media_item_id = media_items.id AND p.profile_id = ?
     WHERE kind = 'movie'
@@ -630,7 +631,14 @@ async function buildLibrary(profileId) {
     subtitles: getSubtitleTracks(item.id),
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
-    ...(item.hasPoster ? { artwork: { source: 'local', posterUrl: `/api/artwork/movie/${item.id}/poster`, verified: true } } : {}),
+    ...(item.hasPoster || item.hasBanner ? {
+      artwork: {
+        source: 'local',
+        ...(item.hasPoster ? { posterUrl: `/api/artwork/movie/${item.id}/poster` } : {}),
+        bannerUrl: item.hasBanner ? `/api/artwork/movie/${item.id}/banner` : (item.hasPoster ? `/api/artwork/movie/${item.id}/poster` : undefined),
+        verified: true,
+      },
+    } : {}),
     progress: item.progressDuration ? Math.round((item.progressPosition / item.progressDuration) * 100) : undefined,
   }))
 
