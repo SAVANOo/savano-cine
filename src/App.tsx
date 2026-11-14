@@ -697,9 +697,13 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
 function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSavedPosition = useRef(0)
+  const pendingPosition = useRef(0)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
   const [subtitleUrl, setSubtitleUrl] = useState('')
-  const [streamInfo, setStreamInfo] = useState<{ available: boolean; audio: Array<{ language?: string; title?: string }>; subtitles: Array<{ language?: string; title?: string }> } | null>(null)
+  const [streamInfo, setStreamInfo] = useState<{ available: boolean; reason?: string; audio: Array<{ index: number; language?: string; title?: string; codec?: string }>; subtitles: Array<{ index: number; language?: string; title?: string; codec?: string }> } | null>(null)
+  const [audioStream, setAudioStream] = useState('')
+  const [subtitleStream, setSubtitleStream] = useState('')
+  const [playbackUrl, setPlaybackUrl] = useState(media.url)
   const [rate, setRate] = useState(1)
   const [volume, setVolume] = useState(1)
 
@@ -743,12 +747,48 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
 
   useEffect(() => {
     setStreamInfo(null)
-    if (!media.mediaId || !capabilities?.ffprobe) return
+    setAudioStream('')
+    setSubtitleStream('')
+    setPlaybackUrl(media.url)
+    if (!media.mediaId) return
     fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
       .then((response) => response.ok ? response.json() : null)
       .then(setStreamInfo)
       .catch(() => setStreamInfo(null))
-  }, [capabilities?.ffprobe, media.mediaId])
+  }, [media.mediaId, media.url])
+
+  const changeAudioStream = (value: string) => {
+    setAudioStream(value)
+    if (!value) {
+      pendingPosition.current = videoRef.current?.currentTime ?? 0
+      setPlaybackUrl(media.url)
+      return
+    }
+    if (!media.mediaId || !capabilities?.transcoding) return
+    pendingPosition.current = videoRef.current?.currentTime ?? 0
+    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(value)}`)
+  }
+
+  const changeSubtitleStream = (value: string) => {
+    setSubtitleStream(value)
+    if (!value) {
+      pendingPosition.current = videoRef.current?.currentTime ?? 0
+      setPlaybackUrl(audioStream
+        ? `/api/media/${encodeURIComponent(media.mediaId!)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream)}`
+        : media.url)
+      return
+    }
+    if (!media.mediaId || !capabilities?.transcoding) return
+    pendingPosition.current = videoRef.current?.currentTime ?? 0
+    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream || '0')}&subtitleStream=${encodeURIComponent(value)}`)
+  }
+
+  const restorePosition = () => {
+    if (pendingPosition.current > 0 && videoRef.current) {
+      videoRef.current.currentTime = pendingPosition.current
+      pendingPosition.current = 0
+    }
+  }
 
   const seek = (seconds: number) => {
     if (videoRef.current) videoRef.current.currentTime += seconds
@@ -775,7 +815,7 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
           <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
           <button className="player-close controller-focus" type="button" autoFocus aria-label="Fechar player" onClick={onClose}>×</button>
         </div>
-        <video ref={videoRef} className="video-player" src={media.url} controls autoPlay playsInline onTimeUpdate={saveProgress} onEnded={saveProgress}>
+        <video ref={videoRef} className="video-player" src={playbackUrl} controls autoPlay playsInline onLoadedMetadata={restorePosition} onTimeUpdate={saveProgress} onEnded={saveProgress}>
           {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
         </video>
         <div className="player-controls">
@@ -789,14 +829,23 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
             <option value="">Sem legenda</option>
             {subtitleTracks.map((track) => <option value={track.url} key={track.url}>{track.label}</option>)}
           </select></label>}
+          {streamInfo?.available && capabilities?.transcoding && streamInfo.audio.length > 0 && <label>Áudio<select value={audioStream} onChange={(event) => changeAudioStream(event.target.value)}>
+            <option value="">Original</option>
+            {streamInfo.audio.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
+          </select></label>}
+          {streamInfo?.available && capabilities?.transcoding && streamInfo.subtitles.length > 0 && <label>Legenda embutida<select value={subtitleStream} onChange={(event) => changeSubtitleStream(event.target.value)}>
+            <option value="">Original</option>
+            {streamInfo.subtitles.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
+          </select></label>}
           <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
         </div>
         {streamInfo?.available && <small>
           Faixas internas detectadas: {streamInfo.audio.length} áudio(s) e {streamInfo.subtitles.length} legenda(s).
-          A seleção de áudio/transcodificação depende de FFmpeg e ainda não altera a reprodução do navegador.
+          A seleção usa transcodificação MP4 quando FFmpeg está disponível.
         </small>}
+        {streamInfo && !streamInfo.available && <small>Faixas internas indisponíveis: FFprobe não está disponível. O player continua usando a reprodução original e as legendas externas.</small>}
         <small>{capabilities?.ffmpeg || capabilities?.vlc
-          ? 'FFmpeg/VLC disponível; o player web atual mantém reprodução compatível sem prometer seleção avançada.'
+          ? 'FFmpeg/VLC disponível; MKV/AVI usam transcodificação somente quando uma faixa for selecionada.'
           : 'Player web ativo. FFmpeg não disponível: transcoding sob demanda indisponível; a reprodução atual permanece inalterada.'}</small>
       </section>
     </div>

@@ -85,8 +85,11 @@ por essa detecção.
 `GET /api/media/:mediaId/streams` valida a mídia no catálogo e, quando o FFprobe está
 disponível, analisa faixas internas de áudio e legendas usando `execFile` sem shell.
 A resposta nunca inclui o caminho físico. Sem FFprobe, retorna `available: false` com
-listas vazias, mantendo o player web atual funcionando; a interface não promete seleção
-de faixas nesse caso.
+listas vazias, mantendo o player web atual funcionando; a interface informa a indisponibilidade
+e mantém as legendas externas existentes. Quando FFprobe e FFmpeg estão disponíveis, o modal
+exibe as faixas detectadas e usa `/api/media/:mediaId/transcode?format=mp4&audioStream=...`
+(opcionalmente `subtitleStream=...`) para trocar a faixa sem fingir suporte nativo do navegador
+a MKV/AVI.
 
 `GET /api/media/:mediaId/transcode?format=mp4` prepara um stream MP4 fragmentado sob demanda
 com FFmpeg, usando `spawn` sem shell, `stdout` e nenhum arquivo temporário. O endpoint valida

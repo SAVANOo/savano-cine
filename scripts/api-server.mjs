@@ -479,13 +479,17 @@ async function transcodeMedia(mediaId, request, response) {
   }
 
   const executable = getRuntimeExecutable('CINE_FFMPEG_PATH', 'ffmpeg.exe')
+  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
+  const audioStream = parseStreamIndex(requestUrl.searchParams.get('audioStream'))
+  const subtitleStream = parseStreamIndex(requestUrl.searchParams.get('subtitleStream'))
   const transcoder = spawn(executable, [
     '-hide_banner',
     '-loglevel', 'error',
     '-nostdin',
     '-i', filePath,
     '-map', '0:v:0?',
-    '-map', '0:a:0?',
+    '-map', audioStream === null ? '0:a:0?' : `0:${audioStream}?`,
+    ...(subtitleStream === null ? [] : ['-map', `0:${subtitleStream}?`, '-c:s', 'mov_text']),
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-crf', '23',
@@ -524,6 +528,12 @@ async function transcodeMedia(mediaId, request, response) {
   })
   headersSent = true
   return transcoder.stdout.pipe(response)
+}
+
+function parseStreamIndex(value) {
+  if (value === null || value === '') return null
+  const index = Number(value)
+  return Number.isInteger(index) && index >= 0 && index <= 999 ? index : null
 }
 
 function requestUrlFormat(request) {
