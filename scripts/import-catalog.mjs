@@ -1,7 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { collectMediaFiles, classifyMedia } from './scan-media.mjs'
+import { collectMediaFiles, collectSubtitleTracks, classifyMedia } from './scan-media.mjs'
 
 const sourceArg = process.argv[2]
 const sourcePath = sourceArg ? path.resolve(sourceArg) : null
@@ -98,6 +98,11 @@ const insertEpisode = database.prepare(`
 const deleteEpisodeForMediaItem = database.prepare(`
   DELETE FROM episodes WHERE media_item_id = ?
 `)
+const deleteSubtitleTracks = database.prepare('DELETE FROM subtitle_tracks WHERE media_item_id = ?')
+const insertSubtitleTrack = database.prepare(`
+  INSERT INTO subtitle_tracks (id, media_item_id, language, label, provider, relative_path, embedded)
+  VALUES (?, ?, ?, ?, 'manual', ?, 0)
+`)
 const findExistingTitle = database.prepare('SELECT title FROM media_items WHERE id = ?')
 const insertTitleHistory = database.prepare(`
   INSERT INTO media_item_title_history (id, media_item_id, old_title, new_title, reason)
@@ -136,6 +141,16 @@ try {
       JSON.stringify(buildTags(item)),
       path.extname(file).slice(1).toLowerCase(),
     )
+    deleteSubtitleTracks.run(itemId)
+    for (const subtitle of await collectSubtitleTracks(file)) {
+      insertSubtitleTrack.run(
+        `subtitle-${slugify(`${itemId}-${subtitle.filename}`)}`,
+        itemId,
+        subtitle.language,
+        subtitle.label,
+        subtitle.filename,
+      )
+    }
 
     if (['serie', 'especial'].includes(item.tipo)) {
       const showTitle = item.pastaSerie || path.basename(path.dirname(file))

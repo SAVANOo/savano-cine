@@ -67,6 +67,7 @@ export type LibraryItem = {
   seasons?: Season[]
   mediaUrl?: string
   subtitleUrl?: string
+  subtitles?: SubtitleTrack[]
   mediaId?: string
 }
 

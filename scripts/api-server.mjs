@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -319,6 +319,7 @@ async function buildLibrary(profileId) {
     mediaUrl: `/api/media/${item.id}`,
     subtitleUrl: `/api/media/${item.id}/subtitles`,
     mediaId: item.id,
+    subtitles: getSubtitleTracks(item.id),
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
     ...(item.hasPoster ? { artwork: { source: 'local', posterUrl: `/api/artwork/movie/${item.id}/poster`, verified: true } } : {}),
@@ -363,7 +364,7 @@ async function buildLibrary(profileId) {
         title: episode.title,
         filename: episode.filename,
         duration: 'Duração não analisada',
-        subtitles: [{ language: 'pt-BR', label: 'Nenhuma faixa cadastrada', available: false }],
+        subtitles: getSubtitleTracks(episode.mediaId),
         mediaUrl: `/api/media/${episode.mediaId}`,
         subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
         mediaId: episode.mediaId,
@@ -431,6 +432,15 @@ async function buildLibrary(profileId) {
   return items
 }
 
+function getSubtitleTracks(mediaId) {
+  return database.prepare(`
+    SELECT language, label, 1 AS available, provider
+    FROM subtitle_tracks
+    WHERE media_item_id = ?
+    ORDER BY language, relative_path
+  `).all(mediaId)
+}
+
 function send(response, status, body) {
   response.writeHead(status)
   response.end(JSON.stringify(body))
@@ -468,21 +478,21 @@ function findSubtitleTracks(mediaId) {
     WHERE m.id = ?
   `).get(mediaId)
   if (!media) return []
-
   const directory = path.dirname(path.resolve(media.rootPath, media.relativePath))
-  const basename = path.basename(media.relativePath, path.extname(media.relativePath)).toLowerCase()
-  let names
-  try {
-    names = readdirSync(directory)
-  } catch {
-    return []
-  }
-
-  return names
-    .filter((name) => /\.(srt|vtt)$/i.test(name) && name.toLowerCase().startsWith(basename))
-    .map((name) => ({
-      label: name.match(/\.([a-z]{2}(?:-[a-z]{2})?)\./i)?.[1]?.toUpperCase() || 'Original',
-      url: `/api/subtitle/${encodeURIComponent(Buffer.from(JSON.stringify({ mediaId, name })).toString('base64url'))}`,
+  return database.prepare(`
+    SELECT language, label, relative_path AS name
+    FROM subtitle_tracks
+    WHERE media_item_id = ?
+    ORDER BY language, relative_path
+  `).all(mediaId)
+    .filter((track) => {
+      const filePath = path.resolve(directory, track.name)
+      return path.basename(track.name) === track.name && filePath.startsWith(`${directory}${path.sep}`)
+    })
+    .map((track) => ({
+      language: track.language,
+      label: track.label,
+      url: `/api/subtitle/${encodeURIComponent(Buffer.from(JSON.stringify({ mediaId, name: track.name })).toString('base64url'))}`,
     }))
 }
 
@@ -504,7 +514,14 @@ function streamSubtitle(token, response) {
   }
   const directory = path.dirname(path.resolve(media.rootPath, media.relativePath))
   const filePath = path.resolve(directory, subtitle.name)
-  if (!filePath.startsWith(`${directory}${path.sep}`)) return send(response, 400, { error: 'Legenda inválida.' })
+  const registered = database.prepare(`
+    SELECT 1
+    FROM subtitle_tracks
+    WHERE media_item_id = ? AND relative_path = ?
+  `).get(subtitle.mediaId, subtitle.name)
+  if (!registered || !/\.(srt|vtt)$/i.test(subtitle.name) || !filePath.startsWith(`${directory}${path.sep}`)) {
+    return send(response, 400, { error: 'Legenda inválida.' })
+  }
   try {
     const extension = path.extname(filePath).toLowerCase()
     const content = readFileSync(filePath, 'utf8')

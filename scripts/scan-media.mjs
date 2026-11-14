@@ -3,9 +3,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const mediaExtensions = new Set(['.avi', '.mkv', '.mp4', '.mov', '.rm', '.rmvb', '.webm'])
-export { collectMediaFiles, classifyMedia }
+export { collectMediaFiles, collectSubtitleTracks, classifyMedia }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [, , sourceArg, ...flags] = process.argv
   const source = sourceArg ? path.resolve(sourceArg) : process.cwd()
   const limitFlagIndex = flags.indexOf('--limit')
@@ -16,7 +16,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.exitCode = 1
   } else {
     const files = await collectMediaFiles(source)
-    const catalog = files.slice(0, Number.isFinite(limit) ? limit : undefined).map((file) => classifyMedia(file, source))
+    const catalog = await Promise.all(files.slice(0, Number.isFinite(limit) ? limit : undefined).map(async (file) => ({
+      ...classifyMedia(file, source),
+      legendas: await collectSubtitleTracks(file),
+    })))
 
     console.table(catalog)
     console.log(`\n${catalog.length} item(ns) exibido(s) de ${files.length} arquivo(s) de mídia encontrado(s).`)
@@ -41,6 +44,62 @@ async function collectMediaFiles(directory) {
   }
 
   return files.sort((left, right) => left.localeCompare(right))
+}
+
+async function collectSubtitleTracks(mediaPath) {
+  const directory = path.dirname(mediaPath)
+  const mediaStem = path.basename(mediaPath, path.extname(mediaPath)).toLocaleLowerCase()
+  let names
+  try {
+    names = await readdir(directory)
+  } catch {
+    return []
+  }
+
+  return names
+    .filter((name) => /\.(srt|vtt)$/i.test(name))
+    .filter((name) => isSubtitleForMedia(name, mediaStem))
+    .map((name) => {
+      const language = detectSubtitleLanguage(name, mediaStem)
+      return {
+        filename: name,
+        language: language.code,
+        label: language.label,
+        format: path.extname(name).slice(1).toLowerCase(),
+      }
+    })
+    .sort((left, right) => left.filename.localeCompare(right.filename))
+}
+
+function isSubtitleForMedia(filename, mediaStem) {
+  const subtitleStem = path.basename(filename, path.extname(filename)).toLocaleLowerCase()
+  return subtitleStem === mediaStem
+    || subtitleStem.startsWith(`${mediaStem}.`)
+    || subtitleStem.startsWith(`${mediaStem} `)
+    || subtitleStem.startsWith(`${mediaStem}_`)
+    || subtitleStem.startsWith(`${mediaStem}-`)
+}
+
+function detectSubtitleLanguage(filename, mediaStem) {
+  const subtitleStem = path.basename(filename, path.extname(filename))
+  const suffix = subtitleStem.slice(mediaStem.length).replace(/^[\s._-]+/, '')
+  const token = suffix.split(/[._\s-]+/)[0]?.toLocaleLowerCase() || ''
+  const normalized = normalizeSegment(token)
+  const languages = {
+    pt: ['pt', 'por', 'br', 'ptbr', 'portugues', 'portuguese'],
+    en: ['en', 'eng', 'ingles', 'english'],
+    es: ['es', 'spa', 'espanhol', 'espanol', 'spanish'],
+    fr: ['fr', 'fra', 'frances', 'french'],
+    de: ['de', 'deu', 'alemao', 'german'],
+    it: ['it', 'ita', 'italiano', 'italian'],
+  }
+  for (const [code, aliases] of Object.entries(languages)) {
+    if (aliases.includes(normalized)) {
+      const regional = suffix.match(/^(?:pt|por)[._ -]?(?:br|pt)$/i)
+      return { code: regional ? 'pt-BR' : code, label: code === 'pt' ? 'Português' : code === 'en' ? 'English' : code.toUpperCase() }
+    }
+  }
+  return { code: 'und', label: 'Original' }
 }
 
 function classifyMedia(filePath, sourceRoot) {

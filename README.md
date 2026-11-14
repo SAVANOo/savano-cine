@@ -41,6 +41,9 @@ O protótipo atual mantém a tela principal em `src/App.tsx` para validar a expe
 O Kanban em `docs/kanban.md` é a referência de execução. A revisão automática do estado,
 pendências e próximo incremento acontece a cada 2 minutos e 30 segundos de trabalho contínuo.
 - Legendas serão priorizadas nesta ordem: embutidas, arquivos locais, OpenSubtitles e seleção manual.
+- O importador associa somente arquivos `.srt` e `.vtt` na mesma pasta do vídeo, inferindo idiomas como
+  `pt-BR`, `en` e `es` pelo sufixo do nome. O player converte SRT para WebVTT em tempo de resposta;
+  legendas embutidas ficam reservadas para uma etapa futura com runtime externo.
 - A biblioteca principal só exibe filmes e séries aprovados; cursos, coleções e arquivos promocionais ficam em revisão.
 
 ## Desenvolvimento

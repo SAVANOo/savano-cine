@@ -579,6 +579,7 @@ function ShowHeader({ show, profileId, onPlay }: { show: LibraryItem; profileId:
           <span>{show.detail}</span>
           {show.genres?.map((genre) => <span key={genre}>{genre}</span>)}
         </div>
+        {show.kind === 'Filme' && <p className="subtitle-summary">{show.subtitles?.length ? `Legendas locais: ${show.subtitles.map((subtitle) => subtitle.label).join(', ')}` : 'Sem legenda local cadastrada'}</p>}
         <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
         {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
       </div>
