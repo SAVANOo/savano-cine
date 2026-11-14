@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Check, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 
@@ -49,6 +49,14 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [selectedSubtitleUrl, setSelectedSubtitleUrl] = useState('')
   const [controlsVisible, setControlsVisible] = useState(true)
   const [trackMenuOpen, setTrackMenuOpen] = useState(false)
+  const [episodesMenuOpen, setEpisodesMenuOpen] = useState(false)
+  const [hoveredEpisodeId, setHoveredEpisodeId] = useState<string | null>(null)
+  const [selectedEpisodeSeason, setSelectedEpisodeSeason] = useState<number>(() => {
+    for (const s of media.showSeasons ?? []) {
+      if (s.episodes.some((ep) => ep.mediaId === media.mediaId)) return s.number
+    }
+    return media.showSeasons?.[0]?.number ?? 1
+  })
   const [isPaused, setIsPaused] = useState(false)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
@@ -656,9 +664,41 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               >
                 {playbackRate}x
               </button>
+              {media.nextEpisode && onPlayNext && (
+                <button
+                  type="button"
+                  onClick={() => onPlayNext(media.nextEpisode!)}
+                  title="Próximo episódio"
+                  aria-label="Próximo episódio"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              )}
+              {media.showSeasons && media.showSeasons.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrackMenuOpen(false)
+                    setEpisodesMenuOpen((value) => !value)
+                  }}
+                  title="Episódios"
+                  aria-label="Episódios"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border text-white transition ${
+                    episodesMenuOpen
+                      ? 'border-white bg-white/25'
+                      : 'border-white/15 bg-white/10 hover:bg-white/20'
+                  }`}
+                >
+                  <ListVideo className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setTrackMenuOpen((value) => !value)}
+                onClick={() => {
+                  setEpisodesMenuOpen(false)
+                  setTrackMenuOpen((value) => !value)
+                }}
                 className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 text-xs font-semibold text-white hover:bg-white/20"
               >
                 <Subtitles className="h-4 w-4" />
@@ -694,6 +734,131 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             </div>
           </div>
         </div>
+
+        {/* Netflix-style Episode Selector Drawer */}
+        {episodesMenuOpen && media.showSeasons && media.showSeasons.length > 0 && (
+          <div className="pointer-events-auto absolute right-6 bottom-24 z-30 flex max-h-[65vh] w-[min(92vw,440px)] flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14151e]/96 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <strong className="truncate text-sm font-bold text-white">
+                {media.showTitle || 'Episódios'}
+              </strong>
+              {media.showSeasons.length > 1 && (
+                <select
+                  aria-label="Selecionar temporada"
+                  value={selectedEpisodeSeason}
+                  onChange={(event) => setSelectedEpisodeSeason(Number(event.target.value))}
+                  className="rounded border border-white/15 bg-black/50 px-2.5 py-1 text-xs font-semibold text-white focus:outline-none"
+                >
+                  {media.showSeasons.map((s) => (
+                    <option key={s.number} value={s.number}>
+                      {s.label || `Temporada ${s.number}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="flex flex-col divide-y divide-white/5 overflow-y-auto">
+              {(media.showSeasons.find((s) => s.number === selectedEpisodeSeason) ?? media.showSeasons[0]).episodes.map(
+                (ep) => {
+                  const isCurrent = ep.mediaId === media.mediaId
+                  const isExpanded = isCurrent || hoveredEpisodeId === ep.id
+                  const epProgress = Math.max(0, Math.min(100, ep.progress ?? 0))
+                  const flatEpisodes = (media.showSeasons ?? []).flatMap((s) =>
+                    s.episodes.filter((item) => Boolean(item.mediaUrl)),
+                  )
+                  const epIdx = flatEpisodes.findIndex((item) => item.mediaId === ep.mediaId)
+                  const nextAfterEp =
+                    epIdx >= 0 && epIdx + 1 < flatEpisodes.length ? flatEpisodes[epIdx + 1] : undefined
+                  return (
+                    <button
+                      key={ep.id}
+                      type="button"
+                      onMouseEnter={() => setHoveredEpisodeId(ep.id)}
+                      onMouseLeave={() => setHoveredEpisodeId(null)}
+                      onClick={() => {
+                        if (!ep.mediaUrl || !onPlayNext) return
+                        setEpisodesMenuOpen(false)
+                        onPlayNext({
+                          title: `${media.showTitle || 'Série'} — T${ep.season}:E${ep.number} ${ep.title}`,
+                          url: ep.mediaUrl,
+                          subtitleUrl: ep.subtitleUrl,
+                          mediaId: ep.mediaId,
+                          needsTranscode: ep.needsTranscode,
+                          overview: media.overview,
+                          year: media.year,
+                          startPosition: 0,
+                          showTitle: media.showTitle,
+                          showSeasons: media.showSeasons,
+                          nextEpisode: nextAfterEp?.mediaUrl
+                            ? {
+                                title: `${media.showTitle || 'Série'} — T${nextAfterEp.season}:E${nextAfterEp.number} ${nextAfterEp.title}`,
+                                url: nextAfterEp.mediaUrl,
+                                subtitleUrl: nextAfterEp.subtitleUrl,
+                                mediaId: nextAfterEp.mediaId,
+                                needsTranscode: nextAfterEp.needsTranscode,
+                                overview: media.overview,
+                                year: media.year,
+                                startPosition: 0,
+                                showTitle: media.showTitle,
+                                showSeasons: media.showSeasons,
+                              }
+                            : undefined,
+                        })
+                      }}
+                      className={`flex flex-col gap-2.5 border-0 px-4 py-3 text-left transition cursor-pointer ${
+                        isCurrent ? 'bg-white/10' : 'bg-transparent hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="w-6 shrink-0 text-xs font-bold tabular-nums text-white/60">
+                            {ep.number}
+                          </span>
+                          <span className="truncate text-sm font-semibold text-white">
+                            {ep.title}
+                          </span>
+                        </div>
+                        <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-white/15">
+                          <div
+                            className="h-full bg-[var(--sc-accent)]"
+                            style={{ width: `${isCurrent ? Math.max(epProgress, 15) : epProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                      {isExpanded && (
+                        <div className="flex items-center gap-3 pl-9">
+                          <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded bg-black/70">
+                            {ep.thumbnailUrl && (
+                              <img
+                                src={ep.thumbnailUrl}
+                                alt={ep.title}
+                                loading="lazy"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = 'none'
+                                }}
+                                className="h-full w-full object-cover"
+                              />
+                            )}
+                            {isCurrent && (
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-bold text-white">
+                                Assistindo
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 text-[11px] text-[var(--sc-text-secondary)]">
+                            {epProgress >= 90
+                              ? 'Assistido'
+                              : ep.position || (isCurrent ? 'Reproduzindo agora' : ep.duration)}
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  )
+                },
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Netflix-style Paused Overlay */}
         {showPausedInfo && isPaused && (

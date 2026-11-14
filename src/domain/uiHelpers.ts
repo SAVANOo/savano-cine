@@ -1,4 +1,4 @@
-import type { LibraryItem } from './catalog'
+import type { LibraryItem, Season } from './catalog'
 
 const GENRE_TRANSLATIONS: Record<string, string> = {
   action: 'Ação',
@@ -97,6 +97,8 @@ export type PlayableMedia = {
   year?: number
   startPosition?: number
   nextEpisode?: PlayableMedia
+  showTitle?: string
+  showSeasons?: Season[]
 }
 
 /** Find the sequential next playable episode in a series after `currentMediaId`. */
@@ -120,6 +122,8 @@ export function findNextEpisode(item: LibraryItem, currentMediaId?: string): Pla
     overview: item.overview,
     year: item.year,
     startPosition: 0,
+    showTitle: item.title,
+    showSeasons: item.seasons,
     nextEpisode: findNextEpisode(item, next.ep.mediaId),
   }
 }
@@ -139,6 +143,8 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
       overview: item.overview,
       year: item.year,
       startPosition: restart ? 0 : item.resume.position,
+      showTitle: item.kind === 'Série' ? item.title : undefined,
+      showSeasons: item.kind === 'Série' ? item.seasons : undefined,
       nextEpisode: findNextEpisode(item, item.resume.mediaId),
     }
   }
@@ -168,6 +174,8 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
         overview: item.overview,
         year: item.year,
         startPosition: restart ? 0 : undefined,
+        showTitle: item.title,
+        showSeasons: item.seasons,
         nextEpisode: findNextEpisode(item, first.mediaId),
       }
     }

@@ -204,7 +204,8 @@ async function handleApiRequest(request, response) {
     }
     const position = Math.max(0, Math.floor(Number(body.position) || 0))
     const duration = Math.max(0, Math.floor(Number(body.duration) || 0))
-    const watched = body.watched ? 1 : 0
+    const nearEnd = duration > 0 && (position / duration >= 0.9 || duration - position <= 120)
+    const watched = body.watched || nearEnd ? 1 : 0
     database.prepare(`
       INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched)
       VALUES (?, ?, ?, ?, ?)
@@ -820,7 +821,7 @@ async function serveMediaThumbnail(mediaId, rawSeconds, response) {
   if (typeof mediaId !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/.test(mediaId)) {
     return send(response, 400, { error: 'mediaId inválido.' })
   }
-  const parsedSeconds = Number(rawSeconds)
+  const parsedSeconds = rawSeconds === null || rawSeconds === '' ? 90 : Number(rawSeconds)
   if (!Number.isFinite(parsedSeconds) || parsedSeconds < 0) {
     return send(response, 400, { error: 'Parâmetro t inválido.' })
   }
@@ -834,6 +835,22 @@ async function serveMediaThumbnail(mediaId, rawSeconds, response) {
       'Cache-Control': 'public, max-age=86400',
     })
     return response.end(cached)
+  }
+  const thumbDir = path.resolve(root, '..', 'data', 'thumbnails')
+  const thumbFile = path.join(thumbDir, `${mediaId}-${bucket}.jpg`)
+  try {
+    const diskCached = await readFile(thumbFile)
+    if (diskCached.length > 0) {
+      thumbnailCache.set(cacheKey, diskCached)
+      response.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': diskCached.length,
+        'Cache-Control': 'public, max-age=86400',
+      })
+      return response.end(diskCached)
+    }
+  } catch {
+    // Not cached on disk yet
   }
 
   const media = database.prepare(`
@@ -913,6 +930,9 @@ async function serveMediaThumbnail(mediaId, rawSeconds, response) {
       if (oldestKey) thumbnailCache.delete(oldestKey)
     }
     thumbnailCache.set(cacheKey, buffer)
+    mkdir(thumbDir, { recursive: true })
+      .then(() => writeFile(thumbFile, buffer))
+      .catch(() => undefined)
     if (!response.writableEnded) {
       response.writeHead(200, {
         'Content-Type': 'image/jpeg',
@@ -1134,7 +1154,9 @@ async function buildLibrary(profileId) {
   `).all(profileId).map((item) => {
     const ext = String(item.extension || '').replace(/^\./, '').toLowerCase()
     const needsTranscode = transcodeExtensions.has(ext)
-    return {
+    const movieNearEnd = Boolean(item.progressDuration && (item.progressPosition / item.progressDuration >= 0.9 || item.progressDuration - item.progressPosition <= 120))
+  const movieWatched = Boolean(item.progressWatched || movieNearEnd)
+  return {
     id: item.id,
     title: item.title,
     kind: 'Filme',
@@ -1162,8 +1184,8 @@ async function buildLibrary(profileId) {
         verified: true,
       },
     } : {}),
-    progress: item.progressDuration ? Math.round((item.progressPosition / item.progressDuration) * 100) : undefined,
-    ...(!item.progressWatched && item.progressPosition > 0 ? {
+    progress: movieWatched ? 100 : (item.progressDuration ? Math.round((item.progressPosition / item.progressDuration) * 100) : undefined),
+    ...(!movieWatched && item.progressPosition > 0 ? {
       resume: {
         kind: 'movie',
         title: item.title,
@@ -1264,6 +1286,14 @@ async function buildLibrary(profileId) {
       `).all(profileId, season.id).map((episode) => {
         const ext = String(episode.extension || '').replace(/^\./, '').toLowerCase()
         const needsTranscode = transcodeExtensions.has(ext)
+        const nearEnd = Boolean(episode.progressDuration && (episode.progressPosition / episode.progressDuration >= 0.9 || episode.progressDuration - episode.progressPosition <= 120))
+        const epProgress = nearEnd
+          ? 100
+          : (episode.progressDuration ? Math.round((episode.progressPosition / episode.progressDuration) * 100) : undefined)
+        const remainingMinutes =
+          !nearEnd && episode.progressDuration && episode.progressPosition > 0 && episode.progressDuration > episode.progressPosition
+            ? Math.max(1, Math.round((episode.progressDuration - episode.progressPosition) / 60))
+            : null
         return {
           id: episode.id,
           season: season.number,
@@ -1274,12 +1304,13 @@ async function buildLibrary(profileId) {
           subtitles: getSubtitleTracks(episode.mediaId),
           mediaUrl: `/api/media/${episode.mediaId}`,
           subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
+          thumbnailUrl: episode.sourceStatus === 'online' ? `/api/media/${episode.mediaId}/thumbnail?t=90` : undefined,
           mediaId: episode.mediaId,
           needsTranscode,
           sourceName: episode.sourceName,
           sourceStatus: episode.sourceStatus,
-          progress: episode.progressDuration ? Math.round((episode.progressPosition / episode.progressDuration) * 100) : undefined,
-          position: episode.progressPosition ? `${Math.floor(episode.progressPosition / 60)} min` : undefined,
+          progress: epProgress,
+          position: remainingMinutes ? `Restam ${remainingMinutes} min` : undefined,
         }
       }),
     }))

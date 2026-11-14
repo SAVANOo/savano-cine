@@ -41,6 +41,7 @@ export type Episode = {
   subtitles: SubtitleTrack[]
   mediaUrl?: string
   subtitleUrl?: string
+  thumbnailUrl?: string
   mediaId?: string
   needsTranscode?: boolean
   sourceName?: string

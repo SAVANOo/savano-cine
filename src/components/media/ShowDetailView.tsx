@@ -402,6 +402,8 @@ export function ShowDetailView({
                           overview: show.overview,
                           year: show.year,
                           startPosition: isResumeEpisode ? show.resume?.position : 0,
+                          showTitle: show.title,
+                          showSeasons: show.seasons,
                           nextEpisode: findNextEpisode(show, ep.mediaId),
                         })
                       }
@@ -417,7 +419,7 @@ export function ShowDetailView({
                               playEp()
                             }
                           }}
-                          className={`relative overflow-hidden flex items-center justify-between gap-4 rounded-[var(--sc-radius-md)] border p-3.5 transition ${
+                          className={`group relative overflow-hidden flex items-center justify-between gap-4 rounded-[var(--sc-radius-md)] border p-3.5 transition ${
                             ep.mediaUrl && !epOffline ? 'cursor-pointer' : 'opacity-70'
                           } ${
                             isResumeEpisode
@@ -425,6 +427,22 @@ export function ShowDetailView({
                               : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30 hover:bg-white/[0.04]'
                           }`}
                         >
+                          {ep.thumbnailUrl && !epOffline && (
+                            <div className="relative hidden h-16 w-28 shrink-0 overflow-hidden rounded-[var(--sc-radius-sm)] bg-neutral-900 sm:block">
+                              <img
+                                src={ep.thumbnailUrl}
+                                alt={`${ep.title}`}
+                                loading="lazy"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = 'none'
+                                }}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+                                <Play className="h-5 w-5 fill-white text-white" />
+                              </span>
+                            </div>
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-xs font-bold text-[var(--sc-accent)]">
@@ -439,9 +457,7 @@ export function ShowDetailView({
                               )}
                               {!epOffline && epProgress > 0 && epProgress < 90 && (
                                 <Badge tone="accent">
-                                  {isResumeEpisode
-                                    ? `Parou em ${ep.position || `${epProgress}%`}`
-                                    : `Incompleto · ${ep.position || `${epProgress}%`}`}
+                                  {ep.position || `${epProgress}%`}
                                 </Badge>
                               )}
                               {!epOffline && epProgress === 0 && isResumeEpisode && (
