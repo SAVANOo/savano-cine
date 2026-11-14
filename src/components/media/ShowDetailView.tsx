@@ -1,4 +1,4 @@
-import { ArrowLeft, Archive, Check, Image, Pencil, Play, Plus, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Archive, Check, Download, Image, Pencil, Play, Plus, RotateCcw, Subtitles } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Episode, LibraryItem, Season } from '../../domain/catalog'
@@ -51,6 +51,52 @@ export function ShowDetailView({
   const [draftTags, setDraftTags] = useState((show.tags ?? []).join(', '))
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
+  const [subResults, setSubResults] = useState<Array<{ fileId: number; language: string; release: string }>>([])
+  const [subMessage, setSubMessage] = useState('')
+  const [searchingSubs, setSearchingSubs] = useState(false)
+
+  async function searchSubtitles() {
+    if (!show.mediaId) return
+    setSearchingSubs(true)
+    setSubMessage('')
+    try {
+      const res = await fetch(`/api/media/${encodeURIComponent(show.mediaId)}/subtitles/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: show.title }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Falha ao buscar legendas.')
+      setSubResults(Array.isArray(body?.results) ? body.results : [])
+      if (!body?.configured) {
+        setSubMessage('OpenSubtitles sem chave configurada (OPENSUBTITLES_API_KEY).')
+      } else if (!body?.results?.length) {
+        setSubMessage('Nenhuma legenda encontrada no OpenSubtitles para este título.')
+      }
+    } catch (err) {
+      setSubMessage(err instanceof Error ? err.message : 'Erro ao buscar legendas.')
+    } finally {
+      setSearchingSubs(false)
+    }
+  }
+
+  async function downloadSubtitle(fileId: number, language: string) {
+    if (!show.mediaId) return
+    setSubMessage('')
+    try {
+      const res = await fetch(`/api/media/${encodeURIComponent(show.mediaId)}/subtitles/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId, language, confirmed: true }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Falha ao baixar legenda.')
+      setSubMessage('Legenda baixada e vinculada ao título.')
+      onCatalogUpdated()
+    } catch (err) {
+      setSubMessage(err instanceof Error ? err.message : 'Erro ao baixar legenda.')
+    }
+  }
 
   const activeSeason: Season | undefined =
     seasons.find((s) => s.number === selectedSeasonNumber) ?? seasons[0]
@@ -371,14 +417,44 @@ export function ShowDetailView({
                   </div>
                 </>
               ) : (
-                <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-5 text-sm text-[var(--sc-text-secondary)]">
-                  <p className="m-0 font-semibold text-white">Informações do arquivo</p>
-                  <p className="mt-2 mb-0 break-all text-xs text-[var(--sc-text-muted)]">
-                    {show.detail}
-                  </p>
-                  <p className="mt-3 mb-0 text-xs">
-                    Legendas locais: <strong className="text-white">{localSubtitles || 'Original'}</strong>
-                  </p>
+                <div className="flex flex-col gap-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-5 text-sm text-[var(--sc-text-secondary)]">
+                  <div>
+                    <p className="m-0 font-semibold text-white">Informações do arquivo</p>
+                    <p className="mt-2 mb-0 break-all text-xs text-[var(--sc-text-muted)]">
+                      {show.detail}
+                    </p>
+                    <p className="mt-3 mb-0 text-xs">
+                      Legendas locais: <strong className="text-white">{localSubtitles || 'Original'}</strong>
+                    </p>
+                  </div>
+
+                  {show.mediaId && (
+                    <div className="border-t border-[var(--sc-border-subtle)] pt-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-white">Legendas online (OpenSubtitles)</span>
+                        <Button variant="secondary" size="sm" disabled={searchingSubs} onClick={() => void searchSubtitles()}>
+                          <Subtitles className="h-3.5 w-3.5" />
+                          {searchingSubs ? 'Buscando...' : 'Buscar legendas'}
+                        </Button>
+                      </div>
+                      {subMessage && <p className="mt-2 mb-0 text-xs text-[var(--sc-text-muted)]">{subMessage}</p>}
+                      {subResults.length > 0 && (
+                        <div className="mt-3 flex flex-col gap-2">
+                          {subResults.slice(0, 5).map((sub) => (
+                            <div key={sub.fileId} className="flex items-center justify-between gap-2 rounded bg-black/30 px-3 py-2 text-xs">
+                              <span className="truncate text-white">
+                                [{sub.language}] {sub.release}
+                              </span>
+                              <Button size="sm" variant="primary" onClick={() => void downloadSubtitle(sub.fileId, sub.language)}>
+                                <Download className="h-3 w-3" />
+                                Baixar
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

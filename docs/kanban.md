@@ -18,8 +18,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Média | Busca de legendas OpenSubtitles na interface | Botão no detalhe/player para acionar `/api/media/:id/subtitles/search` e baixar legendas faltantes |
-| Baixa | Barra de controles 100% customizada no player | Substituir `<video controls>` nativo por timeline e volume integrados ao Design System |
+| Baixa | Miniaturas de preview na timeline do player | Gerar sprites/thumbnails ao passar o mouse na barra de progresso |
 
 ## Backlog
 
@@ -85,6 +84,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Limpeza automática de títulos (`cleanTitle` + `sanitizeExistingTitles`) removendo tags de release (`AndreTPF`, `WOLVERDONFILMES`, `TDF`, `thepiratefilmes`, `BLUDV`) e anos no final do título, Painel Admin dedicado (`AdminView`) com botão `Buscar capas faltantes` (`POST /api/artwork/fetch`), cursor temático global, cache `sessionStorage` na Home, marcador de episódio ativo (`Assistindo agora`) e suporte a deep-links `/series/:id`.
 - Atalhos de teclado no player (`Espaço`/`K` para play/pause, `Setas` para ±10s, `F` para tela cheia), cache de 60s em `refreshSourceStatuses` no `GET /api/sources` e limpeza de warnings do `oxlint`.
 - Coleta de capas locais via `npm run artwork` (`data/artwork`), **Minha lista** por perfil (`POST /api/watchlist/toggle` + tabela `watchlist` + carrossel na Home + botão no Hero, Cards e Detalhes), avanço automático para o **Próximo episódio em 5s** no `VideoPlayer` e testes unitários de `uiHelpers.ts`.
+- Barra de controles 100% customizada no `VideoPlayer` (timeline scrubber, volume/mute, `-10s/+10s`, `Idioma e legendas`, tela cheia) e painel de busca/download de legendas OpenSubtitles integrado no `ShowDetailView`.
 
 ## Regras do quadro
 

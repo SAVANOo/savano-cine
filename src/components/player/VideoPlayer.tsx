@@ -1,6 +1,16 @@
-import { ArrowLeft, Check, Maximize2, Pause, Play, RotateCcw, RotateCw, Subtitles, X } from 'lucide-react'
+import { ArrowLeft, Check, Maximize2, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
+
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const total = Math.floor(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 type VideoPlayerProps = {
   media: PlayableMedia
@@ -34,6 +44,10 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [isPaused, setIsPaused] = useState(false)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [muted, setMuted] = useState(false)
 
   const scheduleHideControls = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
@@ -212,10 +226,13 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           ref={videoRef}
           className="h-full w-full object-contain"
           src={playbackUrl}
-          controls
           autoPlay
           playsInline
-          onClick={() => setTrackMenuOpen(false)}
+          onClick={() => {
+            if (trackMenuOpen) setTrackMenuOpen(false)
+            else togglePlay()
+          }}
+          onDoubleClick={toggleFullscreen}
           onPlay={() => {
             setIsPaused(false)
             setShowPausedInfo(false)
@@ -230,6 +247,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             pauseOverlayTimer.current = window.setTimeout(() => setShowPausedInfo(true), 2200)
           }}
           onLoadedMetadata={() => {
+            if (videoRef.current) {
+              setDuration(Number.isFinite(videoRef.current.duration) ? videoRef.current.duration : 0)
+            }
             if (pendingPosition.current !== null && videoRef.current) {
               if (!playbackUrl.includes('/transcode')) {
                 videoRef.current.currentTime = pendingPosition.current
@@ -238,7 +258,13 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               void videoRef.current.play().catch(() => undefined)
             }
           }}
-          onTimeUpdate={saveProgress}
+          onTimeUpdate={() => {
+            if (videoRef.current) {
+              setCurrentTime(videoRef.current.currentTime)
+              if (Number.isFinite(videoRef.current.duration)) setDuration(videoRef.current.duration)
+            }
+            saveProgress()
+          }}
           onEnded={() => {
             saveProgress()
             if (media.nextEpisode && onPlayNext) {
@@ -262,7 +288,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               type="button"
               onClick={onClose}
               aria-label="Voltar"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -274,55 +300,127 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             </div>
           </div>
 
-          <div className="pointer-events-auto flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => seekBy(-10)}
-              title="Voltar 10s"
-              className="hidden h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 sm:flex cursor-pointer"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={togglePlay}
-              title={isPaused ? 'Retomar' : 'Pausar'}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
-            >
-              {isPaused ? <Play className="h-4 w-4 fill-current" /> : <Pause className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => seekBy(10)}
-              title="Avançar 10s"
-              className="hidden h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 sm:flex cursor-pointer"
-            >
-              <RotateCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTrackMenuOpen((value) => !value)}
-              className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
-            >
-              <Subtitles className="h-4 w-4" />
-              Áudio e legendas
-            </button>
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              title="Tela cheia"
-              className="hidden h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 sm:flex cursor-pointer"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Fechar player"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar player"
+            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Bottom Custom Netflix-style Control Bar */}
+        <div
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-6 pt-10 pb-5 transition-opacity duration-200 ${
+            controlsVisible || isPaused || trackMenuOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {/* Scrubber Timeline */}
+          <div className="pointer-events-auto flex items-center gap-3">
+            <span className="w-12 text-right text-xs font-medium tabular-nums text-white/85">
+              {formatClock(currentTime)}
+            </span>
+            <input
+              type="range"
+              aria-label="Progresso do vídeo"
+              min={0}
+              max={duration || 100}
+              step={1}
+              value={Math.min(currentTime, duration || 100)}
+              onChange={(event) => {
+                const nextTime = Number(event.target.value)
+                setCurrentTime(nextTime)
+                if (videoRef.current) videoRef.current.currentTime = nextTime
+                scheduleHideControls()
+              }}
+              className="h-1.5 flex-1 accent-[var(--sc-accent)]"
+            />
+            <span className="w-12 text-xs font-medium tabular-nums text-white/65">
+              {formatClock(duration)}
+            </span>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pointer-events-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={togglePlay}
+                title={isPaused ? 'Retomar (Espaço)' : 'Pausar (Espaço)'}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-neutral-950 transition hover:bg-white/90"
+              >
+                {isPaused ? <Play className="ml-0.5 h-5 w-5 fill-current" /> : <Pause className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => seekBy(-10)}
+                title="Voltar 10s"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => seekBy(10)}
+                title="Avançar 10s"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+              >
+                <RotateCw className="h-4 w-4" />
+              </button>
+
+              <div className="ml-2 hidden items-center gap-2 sm:flex">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMuted = !muted
+                    setMuted(nextMuted)
+                    if (videoRef.current) videoRef.current.muted = nextMuted
+                  }}
+                  title={muted ? 'Ativar som' : 'Silenciar'}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+                >
+                  {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+                <input
+                  type="range"
+                  aria-label="Volume"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={muted ? 0 : volume}
+                  onChange={(event) => {
+                    const nextVol = Number(event.target.value)
+                    setVolume(nextVol)
+                    setMuted(nextVol === 0)
+                    if (videoRef.current) {
+                      videoRef.current.volume = nextVol
+                      videoRef.current.muted = nextVol === 0
+                    }
+                  }}
+                  className="h-1 w-20 accent-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTrackMenuOpen((value) => !value)}
+                className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                <Subtitles className="h-4 w-4" />
+                Idioma e legendas
+              </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title="Tela cheia (F)"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -382,7 +480,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
 
         {/* Netflix-style Two-Column Idioma | Legendas Popover */}
         {trackMenuOpen && (
-          <div className="absolute top-18 right-6 z-30 grid w-[min(92vw,440px)] grid-cols-2 gap-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
+          <div className="absolute right-6 bottom-24 z-30 grid w-[min(92vw,440px)] grid-cols-2 gap-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
             <div className="flex flex-col gap-1.5 border-r border-white/10 pr-3">
               <h4 className="m-0 mb-1 text-xs font-bold uppercase tracking-wider text-white">
                 Idioma
