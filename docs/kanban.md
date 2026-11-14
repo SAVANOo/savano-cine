@@ -51,6 +51,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Navegação por controle com eixos horizontal/vertical, foco inicial previsível, seleção, voltar/fechar e exclusão de elementos invisíveis, preservando teclado.
 - Fontes removíveis com volume/ID persistido e atualização online/offline independente da letra da unidade,
   usando consulta nativa segura do Windows quando disponível e fallback para o caminho conhecido.
+- Status das fontes atualizado automaticamente ao iniciar a API e ao consultar `/api/sources`, sem
+  remover registros offline ou alterar arquivos físicos.
 - Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.
 - Lint e build executados após as últimas alterações.
 - Diagnóstico operacional em português com códigos de saída `0` (OK), `1` (avisos) e `2` (falha bloqueante),

@@ -20,6 +20,7 @@ if (!existsSync(databasePath)) {
 const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
+refreshSourceStatuses()
 const catalogRefresh = {
   state: 'idle',
   startedAt: null,

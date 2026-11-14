@@ -85,8 +85,9 @@ O comando não imprime valores de variáveis de ambiente, não expõe segredos e
 arquivos físicos.
 
 Fontes em volumes Windows persistem o identificador do volume, rótulo e caminho relativo. A API
-reconsulta os volumes montados para reconhecer uma unidade reconectada com outra letra; quando a
-consulta nativa não está disponível, mantém o fallback pelo caminho salvo. Nenhum arquivo físico é alterado.
+atualiza o status ao iniciar e a cada consulta a `/api/sources`, reconsultando os volumes montados
+para reconhecer uma unidade reconectada com outra letra; quando a consulta nativa não está
+disponível, mantém o fallback pelo caminho salvo. Nenhum arquivo físico é alterado.
 
 O schema SQLite inicial está em `database/schema.sql`. Ele ainda não é carregado automaticamente pela interface; essa será a próxima etapa do backend local.
 
