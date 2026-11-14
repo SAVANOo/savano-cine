@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS media_sources (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   root_path TEXT NOT NULL,
+  root_relative_path TEXT,
   volume_id TEXT,
   volume_label TEXT,
   removable INTEGER NOT NULL DEFAULT 0 CHECK (removable IN (0, 1)),

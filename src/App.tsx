@@ -333,7 +333,7 @@ function Sidebar({
           {sources.map((source) => (
             <div className="source-item" key={source.id}>
               <span className={source.status === 'offline' ? 'status-dot warning' : 'status-dot'} />
-              <div><strong>{source.name}</strong><small>{source.path} · {source.itemCount} itens</small></div>
+              <div><strong>{source.name}</strong><small>{source.status === 'offline' ? 'Offline · ' : ''}{source.path} · {source.itemCount} itens</small></div>
             </div>
           ))}
         </div>

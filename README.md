@@ -65,6 +65,10 @@ npm run api
 
 O scanner é somente leitura. Ele não renomeia, move ou exclui arquivos; apenas gera uma classificação preliminar para a futura tela de revisão.
 
+Fontes em volumes Windows persistem o identificador do volume, rótulo e caminho relativo. A API
+reconsulta os volumes montados para reconhecer uma unidade reconectada com outra letra; quando a
+consulta nativa não está disponível, mantém o fallback pelo caminho salvo. Nenhum arquivo físico é alterado.
+
 O schema SQLite inicial está em `database/schema.sql`. Ele ainda não é carregado automaticamente pela interface; essa será a próxima etapa do backend local.
 
 O comando `import` cria `data/catalog.db` localmente e importa os caminhos encontrados sem alterar os arquivos de mídia. A pasta `data/` fica fora do Git.

@@ -2,6 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { collectMediaFiles, collectSubtitleTracks, classifyMedia } from './scan-media.mjs'
+import { getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 
 const sourceArg = process.argv[2]
 const sourcePath = sourceArg ? path.resolve(sourceArg) : null
@@ -20,6 +21,7 @@ database.exec(schema)
 ensureProfileProgressTable()
 ensureColumn('media_items', 'tags_json', `TEXT NOT NULL DEFAULT '[]'`)
 ensureColumn('media_items', 'deleted_at', 'TEXT')
+ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 database.exec(`
   CREATE TABLE IF NOT EXISTS media_item_title_history (
     id TEXT PRIMARY KEY,
@@ -37,8 +39,14 @@ database.prepare(`
 `).run('profile-savio', 'Savio', 'cartman')
 ensureProfileRatingsTable()
 
-const sourceId = `source-${slugify(sourcePath)}`
-const sourceName = `${path.basename(sourcePath) || sourcePath} (${sourcePath.slice(0, 2).toUpperCase()})`
+const volumeInfo = getVolumeInfoForPath(sourcePath)
+const existingSource = volumeInfo?.volumeId
+  ? database.prepare('SELECT id FROM media_sources WHERE volume_id = ?').get(volumeInfo.volumeId)
+  : database.prepare('SELECT id FROM media_sources WHERE root_path = ?').get(sourcePath)
+const sourceId = existingSource?.id || `source-${slugify(volumeInfo?.volumeId || sourcePath)}`
+const sourceLabel = volumeInfo?.volumeLabel || path.basename(sourcePath) || sourcePath
+const sourceDrive = volumeInfo?.driveLetter || sourcePath.slice(0, 2).toUpperCase()
+const sourceName = `${sourceLabel} (${sourceDrive})`
 const files = await collectMediaFiles(sourcePath)
 const classifiedFiles = files.map((file) => ({ file, item: classifyMedia(file, sourcePath) }))
 const specialNumbers = new Map()
@@ -55,14 +63,47 @@ for (const group of specialGroups.values()) {
   group.forEach((entry, index) => specialNumbers.set(entry.file, index + 1))
 }
 
-database.prepare(`
-  INSERT INTO media_sources (id, name, root_path, removable, status, last_scan_at)
-  VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+const upsertSource = database.prepare(`
+  INSERT INTO media_sources (
+    id, name, root_path, root_relative_path, volume_id, volume_label, removable, status, last_scan_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   ON CONFLICT(root_path) DO UPDATE SET
     name = excluded.name,
+    root_relative_path = excluded.root_relative_path,
+    volume_id = excluded.volume_id,
+    volume_label = excluded.volume_label,
+    removable = excluded.removable,
     status = excluded.status,
     last_scan_at = excluded.last_scan_at
-`).run(sourceId, sourceName, sourcePath, /^[A-Z]:\\/i.test(sourcePath) && sourcePath[0].toUpperCase() !== 'C' ? 1 : 0, 'online')
+`)
+if (existingSource) {
+  database.prepare(`
+    UPDATE media_sources
+    SET name = ?, root_path = ?, root_relative_path = ?, volume_id = ?, volume_label = ?,
+      removable = ?, status = 'online', last_scan_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    sourceName,
+    sourcePath,
+    volumeInfo?.rootRelativePath || getRootRelativePath(sourcePath),
+    volumeInfo?.volumeId || null,
+    volumeInfo?.volumeLabel || null,
+    volumeInfo?.removable ? 1 : /^[A-Z]:\\/i.test(sourcePath) && sourcePath[0].toUpperCase() !== 'C' ? 1 : 0,
+    sourceId,
+  )
+} else {
+  upsertSource.run(
+    sourceId,
+    sourceName,
+    sourcePath,
+    volumeInfo?.rootRelativePath || getRootRelativePath(sourcePath),
+    volumeInfo?.volumeId || null,
+    volumeInfo?.volumeLabel || null,
+    volumeInfo?.removable ? 1 : /^[A-Z]:\\/i.test(sourcePath) && sourcePath[0].toUpperCase() !== 'C' ? 1 : 0,
+    'online',
+  )
+}
 
 const insertMovie = database.prepare(`
   INSERT INTO media_items (

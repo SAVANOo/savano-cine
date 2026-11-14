@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
+import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -15,6 +16,7 @@ if (!existsSync(databasePath)) {
 }
 
 const database = new DatabaseSync(databasePath)
+ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 
 createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host}`)
@@ -35,8 +37,10 @@ createServer(async (request, response) => {
   }
 
   if (requestUrl.pathname === '/api/sources') {
+    refreshSourceStatuses()
     const sources = database.prepare(`
       SELECT id, name, root_path AS path, status, removable, volume_label AS volumeLabel,
+        volume_id AS volumeId,
         (SELECT COUNT(*) FROM media_items WHERE source_id = media_sources.id) AS itemCount
       FROM media_sources
       ORDER BY name
@@ -293,6 +297,77 @@ createServer(async (request, response) => {
 }).listen(port, '127.0.0.1', () => {
   console.log(`Savano Cine API em http://127.0.0.1:${port}`)
 })
+
+function refreshSourceStatuses() {
+  const sources = database.prepare(`
+    SELECT id, name, root_path, root_relative_path, volume_id, volume_label, removable
+    FROM media_sources
+  `).all()
+  const update = database.prepare(`
+    UPDATE media_sources
+    SET root_path = ?, root_relative_path = ?, volume_id = ?, name = ?, volume_label = ?, removable = ?,
+      status = ?, last_scan_at = CASE WHEN ? = 'online' THEN CURRENT_TIMESTAMP ELSE last_scan_at END
+    WHERE id = ?
+  `)
+
+  for (const source of sources) {
+    const sourceWithRelativePath = {
+      ...source,
+      root_relative_path: source.root_relative_path || getRootRelativePath(source.root_path),
+    }
+    const mounted = findMountedSource(sourceWithRelativePath)
+    if (mounted && existsSync(mounted.rootPath)) {
+      const label = mounted.volumeLabel || source.volume_label || path.basename(mounted.rootPath)
+      update.run(
+        mounted.rootPath,
+        sourceWithRelativePath.root_relative_path,
+        mounted.volumeId,
+        `${label} (${mounted.driveLetter}:)`,
+        mounted.volumeLabel,
+        mounted.removable ? 1 : source.removable,
+        'online',
+        'online',
+        source.id,
+      )
+      continue
+    }
+
+    const fallbackVolume = existsSync(source.root_path) ? getVolumeInfoForPath(source.root_path) : null
+    if (fallbackVolume) {
+      update.run(
+        source.root_path,
+        fallbackVolume.rootRelativePath || sourceWithRelativePath.root_relative_path,
+        fallbackVolume.volumeId,
+        `${fallbackVolume.volumeLabel || path.basename(source.root_path)} (${fallbackVolume.driveLetter}:)`,
+        fallbackVolume.volumeLabel,
+        fallbackVolume.removable ? 1 : source.removable,
+        'online',
+        'online',
+        source.id,
+      )
+    } else {
+      update.run(
+        source.root_path,
+        sourceWithRelativePath.root_relative_path,
+        source.volume_id,
+        source.name,
+        source.volume_label,
+        source.removable,
+        'offline',
+        'offline',
+        source.id,
+      )
+    }
+  }
+}
+
+function ensureColumn(table, column, definition) {
+  try {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) throw error
+  }
+}
 
 async function buildLibrary(profileId) {
   const items = database.prepare(`

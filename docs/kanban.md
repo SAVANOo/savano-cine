@@ -29,7 +29,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | --- | --- | --- |
 | Legendas | Scanner local e integração autorizada | Scanner de SRT/VTT próximos concluído; embutidas e provedores continuam futuras |
 | Interface | Navegação completa por controle | Foco, seleção, voltar, busca e player |
-| Fontes | Detecção automática de SSD offline/online | Identificar volume por ID, não apenas pela letra da unidade |
 | Integrações | Adapters de fontes autorizadas | Protocolo extensível para acervo local, servidores próprios e provedores licenciados |
 
 ## Concluído
@@ -47,6 +46,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Download local de capas de séries sem duplicação por episódio.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
+- Fontes removíveis com volume/ID persistido e atualização online/offline independente da letra da unidade,
+  usando consulta nativa segura do Windows quando disponível e fallback para o caminho conhecido.
 - Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.
 - Lint e build executados após as últimas alterações.
 

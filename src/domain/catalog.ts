@@ -79,4 +79,5 @@ export type MediaSource = {
   removable: boolean
   itemCount: number
   volumeLabel?: string
+  volumeId?: string
 }
