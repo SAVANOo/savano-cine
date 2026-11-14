@@ -11,25 +11,20 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
 | Alta | Player compatível com o acervo | Modal integrado a `/streams`; seleção de faixas usa transcoding MP4 quando FFprobe/FFmpeg estão disponíveis; ambiente atual informa indisponibilidade |
-| Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
-| Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
 | Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; backdrops TMDB opcionais por correspondência exata, com fallback para poster |
 | Média | Histórico e restauração de alterações | Tela operacional lista arquivados e títulos alterados; restauração lógica validada por API |
-| Alta | Diagnóstico operacional | `npm run doctor` verifica SQLite, fontes, catálogo, artes, legendas e runtimes sem alterar dados |
-| Alta | Atualização segura do catálogo pela interface | Sidebar dispara o importador existente por fonte, com status e bloqueio de concorrência; sem operações físicas |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Alta | Revisão de correspondências de arte | Exibir candidatos e permitir confirmação antes de aplicar metadados ambíguos; TMDB só aceita candidato único exato |
+| Baixa | Adapter HTTP/remoto de fontes autorizadas | Implementar adapter concreto baseado em `src/domain/sourceAdapter.ts` para servidores próprios |
 
 ## Backlog
 
 | Área | Cartão | Observação |
 | --- | --- | --- |
-| Legendas | Scanner local e integração autorizada | Scanner de SRT/VTT próximos concluído; embutidas e provedores continuam futuras |
-| Integrações | Adapters de fontes autorizadas | Protocolo extensível para acervo local, servidores próprios e provedores licenciados |
+| Integrações | Adapters de fontes autorizadas | Protocolo base definido em `src/domain/sourceAdapter.ts`; adapters concretos para servidores próprios/licenciados ficam no backlog |
 
 ## Concluído
 
@@ -61,8 +56,16 @@ com atualização do insight atual, riscos encontrados e próximo plano.
   sem exposição de segredos e sem escrita no catálogo ou no acervo.
 - Atualização controlada do catálogo pela sidebar, reutilizando o importador somente leitura,
   com status via API e bloqueio de execuções concorrentes.
+- Smoke test somente de leitura para health, capabilities, fontes, biblioteca, revisão/histórico,
+  progresso/rating e segurança básica de mídia/legenda; API indisponível gera falha explícita.
 - Tela de revisão validada com 66 itens reais: ação de filme, especial/outro e ignorar têm destinos
   distintos, erro `404` é retornado e exibido, e o caminho físico permanece inalterado.
+- Persistência isolada de `ratings` validada entre dois perfis distintos e presença de gêneros/tags verificada no catálogo (`scripts/verify-features.mjs`).
+- Revisão de correspondências de arte implementada: tabela `artwork_candidates`, coleta de candidatos ambíguos em `scripts/fetch-artwork.mjs` (mantendo TMDB automático apenas para candidato único exato), endpoints `/api/artwork/candidates*` em `scripts/api-server.mjs` e painel `ArtworkReviewPanel` na interface.
+- Guia operacional criado em `docs/operacao.md` documentando comandos, variáveis de ambiente e fluxos de revisão.
+- Integração de legendas embutidas e provedores: endpoint `/api/media/:id/subtitles/embedded/:streamIndex` (extração WebVTT via FFmpeg quando disponível), busca/download com confirmação para OpenSubtitles (`/api/media/:id/subtitles/search` e `/download`) e botão **Buscar arte/metadados** na página de detalhe.
+- Protocolo extensível de adapters de fontes autorizadas definido em `src/domain/sourceAdapter.ts`.
+- Adapters concretos (`LocalSourceAdapter` e `SelfHostedSourceAdapter`) em `scripts/source-adapters.mjs`, cadastro de fontes via `POST /api/sources` na sidebar e edição reversível de metadados (`PATCH /api/catalog/:id`) + arquivamento na página de detalhe.
 
 ## Regras do quadro
 

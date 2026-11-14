@@ -59,10 +59,17 @@ Verificações disponíveis:
 npm run lint
 npm run build
 npm run doctor
+npm run smoke
 npm run scan -- "D:\\Filmes" --limit 20
 npm run import -- "E:\\Filmes"
 npm run api
 ```
+
+`npm run smoke` executa verificações somente de leitura contra a API local em
+`http://127.0.0.1:4174` (ou `CINE_API_URL`). Ele valida health, capabilities, fontes,
+biblioteca, revisão/histórico, leitura de progresso/rating e bloqueios básicos de mídia e
+legenda. Se a API não estiver disponível, o comando falha claramente; inicie antes com
+`npm run api`. O smoke test não grava no SQLite nem altera arquivos do acervo.
 
 Enquanto a API estiver ativa, a sidebar oferece **Atualizar catálogo**. A ação reutiliza o
 importador existente em modo somente leitura do acervo: percorre cada fonte online

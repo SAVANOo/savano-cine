@@ -12,7 +12,9 @@
     "import": "node scripts/import-catalog.mjs",
     "lint": "oxlint",
     "scan": "node scripts/scan-media.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "node scripts/verify-features.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",
