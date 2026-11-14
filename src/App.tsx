@@ -20,6 +20,7 @@ import {
   profiles as mockProfiles,
 } from './data/mockCatalog'
 import type { LibraryItem, MediaSource, Profile, ReviewItem } from './domain/catalog'
+import { useGamepadNavigation } from './hooks/useGamepadNavigation'
 import {
   resolvePlayableMedia,
   translateGenre,
@@ -255,6 +256,7 @@ export function App() {
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
 
   const [catalogNotice, setCatalogNotice] = useState('')
+  const connectedGamepad = useGamepadNavigation(Boolean(selectedMedia))
 
   const playLibraryItem = useCallback((item: LibraryItem) => {
     if (item.sourceStatus === 'offline') {
@@ -542,6 +544,7 @@ export function App() {
               : catalogRefresh.error || ''
         }
         adminBadgeCount={reviewItems.length + artworkCandidates.length}
+        gamepadConnected={Boolean(connectedGamepad)}
       />
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-8 sm:py-7">

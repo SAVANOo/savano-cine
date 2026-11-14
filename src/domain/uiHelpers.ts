@@ -77,6 +77,42 @@ export const PROFILE_AVATAR_GROUPS: AvatarGroup[] = [
       { key: 'soos', label: 'Soos', gradient: 'linear-gradient(145deg, #84cc16, #3f6212)', badge: '?', imageUrl: '/avatars/soos.svg' },
     ],
   },
+  {
+    series: 'DC & Heróis',
+    options: [
+      { key: 'batman', label: 'Batman', gradient: 'linear-gradient(145deg, #09090b, #facc15)', badge: 'B', imageUrl: '/avatars/batman.svg' },
+      { key: 'superman', label: 'Superman', gradient: 'linear-gradient(145deg, #1d4ed8, #dc2626)', badge: 'S', imageUrl: '/avatars/superman.svg' },
+      { key: 'flash', label: 'Flash', gradient: 'linear-gradient(145deg, #991b1b, #facc15)', badge: '⚡', imageUrl: '/avatars/flash.svg' },
+      { key: 'hellboy', label: 'Hellboy', gradient: 'linear-gradient(145deg, #dc2626, #450a0a)', badge: 'H', imageUrl: '/avatars/hellboy.svg' },
+    ],
+  },
+  {
+    series: 'Marvel',
+    options: [
+      { key: 'spiderman', label: 'Homem-Aranha', gradient: 'linear-gradient(145deg, #dc2626, #111827)', badge: '🕷', imageUrl: '/avatars/spiderman.svg' },
+      { key: 'deadpool', label: 'Deadpool', gradient: 'linear-gradient(145deg, #b91c1c, #09090b)', badge: 'D', imageUrl: '/avatars/deadpool.svg' },
+      { key: 'ironman', label: 'Homem de Ferro', gradient: 'linear-gradient(145deg, #991b1b, #facc15)', badge: 'I', imageUrl: '/avatars/ironman.svg' },
+      { key: 'strange', label: 'Doutor Estranho', gradient: 'linear-gradient(145deg, #311042, #f59e0b)', badge: '✦', imageUrl: '/avatars/strange.svg' },
+    ],
+  },
+  {
+    series: 'Terror & Suspense',
+    options: [
+      { key: 'ghostface', label: 'Pânico', gradient: 'linear-gradient(145deg, #09090b, #475569)', badge: '👻', imageUrl: '/avatars/ghostface.svg' },
+      { key: 'corra', label: 'Corra!', gradient: 'linear-gradient(145deg, #18181b, #dc2626)', badge: '◉', imageUrl: '/avatars/corra.svg' },
+      { key: 'jason', label: 'Sexta-Feira 13', gradient: 'linear-gradient(145deg, #1c1917, #e7e5e4)', badge: 'J', imageUrl: '/avatars/jason.svg' },
+      { key: 'it', label: 'It: A Coisa', gradient: 'linear-gradient(145deg, #0f172a, #dc2626)', badge: '🎈', imageUrl: '/avatars/it.svg' },
+    ],
+  },
+  {
+    series: 'Animação & Nostalgia',
+    options: [
+      { key: 'shrek', label: 'Shrek', gradient: 'linear-gradient(145deg, #84cc16, #3f6212)', badge: 'S', imageUrl: '/avatars/shrek.svg' },
+      { key: 'simpsons', label: 'Os Simpsons', gradient: 'linear-gradient(145deg, #1d4ed8, #f472b6)', badge: '🍩', imageUrl: '/avatars/simpsons.svg' },
+      { key: 'scooby', label: 'Scooby-Doo', gradient: 'linear-gradient(145deg, #06b6d4, #facc15)', badge: '🐾', imageUrl: '/avatars/scooby.svg' },
+      { key: 'stitch', label: 'Stitch', gradient: 'linear-gradient(145deg, #0ea5e9, #0c4a6e)', badge: '★', imageUrl: '/avatars/stitch.svg' },
+    ],
+  },
 ]
 
 export function getAvatarStyle(avatarKey: string): { background: string; badge: string; imageUrl?: string } {

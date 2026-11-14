@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Film,
   FolderPlus,
+  Gamepad2,
   Home,
   Pencil,
   PlayCircle,
@@ -33,6 +34,7 @@ type SidebarProps = {
   refreshing: boolean
   refreshStatus: string
   adminBadgeCount: number
+  gamepadConnected?: boolean
 }
 
 /** Persistent navigation rail with responsive brand collapse, profiles, and catalog tools. */
@@ -53,6 +55,7 @@ export function Sidebar({
   refreshing,
   refreshStatus,
   adminBadgeCount,
+  gamepadConnected,
 }: SidebarProps) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [addingSource, setAddingSource] = useState(false)
@@ -255,6 +258,12 @@ export function Sidebar({
 
       {/* Compact Sources & Refresh */}
       <div className="mt-auto hidden flex-col gap-2.5 border-t border-[var(--sc-border-subtle)] pt-3 lg:flex">
+        {gamepadConnected && (
+          <div className="flex items-center gap-2 rounded-[var(--sc-radius-md)] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-200">
+            <Gamepad2 className="h-3.5 w-3.5 shrink-0" />
+            <span>Controle conectado</span>
+          </div>
+        )}
         <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-white">

@@ -848,7 +848,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                           <div className="min-w-0 flex-1 text-[11px] text-[var(--sc-text-secondary)]">
                             {epProgress >= 90
                               ? 'Assistido'
-                              : ep.position || (isCurrent ? 'Reproduzindo agora' : ep.duration)}
+                              : ep.position || (isCurrent ? 'Reproduzindo agora' : ep.duration || 'Não assistido')}
                           </div>
                         </div>
                       )}

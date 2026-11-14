@@ -1300,7 +1300,7 @@ async function buildLibrary(profileId) {
           number: episode.number,
           title: episode.title,
           filename: episode.filename,
-          duration: episode.progressDuration ? `${Math.max(1, Math.round(episode.progressDuration / 60))} min` : 'Duração não analisada',
+          duration: episode.progressDuration ? `${Math.max(1, Math.round(episode.progressDuration / 60))} min` : '',
           subtitles: getSubtitleTracks(episode.mediaId),
           mediaUrl: `/api/media/${episode.mediaId}`,
           subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,

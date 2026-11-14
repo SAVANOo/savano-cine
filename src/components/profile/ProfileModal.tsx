@@ -97,7 +97,7 @@ export function ProfileModal({ open, profile, onClose, onSaved }: ProfileModalPr
           </label>
         </div>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex max-h-[52vh] flex-col gap-5 overflow-y-auto pr-1">
           {PROFILE_AVATAR_GROUPS.map((group) => (
             <div key={group.series} className="flex flex-col gap-2.5">
               <h3 className="m-0 text-sm font-bold text-white">{group.series}</h3>

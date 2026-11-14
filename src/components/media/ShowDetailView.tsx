@@ -468,7 +468,7 @@ export function ShowDetailView({
                               )}
                             </div>
                             <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-muted)]">
-                              {ep.duration} · {ep.filename}
+                              {[ep.duration, ep.filename].filter(Boolean).join(' · ')}
                             </p>
                           </div>
                           {ep.mediaUrl && (
