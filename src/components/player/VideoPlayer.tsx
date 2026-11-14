@@ -151,6 +151,37 @@ export function VideoPlayer({ media, profileId, capabilities, onClose }: VideoPl
     else void stage.requestFullscreen?.()
   }
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) {
+        return
+      }
+      if (event.key === ' ' || event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        const video = videoRef.current
+        if (!video) return
+        if (video.paused) void video.play()
+        else video.pause()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10)
+        scheduleHideControls()
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        if (videoRef.current) videoRef.current.currentTime += 10
+        scheduleHideControls()
+      } else if (event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        const stage = videoRef.current?.parentElement
+        if (!stage) return
+        if (document.fullscreenElement) void document.exitFullscreen()
+        else void stage.requestFullscreen?.()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [scheduleHideControls])
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/95"

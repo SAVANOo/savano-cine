@@ -26,6 +26,7 @@ ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
 ignorePromotionalAds()
 sanitizeExistingTitles()
+let lastSourceRefreshAt = 0
 refreshSourceStatuses()
 const catalogRefresh = {
   state: 'idle',
@@ -160,7 +161,7 @@ async function handleApiRequest(request, response) {
       return send(response, 409, { error: 'Uma atualização do catálogo já está em andamento.', ...refreshStatus() })
     }
 
-    refreshSourceStatuses()
+    refreshSourceStatuses(true)
     const requestedSourceId = requestUrl.searchParams.get('sourceId')
     const sources = database.prepare(`
       SELECT id, root_path AS rootPath, status
@@ -547,7 +548,12 @@ async function handleApiRequest(request, response) {
   return send(response, 404, { error: 'Rota não encontrada' })
 }
 
-function refreshSourceStatuses() {
+function refreshSourceStatuses(force = false) {
+  const now = Date.now()
+  if (!force && now - lastSourceRefreshAt < 60_000) {
+    return
+  }
+  lastSourceRefreshAt = now
   const sources = database.prepare(`
     SELECT id, name, root_path, root_relative_path, volume_id, volume_label, removable
     FROM media_sources

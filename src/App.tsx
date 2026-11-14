@@ -235,7 +235,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [adminOpen, profileEditorOpen, selectedMedia, selectedShow])
+  }, [adminOpen, profileEditorOpen, selectedMedia, selectedShow, setSelectedShow])
 
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
@@ -244,7 +244,7 @@ export function App() {
     const playable = resolvePlayableMedia(item)
     if (playable) setSelectedMedia(playable)
     else setSelectedShow(item)
-  }, [])
+  }, [setSelectedShow])
 
   const triggerArtworkSearch = useCallback(
     async (item: LibraryItem) => {
@@ -264,7 +264,7 @@ export function App() {
         setSelectedShow(null)
       }
     },
-    [refreshArtworkCandidates, refreshCatalogAndSources],
+    [refreshArtworkCandidates, refreshCatalogAndSources, setSelectedShow],
   )
 
   const genreOptions = useMemo(() => {
@@ -332,7 +332,7 @@ export function App() {
     if (window.location.pathname !== '/') {
       window.history.replaceState(null, '', '/')
     }
-  }, [])
+  }, [setSelectedShow])
 
   return (
     <div

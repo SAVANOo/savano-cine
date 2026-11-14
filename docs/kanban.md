@@ -19,7 +19,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
 | Alta | Buscar capas faltantes para filmes ainda sem pôster | Executar `npm run artwork` / botão **Buscar capas faltantes** no Painel Admin e confirmar candidatos pendentes |
-| Baixa | Atalhos avançados de teclado/controle no player | Refinar micro-interações do player (atalhos de espaço/setas) |
 
 ## Backlog
 
@@ -83,6 +82,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Experiência de Home e navegação estilo Netflix / HBO Max / Prime Video: `HeroCarousel` rotativo com **▶ Assistir / Retome** + **ⓘ Mais informações**, carrosséis horizontais (`Continue assistindo` em 16:9 com barra de progresso, `Recomendados`, `Filmes`, `Séries` e gêneros), cards com clique na capa para reprodução direta e clique em `ⓘ` para detalhes, e `ShowDetailView` com abas **Você também pode gostar** e **Detalhes / Episódios** + botão **Reiniciar**.
 - Suíte de testes automatizados: testes unitários em `node --test` (`tests/unit/clean-title.test.mjs`) e testes E2E com Playwright (`tests/e2e/critical-flows.spec.ts`) cobrindo Home, clique duplo nos cards (play vs detalhes), Painel Admin, Editor de Perfil e deep-link `/series/show-south-park`.
 - Limpeza automática de títulos (`cleanTitle` + `sanitizeExistingTitles`) removendo tags de release (`AndreTPF`, `WOLVERDONFILMES`, `TDF`, `thepiratefilmes`, `BLUDV`) e anos no final do título, Painel Admin dedicado (`AdminView`) com botão `Buscar capas faltantes` (`POST /api/artwork/fetch`), cursor temático global, cache `sessionStorage` na Home, marcador de episódio ativo (`Assistindo agora`) e suporte a deep-links `/series/:id`.
+- Atalhos de teclado no player (`Espaço`/`K` para play/pause, `Setas` para ±10s, `F` para tela cheia), cache de 60s em `refreshSourceStatuses` no `GET /api/sources` e limpeza de warnings do `oxlint`.
 
 ## Regras do quadro
 
