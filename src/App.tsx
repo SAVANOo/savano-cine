@@ -82,6 +82,16 @@ function App() {
         return
       }
 
+      if (event.key === 'Escape' && reviewOpen) {
+        setReviewOpen(false)
+        return
+      }
+
+      if (event.key === 'Escape' && historyOpen) {
+        setHistoryOpen(false)
+        return
+      }
+
       if (event.key === '/' && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT') {
         event.preventDefault()
         document.querySelector<HTMLInputElement>('.search-box input')?.focus()
@@ -90,7 +100,7 @@ function App() {
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [selectedMedia, selectedShow])
+  }, [historyOpen, reviewOpen, selectedMedia, selectedShow])
 
   useEffect(() => {
     document.title = selectedMedia
@@ -151,7 +161,7 @@ function App() {
       <div className="app-shell">
         <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} />
         <main className="content">
-          <button className="back-button" type="button" onClick={closeShow}>
+          <button className="back-button controller-focus" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
           <ShowHeader show={selectedShow} profileId={activeProfileId} onPlay={setSelectedMedia} />
@@ -338,8 +348,8 @@ function Sidebar({
           ))}
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
-        <button className="settings-button" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
-        <button className="settings-button" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
+        <button className="settings-button controller-focus" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
+        <button className="settings-button controller-focus" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
       </div>
     </aside>
     {editingProfile !== undefined && (
@@ -380,7 +390,7 @@ function CatalogHistoryPanel({ history, onRefresh, onClose }: { history: Catalog
   return (
     <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="review-panel" role="dialog" aria-modal="true" aria-label="Histórico do catálogo" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Histórico e restauração</h2></div><button type="button" onClick={onClose}>×</button></div>
+        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Histórico e restauração</h2></div><button className="controller-focus" type="button" autoFocus aria-label="Fechar histórico" onClick={onClose}>×</button></div>
         <p className="history-note">As ações alteram somente o catálogo; nenhum arquivo físico é movido ou apagado.</p>
         <h3>Itens arquivados</h3>
         <div className="review-list">
@@ -437,7 +447,7 @@ function ReviewPanel({
   return (
     <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="review-panel" role="dialog" aria-modal="true" aria-label="Itens para revisão" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Itens para revisar</h2></div><button type="button" onClick={onClose}>×</button></div>
+        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Itens para revisar</h2></div><button className="controller-focus" type="button" autoFocus aria-label="Fechar revisão" onClick={onClose}>×</button></div>
         {items.length === 0 && <p className="empty-state">Nenhum item aguardando revisão.</p>}
         <div className="review-list">
           {items.map((item) => (
@@ -763,7 +773,7 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
       <section className="player-modal" role="dialog" aria-modal="true" aria-label={`Reproduzindo ${media.title}`} onMouseDown={(event) => event.stopPropagation()}>
         <div className="player-heading">
           <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
-          <button className="player-close" type="button" aria-label="Fechar player" onClick={onClose}>×</button>
+          <button className="player-close controller-focus" type="button" autoFocus aria-label="Fechar player" onClick={onClose}>×</button>
         </div>
         <video ref={videoRef} className="video-player" src={media.url} controls autoPlay playsInline onTimeUpdate={saveProgress} onEnded={saveProgress}>
           {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
@@ -800,34 +810,96 @@ function useGamepadNavigation() {
   useEffect(() => {
     if (!navigator.getGamepads) return
 
+    const getFocusable = () => {
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]')
+      const scope = dialog ?? document
+      return Array.from(scope.querySelectorAll<HTMLElement>(
+      'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => {
+        const style = window.getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
+        return !element.matches(':disabled')
+          && element.getAttribute('aria-hidden') !== 'true'
+          && !element.closest('[aria-hidden="true"]')
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && rect.width > 0
+          && rect.height > 0
+      })
+    }
+
+    const moveFocus = (direction: 'up' | 'down' | 'left' | 'right', focusable: HTMLElement[]) => {
+      const current = document.activeElement as HTMLElement | null
+      const currentRect = current?.getBoundingClientRect()
+      if (!current || !currentRect || !focusable.includes(current)) {
+        focusable[0]?.focus()
+        return
+      }
+
+      const currentX = currentRect.left + currentRect.width / 2
+      const currentY = currentRect.top + currentRect.height / 2
+      const candidates = focusable
+        .filter((element) => element !== current)
+        .map((element) => {
+          const rect = element.getBoundingClientRect()
+          const x = rect.left + rect.width / 2
+          const y = rect.top + rect.height / 2
+          const primary = direction === 'left' ? currentX - x
+            : direction === 'right' ? x - currentX
+              : direction === 'up' ? currentY - y
+                : y - currentY
+          const secondary = direction === 'left' || direction === 'right' ? Math.abs(y - currentY) : Math.abs(x - currentX)
+          return { element, score: primary + secondary * 1.5 }
+        })
+        .filter(({ score }) => score > 4)
+        .sort((a, b) => a.score - b.score)
+
+      candidates[0]?.element.focus()
+    }
+
     const timer = window.setInterval(() => {
       const gamepad = Array.from(navigator.getGamepads()).find(Boolean)
-      if (!gamepad) return
+      if (!gamepad) {
+        previousButtons.current = []
+        previousAxes.current = []
+        return
+      }
 
       const buttons = gamepad.buttons.map((button) => button.pressed)
       const previous = previousButtons.current
       const pressed = (index: number) => buttons[index] && !previous[index]
-      const focusable = Array.from(document.querySelectorAll<HTMLElement>('.controller-focus'))
-      const currentIndex = focusable.indexOf(document.activeElement as HTMLElement)
+      const focusable = getFocusable()
+      if (focusable.length === 0) return
 
       if (pressed(0)) {
         const active = document.activeElement as HTMLElement | null
-        active?.click()
+        if (active && focusable.includes(active)) active.click()
+        else focusable[0]?.focus()
       }
 
-      if (pressed(1)) {
+      if (pressed(1) || pressed(9)) {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       }
 
       const horizontalAxis = gamepad.axes[0] ?? 0
       const wasHorizontal = previousAxes.current[0] ?? 0
+      const verticalAxis = gamepad.axes[1] ?? 0
+      const wasVertical = previousAxes.current[1] ?? 0
 
       if (horizontalAxis > 0.6 && wasHorizontal <= 0.6) {
-        focusable[Math.min(currentIndex + 1, focusable.length - 1)]?.focus()
+        moveFocus('right', focusable)
       }
 
       if (horizontalAxis < -0.6 && wasHorizontal >= -0.6) {
-        focusable[Math.max(currentIndex - 1, 0)]?.focus()
+        moveFocus('left', focusable)
+      }
+
+      if (verticalAxis > 0.6 && wasVertical <= 0.6) {
+        moveFocus('down', focusable)
+      }
+
+      if (verticalAxis < -0.6 && wasVertical >= -0.6) {
+        moveFocus('up', focusable)
       }
 
       previousButtons.current = buttons

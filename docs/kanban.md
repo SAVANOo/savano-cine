@@ -28,7 +28,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Área | Cartão | Observação |
 | --- | --- | --- |
 | Legendas | Scanner local e integração autorizada | Scanner de SRT/VTT próximos concluído; embutidas e provedores continuam futuras |
-| Interface | Navegação completa por controle | Foco, seleção, voltar, busca e player |
 | Integrações | Adapters de fontes autorizadas | Protocolo extensível para acervo local, servidores próprios e provedores licenciados |
 
 ## Concluído
@@ -48,6 +47,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
 - Endpoint seguro de análise de faixas com FFprobe, sem shell injection ou exposição de caminhos absolutos; fallback explícito quando o runtime está ausente.
 - Endpoint de transcoding MP4 sob demanda com `spawn` sem shell, stream por `stdout`, validação de mídia/confinamento e fallback explícito sem FFmpeg.
+- Navegação por controle com eixos horizontal/vertical, foco inicial previsível, seleção, voltar/fechar e exclusão de elementos invisíveis, preservando teclado.
 - Fontes removíveis com volume/ID persistido e atualização online/offline independente da letra da unidade,
   usando consulta nativa segura do Windows quando disponível e fallback para o caminho conhecido.
 - Especiais em pastas `Curtas` agrupados dentro da série, sem cards independentes na biblioteca.
