@@ -475,6 +475,19 @@
   background: var(--background);
 }
 
+.history-note {
+  color: var(--muted);
+  margin: -8px 0 18px;
+}
+
+.history-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.history-item button {
+  white-space: nowrap;
+}
+
 .review-actions {
   grid-column: 1 / -1;
   display: flex;

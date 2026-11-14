@@ -203,6 +203,61 @@ createServer(async (request, response) => {
     return send(response, 400, { error: 'Ação de revisão inválida.' })
   }
 
+  if (requestUrl.pathname === '/api/catalog/history' && request.method === 'GET') {
+    const archived = database.prepare(`
+      SELECT m.id, m.title, m.kind, m.deleted_at AS deletedAt,
+        m.relative_path AS relativePath, s.name AS sourceName
+      FROM media_items m
+      JOIN media_sources s ON s.id = m.source_id
+      WHERE m.deleted_at IS NOT NULL
+      ORDER BY m.deleted_at DESC
+      LIMIT 500
+    `).all()
+    const titleChanges = database.prepare(`
+      SELECT h.id, h.media_item_id AS mediaItemId, h.old_title AS oldTitle,
+        h.new_title AS newTitle, h.reason, h.created_at AS createdAt,
+        m.title AS currentTitle, m.deleted_at AS deletedAt,
+        m.relative_path AS relativePath, s.name AS sourceName
+      FROM media_item_title_history h
+      JOIN media_items m ON m.id = h.media_item_id
+      JOIN media_sources s ON s.id = m.source_id
+      ORDER BY h.created_at DESC
+      LIMIT 500
+    `).all()
+    return send(response, 200, { archived, titleChanges })
+  }
+
+  const restoreMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)\/restore$/)
+  if (restoreMatch && request.method === 'POST') {
+    const result = database.prepare(`
+      UPDATE media_items SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND deleted_at IS NOT NULL
+    `).run(restoreMatch[1])
+    if (!result.changes) return send(response, 404, { error: 'Item arquivado não encontrado.' })
+    return send(response, 200, { status: 'restored' })
+  }
+
+  const titleRestoreMatch = requestUrl.pathname.match(/^\/api\/catalog\/title-history\/([^/]+)\/restore$/)
+  if (titleRestoreMatch && request.method === 'POST') {
+    const history = database.prepare(`
+      SELECT h.id, h.media_item_id AS mediaItemId, h.old_title AS oldTitle,
+        m.title AS currentTitle
+      FROM media_item_title_history h
+      JOIN media_items m ON m.id = h.media_item_id
+      WHERE h.id = ?
+    `).get(titleRestoreMatch[1])
+    if (!history) return send(response, 404, { error: 'Alteração de título não encontrada.' })
+    if (history.currentTitle !== history.oldTitle) {
+      database.prepare(`
+        INSERT INTO media_item_title_history (id, media_item_id, old_title, new_title, reason)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(`title-restore-${history.id}-${Date.now()}`, history.mediaItemId, history.currentTitle, history.oldTitle, 'restauração manual do título')
+      database.prepare('UPDATE media_items SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(history.oldTitle, history.mediaItemId)
+    }
+    return send(response, 200, { status: 'restored', title: history.oldTitle })
+  }
+
   const archiveMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)\/archive$/)
   if (archiveMatch && request.method === 'POST') {
     database.prepare('UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(archiveMatch[1])

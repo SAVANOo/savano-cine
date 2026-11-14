@@ -15,6 +15,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
 | Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; falta ampliar cobertura sem aceitar correspondências ambíguas |
+| Média | Histórico e restauração de alterações | Tela operacional lista arquivados e títulos alterados; restauração lógica validada por API |
 
 ## Próximo ciclo
 
@@ -26,7 +27,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Área | Cartão | Observação |
 | --- | --- | --- |
-| Catálogo | Histórico e restauração de alterações | Soft delete e títulos já possuem base no SQLite; falta uma tela operacional |
 | Legendas | Scanner local e integração autorizada | Priorizar embutidas, arquivos próximos e depois provedores |
 | Interface | Navegação completa por controle | Foco, seleção, voltar, busca e player |
 | Fontes | Detecção automática de SSD offline/online | Identificar volume por ID, não apenas pela letra da unidade |

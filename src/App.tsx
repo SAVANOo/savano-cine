@@ -20,6 +20,8 @@ function App() {
   const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
   const [reviewItems, setReviewItems] = useState<Array<{ id: string; title: string; kind: string; reason?: string; relativePath: string; sourceName: string; sourcePath: string }>>([])
   const [reviewOpen, setReviewOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({ archived: [], titleChanges: [] })
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -35,9 +37,24 @@ function App() {
       .catch(() => setReviewItems([]))
   }, [])
 
+  const refreshHistory = useCallback(() => {
+    fetch('/api/catalog/history')
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then(setCatalogHistory)
+      .catch(() => setCatalogHistory({ archived: [], titleChanges: [] }))
+  }, [])
+
   useEffect(() => {
     refreshReview()
-  }, [refreshReview])
+    refreshHistory()
+  }, [refreshReview, refreshHistory])
+
+  const refreshCatalog = useCallback(() => {
+    fetch(`/api/library?profileId=${encodeURIComponent(activeProfileId)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then(setCatalog)
+      .catch(() => undefined)
+  }, [activeProfileId])
 
   useEffect(() => {
     Promise.all([
@@ -132,7 +149,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} />
         <main className="content">
           <button className="back-button" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
@@ -167,13 +184,14 @@ function App() {
         </main>
         {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
         {reviewOpen && <ReviewPanel items={reviewItems} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
+        {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
       </div>
     )
   }
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -242,6 +260,7 @@ function App() {
       </main>
       {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
       {reviewOpen && <ReviewPanel items={reviewItems} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
+      {historyOpen && <CatalogHistoryPanel history={catalogHistory} onRefresh={() => { refreshHistory(); refreshCatalog() }} onClose={() => setHistoryOpen(false)} />}
     </div>
   )
 }
@@ -269,6 +288,8 @@ function Sidebar({
   onProfilesChange,
   reviewCount,
   onReview,
+  historyCount,
+  onHistory,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
@@ -277,6 +298,8 @@ function Sidebar({
   onProfilesChange: (profiles: Profile[]) => void
   reviewCount: number
   onReview: () => void
+  historyCount: number
+  onHistory: () => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
@@ -316,6 +339,7 @@ function Sidebar({
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
         <button className="settings-button" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
+        <button className="settings-button" type="button" onClick={onHistory}>↶ Histórico {historyCount > 0 ? `(${historyCount})` : ''}</button>
       </div>
     </aside>
     {editingProfile !== undefined && (
@@ -332,6 +356,54 @@ function Sidebar({
       />
     )}
     </>
+  )
+}
+
+type CatalogHistory = {
+  archived: Array<{ id: string; title: string; kind: string; deletedAt: string; relativePath: string; sourceName: string }>
+  titleChanges: Array<{ id: string; mediaItemId: string; oldTitle: string; newTitle: string; reason: string; createdAt: string; currentTitle: string; deletedAt?: string; relativePath: string; sourceName: string }>
+}
+
+function CatalogHistoryPanel({ history, onRefresh, onClose }: { history: CatalogHistory; onRefresh: () => void; onClose: () => void }) {
+  const [savingId, setSavingId] = useState('')
+  const action = async (url: string) => {
+    setSavingId(url)
+    try {
+      const response = await fetch(url, { method: 'POST' })
+      if (!response.ok) throw new Error('Não foi possível restaurar o registro.')
+      onRefresh()
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  return (
+    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Histórico do catálogo" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Histórico e restauração</h2></div><button type="button" onClick={onClose}>×</button></div>
+        <p className="history-note">As ações alteram somente o catálogo; nenhum arquivo físico é movido ou apagado.</p>
+        <h3>Itens arquivados</h3>
+        <div className="review-list">
+          {history.archived.map((item) => (
+            <article className="review-item history-item" key={item.id}>
+              <div><strong>{item.title}</strong><small>{item.sourceName} · {item.relativePath}</small><small>Arquivado em {new Date(item.deletedAt).toLocaleString('pt-BR')}</small></div>
+              <button type="button" disabled={savingId.endsWith(item.id)} onClick={() => void action(`/api/catalog/${encodeURIComponent(item.id)}/restore`)}>Restaurar</button>
+            </article>
+          ))}
+          {history.archived.length === 0 && <p className="empty-state">Nenhum item arquivado.</p>}
+        </div>
+        <h3>Alterações de título</h3>
+        <div className="review-list">
+          {history.titleChanges.map((change) => (
+            <article className="review-item history-item" key={change.id}>
+              <div><strong>{change.oldTitle} → {change.newTitle}</strong><small>{change.sourceName} · {change.relativePath}</small><small>{change.reason} · {new Date(change.createdAt).toLocaleString('pt-BR')}</small></div>
+              <button type="button" disabled={savingId.endsWith(change.id)} onClick={() => void action(`/api/catalog/title-history/${encodeURIComponent(change.id)}/restore`)}>Restaurar título anterior</button>
+            </article>
+          ))}
+          {history.titleChanges.length === 0 && <p className="empty-state">Nenhuma alteração de título registrada.</p>}
+        </div>
+      </section>
+    </div>
   )
 }
 
