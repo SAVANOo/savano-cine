@@ -1,4 +1,4 @@
-import { ArrowLeft, AlertTriangle, Flag, History, Image, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Copy, Flag, History, Image, RefreshCw, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
 import type { ArtworkCandidateGroup, CatalogHistory } from '../modals/CatalogModals'
@@ -12,6 +12,16 @@ type ErrorLogEntry = {
   method?: string
   url?: string
   message?: string
+}
+
+type CatalogGaps = {
+  totalMovies: number
+  reviewCount: number
+  missingPoster: Array<{ id: string; title: string; year?: number | null; relativePath: string }>
+  missingOverview: Array<{ id: string; title: string; year?: number | null }>
+  missingGenres: Array<{ id: string; title: string }>
+  suspiciousTitles: Array<{ id: string; title: string; relativePath: string }>
+  generatedPrompt: string
 }
 
 type AdminViewProps = {
@@ -41,8 +51,17 @@ export function AdminView({
   const [feedback, setFeedback] = useState('')
   const [fetchingArtwork, setFetchingArtwork] = useState(false)
   const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
+  const [gaps, setGaps] = useState<CatalogGaps | null>(null)
 
   useEffect(() => {
+    if (tab === 'artwork') {
+      fetch('/api/catalog/gaps')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && typeof data.totalMovies === 'number') setGaps(data)
+        })
+        .catch(() => undefined)
+    }
     if (tab !== 'logs') return
     fetch('/api/logs/errors')
       .then((res) => (res.ok ? res.json() : []))
@@ -236,16 +255,58 @@ export function AdminView({
                 evitando chamadas repetidas às APIs externas.
               </p>
             </div>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={fetchingArtwork}
-              onClick={() => void triggerMissingArtworkFetch()}
-            >
-              <Sparkles className="h-4 w-4" />
-              {fetchingArtwork ? 'Buscando...' : 'Buscar capas faltantes'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {gaps?.generatedPrompt && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(gaps.generatedPrompt).catch(() => undefined)
+                    setFeedback('Prompt de atualização copiado! Cole em uma nova sessão para ajustar novos filmes.')
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copiar prompt de correção
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={fetchingArtwork}
+                onClick={() => void triggerMissingArtworkFetch()}
+              >
+                <Sparkles className="h-4 w-4" />
+                {fetchingArtwork ? 'Buscando...' : 'Buscar capas faltantes'}
+              </Button>
+            </div>
           </div>
+
+          {gaps && (
+            <div className="flex flex-col gap-3 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <strong className="text-sm text-white">Diagnóstico do Catálogo ({gaps.totalMovies} filmes)</strong>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge tone={gaps.missingPoster.length === 0 ? 'neutral' : 'accent'}>
+                    Sem capa: {gaps.missingPoster.length}
+                  </Badge>
+                  <Badge tone="neutral">Sem sinopse: {gaps.missingOverview.length}</Badge>
+                  <Badge tone="neutral">Sem gênero: {gaps.missingGenres.length}</Badge>
+                  <Badge tone={gaps.suspiciousTitles.length === 0 ? 'neutral' : 'accent'}>
+                    Títulos suspeitos: {gaps.suspiciousTitles.length}
+                  </Badge>
+                </div>
+              </div>
+              {gaps.missingPoster.length > 0 && (
+                <p className="m-0 text-xs text-[var(--sc-text-secondary)]">
+                  Sem capa: {gaps.missingPoster.slice(0, 8).map((m) => m.title).join(', ')}
+                  {gaps.missingPoster.length > 8 ? ` (+${gaps.missingPoster.length - 8})` : ''}
+                </p>
+              )}
+              <pre className="m-0 max-h-36 overflow-auto rounded-[var(--sc-radius-md)] border border-white/10 bg-black/40 p-3 text-[11px] whitespace-pre-wrap text-white/80">
+                {gaps.generatedPrompt}
+              </pre>
+            </div>
+          )}
 
           {artworkError && <p className="text-xs text-red-400">{artworkError}</p>}
 

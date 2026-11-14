@@ -45,6 +45,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Boost de volume até 300% via Web Audio API (`GainNode` + `DynamicsCompressorNode`), velocidade de reprodução (`0.75x`–`2x`), PiP e preferências persistidas por perfil.
 - Miniaturas de preview na timeline do player (`/api/media/:id/thumbnail` com cache em memória).
 - Agrupamento de filmes duplicados com seletor de versões disponíveis, ordenação (`A–Z`, `Mais recentes`) e filtro `Não assistidos`.
+- Diagnóstico automático de lacunas (`/api/catalog/gaps`) na aba **Arte & Metadados** do Admin com contadores em tempo real e botão **Copiar prompt de correção** para novas sessões.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
 - Endpoint seguro de análise de faixas com FFprobe, sem shell injection ou exposição de caminhos absolutos; fallback explícito quando o runtime está ausente.

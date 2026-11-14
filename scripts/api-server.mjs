@@ -158,6 +158,10 @@ async function handleApiRequest(request, response) {
     return send(response, 200, refreshStatus())
   }
 
+  if (requestUrl.pathname === '/api/catalog/gaps' && request.method === 'GET') {
+    return send(response, 200, buildCatalogGaps())
+  }
+
   if (requestUrl.pathname === '/api/catalog/refresh' && request.method === 'POST') {
     if (catalogRefresh.state === 'running') {
       return send(response, 409, { error: 'Uma atualização do catálogo já está em andamento.', ...refreshStatus() })
@@ -676,6 +680,9 @@ async function runCatalogRefresh(sources) {
       const result = await runImporter(source)
       catalogRefresh.results.push(result)
     }
+    reconcileMisclassifiedEpisodes()
+    sanitizeExistingTitles()
+    startArtworkFetch()
     catalogRefresh.state = 'succeeded'
   } catch (error) {
     catalogRefresh.state = 'failed'
@@ -2166,6 +2173,73 @@ function sanitizeExistingTitles() {
     }
   } catch {
     // Mantém inicialização resiliente
+  }
+}
+
+function buildCatalogGaps() {
+  const movies = database.prepare(`
+    SELECT m.id, m.title, m.year, m.overview, m.genres_json AS genresJson, m.relative_path AS relativePath,
+      (SELECT 1 FROM artwork a WHERE a.movie_id = m.id AND a.artwork_type = 'poster' AND a.source = 'local' LIMIT 1) AS hasPoster
+    FROM media_items m
+    WHERE m.kind = 'movie' AND m.classification_status IN ('auto', 'approved') AND m.deleted_at IS NULL
+    ORDER BY m.title COLLATE NOCASE
+  `).all()
+
+  const reviewCount = database.prepare(`
+    SELECT COUNT(*) AS count FROM media_items WHERE classification_status = 'review' AND deleted_at IS NULL
+  `).get()?.count ?? 0
+
+  const missingPoster = movies.filter((m) => !m.hasPoster).map((m) => ({
+    id: m.id,
+    title: m.title,
+    year: m.year,
+    relativePath: m.relativePath,
+  }))
+  const missingOverview = movies.filter((m) => !m.overview || m.overview.trim().length < 20).map((m) => ({
+    id: m.id,
+    title: m.title,
+    year: m.year,
+  }))
+  const missingGenres = movies.filter((m) => {
+    try {
+      const parsed = JSON.parse(m.genresJson || '[]')
+      return !Array.isArray(parsed) || parsed.length === 0
+    } catch {
+      return true
+    }
+  }).map((m) => ({ id: m.id, title: m.title }))
+
+  const suspiciousRe = /wolverdon|andretpf|bludv|thepirate|comando|lapumia|yify|repack|1080p|720p|480p|dublado|dual|x264|x265|bluray|bdrip|web-?dl|webrip|\(\d{4}\)|\[|\]/i
+  const suspiciousTitles = movies.filter((m) => suspiciousRe.test(m.title)).map((m) => ({
+    id: m.id,
+    title: m.title,
+    relativePath: m.relativePath,
+  }))
+
+  const lines = [
+    'Atualize o catálogo do Savano Cine (D:\\Filmes\\cine-local) para novos filmes/séries adicionados:',
+    '1. Rode o scanner (`node scripts/scan-media.mjs`) e `reconcileMisclassifiedEpisodes()` + `sanitizeExistingTitles()`.',
+    '2. Baixe capas, sinopses e gêneros faltantes (`node scripts/fetch-artwork.mjs`).',
+    `Estado atual: ${movies.length} filmes, ${missingPoster.length} sem capa, ${missingOverview.length} sem sinopse, ${missingGenres.length} sem gênero, ${suspiciousTitles.length} título(s) suspeito(s), ${reviewCount} em revisão.`,
+  ]
+  if (missingPoster.length > 0) {
+    lines.push(`Sem capa: ${missingPoster.slice(0, 15).map((m) => `"${m.title}"`).join(', ')}`)
+  }
+  if (suspiciousTitles.length > 0) {
+    lines.push(`Títulos para limpar em scan-media.mjs: ${suspiciousTitles.slice(0, 15).map((m) => `"${m.title}"`).join(', ')}`)
+  }
+  if (missingOverview.length > 0) {
+    lines.push(`Sem sinopse (${missingOverview.length}): ${missingOverview.slice(0, 10).map((m) => `"${m.title}"`).join(', ')}`)
+  }
+
+  return {
+    totalMovies: movies.length,
+    reviewCount,
+    missingPoster,
+    missingOverview,
+    missingGenres,
+    suspiciousTitles,
+    generatedPrompt: lines.join('\n'),
   }
 }
 

@@ -87,12 +87,13 @@ for (const show of shows) {
 }
 
 const movies = database.prepare(`
-  SELECT id, title FROM media_items
+  SELECT id, title, year, tags_json FROM media_items
   WHERE kind = 'movie'
     AND classification_status IN ('auto', 'approved')
     AND deleted_at IS NULL
     AND (
       overview IS NULL OR overview = ''
+      OR genres_json IS NULL OR genres_json = '[]'
       OR NOT EXISTS (
         SELECT 1 FROM artwork
         WHERE artwork.movie_id = media_items.id AND artwork.artwork_type = 'poster'
@@ -112,19 +113,31 @@ const updateMovie = database.prepare(`
   WHERE id = ?
 `)
 let moviePostersDownloaded = 0
+let movieMetadataUpdated = 0
 for (const movie of movies) {
+  let imdbData = null
   if (!hasLocalArtwork(movie.id, 'poster')) {
-    const imdb = await fetchImdbSuggestion(movie.title)
-    if (imdb?.posterUrl) {
-      updateMovie.run(imdb.year, null, JSON.stringify([]), movie.id)
-      const ok = await downloadMovieArtwork(movie, 'poster', imdb.posterUrl, 'imdb', imdb.id)
+    imdbData = await fetchImdbSuggestion(movie.title)
+    if (imdbData?.posterUrl) {
+      updateMovie.run(imdbData.year, null, JSON.stringify([]), movie.id)
+      const ok = await downloadMovieArtwork(movie, 'poster', imdbData.posterUrl, 'imdb', imdbData.id)
       if (ok) moviePostersDownloaded += 1
     }
   }
-  const metadata = await fetchWikipedia(movie.title, movie.id)
-  if (metadata) {
-    updateMovie.run(metadata.year, metadata.overview, JSON.stringify([]), movie.id)
-    if (metadata.imageUrl && !isPlaceholderImage(metadata.imageUrl) && !hasLocalArtwork(movie.id, 'poster')) {
+  const metadata = await fetchWikipedia(movie.title, movie.id, movie.year)
+  const inferredGenres = inferGenresFromText(
+    `${movie.title} ${metadata?.overview || ''}`,
+    JSON.parse(movie.tags_json || '[]'),
+  )
+  if (metadata || inferredGenres.length > 0) {
+    updateMovie.run(
+      metadata?.year ?? imdbData?.year ?? null,
+      metadata?.overview ?? null,
+      JSON.stringify(inferredGenres),
+      movie.id,
+    )
+    movieMetadataUpdated += 1
+    if (metadata?.imageUrl && !isPlaceholderImage(metadata.imageUrl) && !hasLocalArtwork(movie.id, 'poster')) {
       const ok = await downloadMovieArtwork(movie, 'poster', metadata.imageUrl, 'wikipedia', String(metadata.pageId))
       if (ok) moviePostersDownloaded += 1
     }
@@ -137,7 +150,7 @@ for (const movie of movies) {
   }
 }
 
-console.log(`Arte baixada para ${downloaded} séries e ${moviePostersDownloaded} filmes (IMDb/Wikipedia${tmdbApiKey ? ' + TMDB' : ''}) em ${artworkRoot}`)
+console.log(`Arte baixada para ${downloaded} séries e ${moviePostersDownloaded} filmes; metadados atualizados para ${movieMetadataUpdated} filmes (IMDb/Wikipedia${tmdbApiKey ? ' + TMDB' : ''}) em ${artworkRoot}`)
 
 function ensureColumn(table, column, definition) {
   try {
@@ -238,32 +251,86 @@ async function collectShowCandidates(show) {
   }
 }
 
-async function fetchWikipedia(title, movieId) {
+function summarizeOverview(text, maxLength = 420) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  if (clean.length <= maxLength) return clean
+  const cut = clean.slice(0, maxLength)
+  const lastPeriod = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+  return lastPeriod > 120 ? cut.slice(0, lastPeriod + 1).trim() : `${cut.trim()}...`
+}
+
+function isFilmPageTitle(candidateTitle, movieTitle) {
+  const stripped = String(candidateTitle || '').replace(/\s*\((?:filme|film)(?:\s+de\s+\d{4}|\s+\d{4})?\)\s*$/i, '')
+  return normalizeTitle(stripped) === normalizeTitle(movieTitle)
+}
+
+function inferGenresFromText(text, existingTags = []) {
+  const source = `${text || ''} ${(existingTags || []).join(' ')}`.toLowerCase()
+  const rules = [
+    ['Animação', /\b(anima[çc][aã]o|animated|animation|anime|casa monstro|chapeuzinho|kung fu panda|rio|lucas|guardi[õo]es|fuga do planeta|ben 10)\b/i],
+    ['Ação', /\b(a[çc][aã]o|action|super-?her[óo]i|superhero|marvel|dc|vingadores|avengers|vingador|capit[ãa]o am[ée]rica|captain america|capit[ãa] marvel|homem de ferro|iron man|doutor estranho|eternos|batman|cavaleiro das trevas|sociedade da justi[çc]a|superman|homem-aranha|homem aranha|homem-formiga|pantera negra|vi[úu]va negra|deadpool|thor|x-men|hellboy|hulk|liga da justi[çc]a|kick-ass|morbius|trem-bala|logan|watchmen|constantine|mulher maravilha|guerra mundial z)\b/i],
+    ['Aventura', /\b(aventura|adventure|n[áa]rnia|maze runner|animais fant[áa]sticos|jumper|quarteto fant[áa]stico)\b/i],
+    ['Comédia', /\b(com[ée]dia|comedy|todo mundo em p[âa]nico|porta dos fundos|par[óo]dia|super her[óo]i)\b/i],
+    ['Drama', /\b(drama|biografia|biogr[áa]fico|marighella|pijama listrado|oppenheimer|lunar)\b/i],
+    ['Fantasia', /\b(fantasia|fantasy|magia|brux|guardi[õo]es|animais fant[áa]sticos|n[áa]rnia)\b/i],
+    ['Ficção Científica', /\b(fic[çc][aã]o cient[íi]fica|sci-fi|science fiction|divergente|almanaque|espacial|planeta|jumper)\b/i],
+    ['Terror', /\b(terror|horror|sobrenatural|exorcista|longlegs|corra|boa noite mam[ãa]e|it a coisa|zumbil[âa]ndia|n[óo]s)\b/i],
+    ['Suspense', /\b(suspense|thriller|mist[ée]rio|mystery|ilha do medo)\b/i],
+    ['Documentário', /\b(document[áa]rio|documentary|making of)\b/i],
+    ['Família', /\b(fam[íi]lia|family|infantil|natal|christmas)\b/i],
+  ]
+  const detected = []
+  for (const [label, regex] of rules) {
+    if (regex.test(source) && !detected.includes(label)) {
+      detected.push(label)
+    }
+  }
+  return detected.slice(0, 4)
+}
+
+async function fetchWikipedia(title, movieId, movieYear = null) {
   const candidatePages = []
+  const targetNorm = normalizeTitle(title)
   for (const language of wikipediaLanguages) {
     const api = `https://${language}.wikipedia.org/w/api.php`
-    const search = await fetch(`${api}?action=query&list=search&srsearch=${encodeURIComponent(title)}&srlimit=5&format=json&origin=*`)
-    if (!search.ok) continue
-    const result = await search.json()
-    const pages = result.query?.search || []
-    const page = pages.find((candidate) => normalizeTitle(candidate.title) === normalizeTitle(title))
-    if (!page) {
-      for (const candidate of pages.slice(0, 3)) {
-        candidatePages.push({ language, api, page: candidate })
+    const queries = [title, `${title} ${language === 'pt' ? 'filme' : 'film'}`]
+    for (const query of queries) {
+      const search = await fetch(`${api}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=6&format=json&origin=*`, {
+        headers: { 'User-Agent': 'SavanoCine/1.0 (https://localhost; local-catalog)' },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!search.ok) continue
+      const result = await search.json()
+      const pages = result.query?.search || []
+      const page =
+        pages.find((candidate) => /\((?:filme|film)/i.test(candidate.title) && isFilmPageTitle(candidate.title, title)) ??
+        pages.find((candidate) => isFilmPageTitle(candidate.title, title)) ??
+        pages.find((candidate) => {
+          const candNorm = normalizeTitle(candidate.title)
+          return candNorm.includes(targetNorm) && /filme|film|movie|cinema/i.test(candidate.snippet || candidate.title)
+        }) ??
+        (query !== title && pages[0] && /filme|film|anima[çc][aã]o|directed|dirigido/i.test(pages[0].snippet || '') ? pages[0] : null)
+      if (!page) {
+        for (const candidate of pages.slice(0, 2)) {
+          candidatePages.push({ language, api, page: candidate })
+        }
+        continue
       }
-      continue
-    }
 
-    const details = await fetch(`${api}?action=query&prop=extracts|pageimages&piprop=original&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`)
-    if (!details.ok) continue
-    const data = await details.json()
-    const overview = data.query?.pages?.[page.pageid]?.extract?.trim()
-    if (!overview) continue
-    return {
-      overview,
-      pageId: page.pageid,
-      imageUrl: data.query?.pages?.[page.pageid]?.original?.source,
-      year: title.match(/\b(19\d{2}|20\d{2})\b/)?.[1] ? Number(title.match(/\b(19\d{2}|20\d{2})\b/)[1]) : null,
+      const details = await fetch(`${api}?action=query&prop=extracts|pageimages&piprop=original&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`, {
+        headers: { 'User-Agent': 'SavanoCine/1.0 (https://localhost; local-catalog)' },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!details.ok) continue
+      const data = await details.json()
+      const rawOverview = data.query?.pages?.[page.pageid]?.extract?.trim()
+      if (!rawOverview || /pode referir-se a|may refer to/i.test(rawOverview.slice(0, 140))) continue
+      return {
+        overview: summarizeOverview(rawOverview),
+        pageId: page.pageid,
+        imageUrl: data.query?.pages?.[page.pageid]?.original?.source,
+        year: movieYear || (title.match(/\b(19\d{2}|20\d{2})\b/)?.[1] ? Number(title.match(/\b(19\d{2}|20\d{2})\b/)[1]) : null),
+      }
     }
   }
 
