@@ -89,6 +89,8 @@ for (const show of shows) {
 const movies = database.prepare(`
   SELECT id, title FROM media_items
   WHERE kind = 'movie'
+    AND classification_status IN ('auto', 'approved')
+    AND deleted_at IS NULL
     AND (
       overview IS NULL OR overview = ''
       OR NOT EXISTS (
@@ -104,15 +106,27 @@ const movies = database.prepare(`
 `).all(tmdbApiKey ? 1 : 0)
 const updateMovie = database.prepare(`
   UPDATE media_items
-  SET year = COALESCE(?, year), overview = ?, genres_json = ?
+  SET year = COALESCE(?, year),
+      overview = COALESCE(NULLIF(?, ''), overview),
+      genres_json = CASE WHEN genres_json = '[]' OR genres_json IS NULL THEN ? ELSE genres_json END
   WHERE id = ?
 `)
+let moviePostersDownloaded = 0
 for (const movie of movies) {
+  if (!hasLocalArtwork(movie.id, 'poster')) {
+    const imdb = await fetchImdbSuggestion(movie.title)
+    if (imdb?.posterUrl) {
+      updateMovie.run(imdb.year, null, JSON.stringify([]), movie.id)
+      const ok = await downloadMovieArtwork(movie, 'poster', imdb.posterUrl, 'imdb', imdb.id)
+      if (ok) moviePostersDownloaded += 1
+    }
+  }
   const metadata = await fetchWikipedia(movie.title, movie.id)
   if (metadata) {
     updateMovie.run(metadata.year, metadata.overview, JSON.stringify([]), movie.id)
-    if (metadata.imageUrl && !hasLocalArtwork(movie.id, 'poster')) {
-      await downloadMovieArtwork(movie, 'poster', metadata.imageUrl, 'wikipedia', String(metadata.pageId))
+    if (metadata.imageUrl && !isPlaceholderImage(metadata.imageUrl) && !hasLocalArtwork(movie.id, 'poster')) {
+      const ok = await downloadMovieArtwork(movie, 'poster', metadata.imageUrl, 'wikipedia', String(metadata.pageId))
+      if (ok) moviePostersDownloaded += 1
     }
   }
   if (tmdbApiKey) {
@@ -123,7 +137,7 @@ for (const movie of movies) {
   }
 }
 
-console.log(`Arte baixada para ${downloaded} séries; filmes via Wikipedia${tmdbApiKey ? ' + TMDB para backdrops' : ''} em ${artworkRoot}`)
+console.log(`Arte baixada para ${downloaded} séries e ${moviePostersDownloaded} filmes (IMDb/Wikipedia${tmdbApiKey ? ' + TMDB' : ''}) em ${artworkRoot}`)
 
 function ensureColumn(table, column, definition) {
   try {
@@ -273,6 +287,54 @@ async function fetchWikipedia(title, movieId) {
       })
     } catch {
       // Ignora erro individual de candidato
+    }
+  }
+  return null
+}
+
+function isPlaceholderImage(url) {
+  const lower = String(url || '').toLowerCase()
+  return (
+    !lower ||
+    lower.endsWith('.svg') ||
+    lower.includes('nenhuma_imagem') ||
+    lower.includes('no_image') ||
+    lower.includes('question_book') ||
+    lower.includes('ambox')
+  )
+}
+
+async function fetchImdbSuggestion(title) {
+  const candidates = [title.replace(/\s+/g, ' ').trim()]
+  if (candidates[0].includes(' - ')) {
+    const suffix = candidates[0].split(/\s+-\s+/).slice(1).join(' ').trim()
+    if (suffix && suffix.length >= 4) candidates.push(suffix)
+  }
+  for (const clean of candidates) {
+    try {
+      const response = await fetch(
+        `https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(clean)}.json`,
+        {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(6000),
+        },
+      )
+      if (!response.ok) continue
+      const payload = await response.json()
+      const items = Array.isArray(payload?.d) ? payload.d : []
+      const withImage = items.filter((entry) => entry?.i?.imageUrl && !isPlaceholderImage(entry.i.imageUrl))
+      const best =
+        withImage.find((entry) => entry.q === 'feature' || entry.q === 'TV movie' || entry.q === 'TV special') ??
+        withImage[0]
+      if (!best?.i?.imageUrl) continue
+      const resized = String(best.i.imageUrl).replace(/\._V1_.*\.jpg$/i, '._V1_UX500_.jpg')
+      return {
+        id: String(best.id || slugify(clean)),
+        year: typeof best.y === 'number' ? best.y : null,
+        posterUrl: resized,
+      }
+    } catch {
+      // try next candidate
     }
   }
   return null

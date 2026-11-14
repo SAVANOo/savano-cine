@@ -26,6 +26,7 @@ ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
 ensureWatchlistTable()
 ignorePromotionalAds()
+reconcileMisclassifiedEpisodes()
 sanitizeExistingTitles()
 let lastSourceRefreshAt = 0
 refreshSourceStatuses()
@@ -910,7 +911,7 @@ async function analyzeMediaStreams(mediaId, response) {
     const executable = process.env.CINE_FFPROBE_PATH?.trim() || 'ffprobe.exe'
     const { stdout } = await execFileAsync(executable, [
       '-v', 'error',
-      '-show_entries', 'stream=index,codec_type,codec_name:stream_tags=language,title',
+      '-show_entries', 'format=duration:stream=index,codec_type,codec_name:stream_tags=language,title',
       '-of', 'json',
       filePath,
     ], {
@@ -926,8 +927,10 @@ async function analyzeMediaStreams(mediaId, response) {
       language: typeof stream.tags?.language === 'string' ? stream.tags.language : undefined,
       title: typeof stream.tags?.title === 'string' ? stream.tags.title : undefined,
     })
+    const totalDuration = parsed.format?.duration ? Number(parsed.format.duration) : 0
     return send(response, 200, {
       available: true,
+      duration: Number.isFinite(totalDuration) ? totalDuration : 0,
       audio: streams.filter((stream) => stream.codec_type === 'audio').map(mapTrack),
       subtitles: streams.filter((stream) => stream.codec_type === 'subtitle').map(mapTrack),
     })
@@ -1045,7 +1048,7 @@ async function buildLibrary(profileId) {
     }))
 
     const episodeCount = seasons.reduce((total, season) => total + season.episodes.length, 0)
-    const resumeEpisode = database.prepare(`
+    let resumeEpisode = database.prepare(`
       SELECT e.episode_number AS number, e.title, s.season_number AS season,
         m.id AS mediaId, p.position_seconds AS position, p.duration_seconds AS duration,
         p.updated_at AS updatedAt
@@ -1058,6 +1061,34 @@ async function buildLibrary(profileId) {
       ORDER BY p.updated_at DESC
       LIMIT 1
     `).get(show.id, profileId)
+    if (!resumeEpisode) {
+      const lastWatched = database.prepare(`
+        SELECT m.id AS mediaId, p.updated_at AS updatedAt
+        FROM episodes e
+        JOIN seasons s ON s.id = e.season_id
+        JOIN media_items m ON m.id = e.media_item_id
+        JOIN watch_progress p ON p.media_item_id = m.id
+        WHERE s.show_id = ? AND p.profile_id = ? AND p.watched = 1 AND m.deleted_at IS NULL
+        ORDER BY p.updated_at DESC
+        LIMIT 1
+      `).get(show.id, profileId)
+      if (lastWatched) {
+        const flatEpisodes = seasons.flatMap((s) => s.episodes)
+        const idx = flatEpisodes.findIndex((ep) => ep.mediaId === lastWatched.mediaId)
+        const nextEp = idx >= 0 && idx + 1 < flatEpisodes.length ? flatEpisodes[idx + 1] : null
+        if (nextEp) {
+          resumeEpisode = {
+            number: nextEp.number,
+            title: nextEp.title,
+            season: nextEp.season,
+            mediaId: nextEp.mediaId,
+            position: 0,
+            duration: undefined,
+            updatedAt: lastWatched.updatedAt,
+          }
+        }
+      }
+    }
     items.push({
       id: show.id,
       title: show.title,
@@ -1871,6 +1902,76 @@ function ignorePromotionalAds() {
       )
         AND (kind != 'other' OR classification_status != 'ignored')
     `).run()
+  } catch {
+    // Mantém inicialização resiliente
+  }
+}
+
+function reconcileMisclassifiedEpisodes() {
+  try {
+    // Remove promo/watermark clips shipped inside torrent folders from the movie catalog
+    const promoRows = database.prepare(`
+      SELECT id, relative_path AS relativePath, title
+      FROM media_items
+      WHERE kind = 'movie' AND deleted_at IS NULL
+    `).all()
+    const softDelete = database.prepare(`UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    const promoRe = /^(?:bludv(?:\.tv)?|comandotorrents(?:\.com)?|lapumia|torrentdosfilmes(?:\.to)?|lucas\s*firmo\s*uploader)(?:\.[a-z0-9]{2,4})?$/i
+    for (const row of promoRows) {
+      const basename = path.basename(String(row.relativePath || ''))
+      const stem = path.basename(basename, path.extname(basename))
+      if (promoRe.test(basename) || promoRe.test(stem) || promoRe.test(String(row.title || '').trim())) {
+        softDelete.run(row.id)
+      }
+    }
+
+    const southParkShow = database.prepare("SELECT id FROM shows WHERE lower(title) LIKE '%south park%' LIMIT 1").get()
+    if (!southParkShow?.id) return
+    const rows = database.prepare(`
+      SELECT id, title, relative_path AS relativePath
+      FROM media_items
+      WHERE kind = 'movie'
+        AND deleted_at IS NULL
+        AND lower(relative_path) LIKE '%south park%'
+    `).all()
+    const upsertSeason = database.prepare(`
+      INSERT INTO seasons (id, show_id, season_number)
+      VALUES (?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `)
+    const upsertEpisode = database.prepare(`
+      INSERT INTO episodes (id, season_id, media_item_id, episode_number, title)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `)
+    const markEpisode = database.prepare(`UPDATE media_items SET kind = 'episode' WHERE id = ?`)
+    for (const row of rows) {
+      let seasonNumber = null
+      let episodeNumber = null
+      const match = `${row.title} ${row.relativePath}`.match(/s(\d{1,2})\s*e(\d{1,2})/i)
+      if (match) {
+        seasonNumber = Number(match[1])
+        episodeNumber = Number(match[2])
+      } else {
+        const folderMatch = String(row.relativePath || '').match(/south park[\\/](\d{1,2})[\\/]/i)
+        if (folderMatch) {
+          seasonNumber = Number(folderMatch[1])
+          const existingCount = database.prepare(`
+            SELECT COALESCE(MAX(e.episode_number), 0) AS maxEp
+            FROM episodes e
+            JOIN seasons s ON s.id = e.season_id
+            WHERE s.show_id = ? AND s.season_number = ?
+          `).get(southParkShow.id, seasonNumber)?.maxEp ?? 0
+          episodeNumber = Number(existingCount) + 1
+        }
+      }
+      if (!seasonNumber || !episodeNumber) continue
+      const seasonId = `${southParkShow.id}-season-${seasonNumber}`
+      upsertSeason.run(seasonId, southParkShow.id, seasonNumber)
+      const epTitle = cleanTitle(String(row.title || '').replace(/^s\d{1,2}\s*e\d{1,2}\s*[-:]?\s*/i, '')) || row.title
+      upsertEpisode.run(`${row.id}-episode`, seasonId, row.id, episodeNumber, epTitle)
+      markEpisode.run(row.id)
+    }
   } catch {
     // Mantém inicialização resiliente
   }

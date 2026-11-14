@@ -584,7 +584,7 @@ export function App() {
           onPlayNext={(next) => setSelectedMedia(next)}
           onClose={() => {
             setSelectedMedia(null)
-            refreshCatalogAndSources()
+            window.setTimeout(() => refreshCatalogAndSources(), 250)
           }}
         />
       )}

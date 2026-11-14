@@ -275,18 +275,39 @@ function normalizeSegment(value) {
 }
 
 function cleanTitle(value) {
-  const cleaned = String(value || '')
-    .replace(/\((?:www\.|https?:\/\/)[^)]*\)/gi, '')
+  let cleaned = String(value || '')
+    .replace(/\((?:www\.|https?:\/\/)[^)]*\)?/gi, '')
+    .replace(/\(\s*www\b.*$/gi, '')
     .replace(/\[[^\]]*\]/g, '')
-    .replace(/[-_.\s]*(?:www\.)?(?:bludv|thepiratefilmes|wolverdonfilmes|comando\.to|lapumia|andretpf|tdf)(?:\.[a-z]{2,})?\b.*$/i, '')
-    .replace(/[-_.\s]+\b(?:andretpf|wolverdonfilmes|tdf|bludv|thepiratefilmes)\b.*$/i, '')
-    .replace(/\b(?:x26[45]|h26[45]|hevc|avc|aac|dts|6ch|5[._ ]1|web[- ]?dl|web[- ]?rip|bdrip|blu[- ]?ray|remux|720p|1080p|2160p|dublado|dual|nacional)\b/gi, '')
+    .replace(/\{[^}]*\}/g, '')
+    .replace(/[-_.\s]*(?:www\.)?(?:bludv(?:com)?|thepiratefilmes|wolverdon[-_.\s]*filmes|comando(?:\.?to)?|comandotorrents|torrentdosfilmes|lapumia(?:filmes)?|andretpf|yts(?:br|\.mx)?|yify|galaxyrg|tgx|dozitos|tdf)(?:\.[a-z]{2,})?\b.*$/i, '')
+    .replace(/[-_.\s]+\b(?:www|w|andretpf|wolverdon[-_.\s]*filmes|tdf|bludv(?:com)?|thepiratefilmes|comandotorrents|torrentdosfilmes|lapumia|210gji|johnl|alan[_\s]*680|mld|fb|dozitos|totti9|yify|repack)\b.*$/i, '')
+    .replace(/\bby\s+luan\s+harper\b.*$/i, '')
+    .replace(/\bby\s+lucas\s+firmo\b.*$/i, '')
+    .replace(/\breencode\s+md[-_\s]*rickmaster\b.*$/i, '')
+    .replace(/[-\s]+áudio\s*$/i, '')
+    .replace(/\b(?:x26[45]|h26[45]|hevc|avc|aac\s*5[._\s]?1|dd\s*5[._\s]?1|ac3|dts|6ch|5[._ ]1|web[- ]?dl|web[- ]?rip|bdrip|dvdrip|brrip|blu[- ]?ray|remux|remastered|fullscreen|proper|repack|imax|amzn|uhd|1400mb|720p|1080p|2160p|dublado|dual|nacional)\b/gi, '')
     .replace(/[._]+/g, ' ')
-    .replace(/\s*\(\s*(?:19\d{2}|20\d{2})\s*\)\s*$/g, '')
-    .replace(/[-\s]+(?:19\d{2}|20\d{2})\s*$/g, '')
+    .replace(/\(\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[-,\s]+$/, '')
     .trim()
+
+  // Strip trailing year tokens like "(2016)" or "2016" repeatedly if exposed after tag removal
+  for (let i = 0; i < 3; i += 1) {
+    const next = cleaned
+      .replace(/\s*\(\s*(?:19\d{2}|20\d{2})\s*\)\s*$/g, '')
+      .replace(/[-\s!]*(?:19\d{2}|20\d{2})\s*$/g, (match) => (match.includes('!') ? '!' : ''))
+      .replace(/\s*\(\s*\d{1,2}\s*\)\s*$/g, '')
+      .replace(/[-,\s]+$/, '')
+      .trim()
+    if (next === cleaned) break
+    cleaned = next
+  }
+
+  if (/^zumblandia$/i.test(cleaned)) {
+    cleaned = 'Zumbilândia'
+  }
 
   return cleaned || String(value || '').trim()
 }

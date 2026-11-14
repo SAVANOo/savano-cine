@@ -38,7 +38,10 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - URLs próprias para páginas de séries e título da aba contextual.
 - Títulos exibidos normalizados sem codecs, release tags e distribuidores.
 - Tags iniciais, histórico de títulos e soft delete no banco.
-- Download local de capas de séries sem duplicação por episódio.
+- Download local de capas de filmes e séries (IMDb/Wikipedia/TVMaze) sem duplicação por episódio e filtro contra imagens placeholder.
+- Troca de faixas de áudio durante transcoding mantendo posição real na timeline (`start=` + duração total via FFprobe) e busca funcional na barra.
+- Reconciliação de episódios de South Park classificados como filme, limpeza de títulos e remoção lógica de clipes promocionais de release.
+- Retomada automática de séries/filmes no último ponto assistido (e avanço ao próximo episódio após conclusão) + altura uniforme nos `MediaCard`.
 - Progresso de reprodução persistido por perfil, com retomada e marcação de assistido.
 - Scanner local de legendas SRT/VTT próximas, com idioma inferido pelo nome e validação de caminho no streaming.
 - Endpoint seguro de análise de faixas com FFprobe, sem shell injection ou exposição de caminhos absolutos; fallback explícito quando o runtime está ausente.

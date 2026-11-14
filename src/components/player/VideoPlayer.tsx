@@ -21,6 +21,7 @@ type VideoPlayerProps = {
 }
 
 type StreamInfo = {
+  duration?: number
   audio: Array<{ index: number; language: string; title: string }>
   subtitles: Array<{ index: number; language: string; title: string }>
 }
@@ -46,6 +47,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [, setTranscodeOffset] = useState(0)
+  const transcodeOffsetRef = useRef(0)
+  const totalDurationRef = useRef(0)
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
 
@@ -75,36 +79,44 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   }, [media.nextEpisode, nextCountdown, onPlayNext])
 
   useEffect(() => {
-    if (!media.mediaId || (media.startPosition !== undefined && media.startPosition === 0)) return
+    if (!media.mediaId || media.startPosition === 0) return
     fetch(`/api/progress?profileId=${encodeURIComponent(profileId)}&mediaId=${encodeURIComponent(media.mediaId)}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((progress) => {
-        if (progress?.position && videoRef.current && media.startPosition === undefined) {
-          videoRef.current.currentTime = progress.position
+        if (progress?.position && progress.position > 0 && videoRef.current && media.startPosition === undefined) {
+          if (videoRef.current.readyState >= 1) {
+            videoRef.current.currentTime = progress.position
+          } else {
+            pendingPosition.current = progress.position
+          }
         }
       })
       .catch(() => undefined)
   }, [media.mediaId, media.startPosition, profileId])
 
-  const saveProgress = useCallback(() => {
+  const saveProgress = useCallback((force = false) => {
     const video = videoRef.current
-    if (!video || !media.mediaId || video.duration === Infinity || Number.isNaN(video.duration)) return
-    if (Math.abs(video.currentTime - lastSavedPosition.current) < 5 && video.currentTime < video.duration - 2) return
-    lastSavedPosition.current = video.currentTime
+    if (!video || !media.mediaId) return
+    const effectivePos = transcodeOffsetRef.current + video.currentTime
+    const effectiveDur = totalDurationRef.current || (Number.isFinite(video.duration) ? video.duration : 0)
+    if (!effectiveDur || Number.isNaN(effectiveDur)) return
+    if (!force && Math.abs(effectivePos - lastSavedPosition.current) < 5 && effectivePos < effectiveDur - 2) return
+    lastSavedPosition.current = effectivePos
     void fetch('/api/progress', {
       method: 'POST',
+      keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         profileId,
         mediaId: media.mediaId,
-        position: video.currentTime,
-        duration: video.duration,
-        watched: video.currentTime >= video.duration * 0.9,
+        position: effectivePos,
+        duration: effectiveDur,
+        watched: effectivePos >= effectiveDur * 0.9,
       }),
     })
   }, [media.mediaId, profileId])
 
-  useEffect(() => () => saveProgress(), [saveProgress])
+  useEffect(() => () => saveProgress(true), [saveProgress])
 
   useEffect(() => {
     if (!media.subtitleUrl) return
@@ -118,36 +130,70 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
     if (!media.mediaId) return
     fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
       .then((response) => (response.ok ? response.json() : null))
-      .then(setStreamInfo)
+      .then((info: StreamInfo | null) => {
+        setStreamInfo(info)
+        if (info?.duration && info.duration > 0) {
+          totalDurationRef.current = info.duration
+          setDuration(info.duration)
+        }
+      })
       .catch(() => setStreamInfo(null))
   }, [media.mediaId])
 
+  const buildTranscodeUrl = useCallback(
+    (streamIdx: string, startSec: number) => {
+      if (!media.mediaId) return media.url
+      const startParam = startSec > 1 ? `&start=${Math.floor(startSec)}` : ''
+      return `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(streamIdx)}${startParam}`
+    },
+    [media.mediaId, media.url],
+  )
+
   const changeAudioStream = (value: string) => {
     setAudioStream(value)
-    const currentPos = videoRef.current?.currentTime ?? 0
+    const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
     if (!value) {
-      pendingPosition.current = currentPos
+      transcodeOffsetRef.current = 0
+      setTranscodeOffset(0)
+      pendingPosition.current = effectivePos
       setPlaybackUrl(media.url)
       return
     }
     if (!media.mediaId || !capabilities?.transcoding) return
-    pendingPosition.current = currentPos
-    const startParam = currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''
-    setPlaybackUrl(
-      `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(value)}${startParam}`,
-    )
+    const offset = Math.floor(effectivePos)
+    transcodeOffsetRef.current = offset
+    setTranscodeOffset(offset)
+    setCurrentTime(effectivePos)
+    pendingPosition.current = null
+    setPlaybackUrl(buildTranscodeUrl(value, offset))
+  }
+
+  const seekTo = (targetSeconds: number) => {
+    const clamped = Math.max(0, totalDurationRef.current ? Math.min(targetSeconds, totalDurationRef.current) : targetSeconds)
+    setCurrentTime(clamped)
+    const video = videoRef.current
+    if (!video) return
+    if (!audioStream) {
+      video.currentTime = clamped
+      scheduleHideControls()
+      return
+    }
+    const rel = clamped - transcodeOffsetRef.current
+    if (rel >= 0 && Number.isFinite(video.duration) && rel <= video.duration) {
+      video.currentTime = rel
+    } else {
+      const offset = Math.floor(clamped)
+      transcodeOffsetRef.current = offset
+      setTranscodeOffset(offset)
+      setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
+    }
+    scheduleHideControls()
   }
 
   const changeSubtitleStream = (value: string) => {
     setSubtitleStream(value)
-    const currentPos = videoRef.current?.currentTime ?? 0
     if (!value) {
-      pendingPosition.current = currentPos
-      setPlaybackUrl(
-        audioStream && media.mediaId && capabilities?.transcoding
-          ? `/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream)}${currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''}`
-          : media.url,
-      )
+      setSelectedSubtitleUrl('')
       return
     }
     if (!media.mediaId) return
@@ -157,10 +203,8 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   }
 
   const seekBy = (delta: number) => {
-    const video = videoRef.current
-    if (!video) return
-    video.currentTime = Math.max(0, video.currentTime + delta)
-    scheduleHideControls()
+    const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
+    seekTo(effectivePos + delta)
   }
 
   const togglePlay = () => {
@@ -242,13 +286,14 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           onPause={() => {
             setIsPaused(true)
             setControlsVisible(true)
-            saveProgress()
+            saveProgress(true)
             if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
             pauseOverlayTimer.current = window.setTimeout(() => setShowPausedInfo(true), 2200)
           }}
           onLoadedMetadata={() => {
-            if (videoRef.current) {
-              setDuration(Number.isFinite(videoRef.current.duration) ? videoRef.current.duration : 0)
+            if (videoRef.current && !playbackUrl.includes('/transcode') && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+              totalDurationRef.current = videoRef.current.duration
+              setDuration(videoRef.current.duration)
             }
             if (pendingPosition.current !== null && videoRef.current) {
               if (!playbackUrl.includes('/transcode')) {
@@ -260,8 +305,11 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           }}
           onTimeUpdate={() => {
             if (videoRef.current) {
-              setCurrentTime(videoRef.current.currentTime)
-              if (Number.isFinite(videoRef.current.duration)) setDuration(videoRef.current.duration)
+              setCurrentTime(transcodeOffsetRef.current + videoRef.current.currentTime)
+              if (!totalDurationRef.current && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+                totalDurationRef.current = videoRef.current.duration
+                setDuration(videoRef.current.duration)
+              }
             }
             saveProgress()
           }}
@@ -329,10 +377,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               step={1}
               value={Math.min(currentTime, duration || 100)}
               onChange={(event) => {
-                const nextTime = Number(event.target.value)
-                setCurrentTime(nextTime)
-                if (videoRef.current) videoRef.current.currentTime = nextTime
-                scheduleHideControls()
+                seekTo(Number(event.target.value))
               }}
               className="h-1.5 flex-1 accent-[var(--sc-accent)]"
             />

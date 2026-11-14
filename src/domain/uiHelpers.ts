@@ -147,7 +147,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
       mediaId: item.mediaId,
       overview: item.overview,
       year: item.year,
-      startPosition: 0,
+      startPosition: restart ? 0 : undefined,
     }
   }
 
@@ -161,7 +161,7 @@ export function resolvePlayableMedia(item: LibraryItem, restart = false): Playab
         mediaId: first.mediaId,
         overview: item.overview,
         year: item.year,
-        startPosition: 0,
+        startPosition: restart ? 0 : undefined,
         nextEpisode: findNextEpisode(item, first.mediaId),
       }
     }

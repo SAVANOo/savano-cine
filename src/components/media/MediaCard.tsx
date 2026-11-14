@@ -38,7 +38,7 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onT
   }
 
   return (
-    <article className="group relative flex w-full flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] transition-all duration-200 hover:border-white/30 hover:shadow-[var(--sc-shadow-card)]">
+    <article className="group relative flex h-full w-full flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] transition-all duration-200 hover:border-white/30 hover:shadow-[var(--sc-shadow-card)]">
       {/* Cover / Direct Play Zone */}
       <button
         type="button"
@@ -92,7 +92,7 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onT
             className="min-w-0 flex-1 border-0 bg-transparent p-0 text-left cursor-pointer"
             title={`Mais informações sobre ${item.title}`}
           >
-            <h3 className="m-0 line-clamp-2 text-sm font-semibold leading-snug text-white transition-colors group-hover:text-white">
+            <h3 className="m-0 min-h-[2.5rem] line-clamp-2 text-sm font-semibold leading-snug text-white transition-colors group-hover:text-white">
               {item.title}
             </h3>
             <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-secondary)]">
