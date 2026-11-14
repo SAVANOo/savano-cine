@@ -406,6 +406,96 @@
   cursor: pointer;
 }
 
+.review-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 5, 10, .78);
+}
+
+.review-panel {
+  width: min(920px, 100%);
+  max-height: min(760px, 90vh);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+}
+
+.review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.review-heading button {
+  color: var(--muted);
+  font-size: 28px;
+}
+
+.review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.review-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .03);
+}
+
+.review-item > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.review-item small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.review-item input {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--background);
+}
+
+.review-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-actions button {
+  padding: 8px 12px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+}
+
+@media (max-width: 700px) {
+  .review-item {
+    grid-template-columns: 1fr;
+  }
+}
+
 .content {
   width: min(1120px, 100%);
   margin: 0 auto;

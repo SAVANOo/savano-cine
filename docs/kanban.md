@@ -11,13 +11,13 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
 | Alta | Player compatível com o acervo | FFmpeg/VLC ainda não instalado; backend já expõe capacidades e aguarda runtime |
+| Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
 | Alta | Arte e metadados de filmes | Buscar poster, banner, ano, sinopse e gêneros com fonte pública configurável, sem alterar o arquivo físico |
-| Média | Tela de revisão | Aprovar, corrigir, ignorar ou transformar itens classificados como `review` |
 
 ## Backlog
 

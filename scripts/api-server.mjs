@@ -114,6 +114,52 @@ createServer(async (request, response) => {
     return send(response, 200, await buildLibrary(requestUrl.searchParams.get('profileId')))
   }
 
+  if (requestUrl.pathname === '/api/review' && request.method === 'GET') {
+    const items = database.prepare(`
+      SELECT m.id, m.title, m.kind, m.classification_reason AS reason,
+        m.relative_path AS relativePath, s.name AS sourceName, s.root_path AS sourcePath
+      FROM media_items m
+      JOIN media_sources s ON s.id = m.source_id
+      WHERE m.classification_status = 'review' AND m.deleted_at IS NULL
+      ORDER BY s.name, m.relative_path COLLATE NOCASE
+      LIMIT 500
+    `).all()
+    return send(response, 200, items)
+  }
+
+  if (requestUrl.pathname === '/api/review' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const id = typeof body.id === 'string' ? body.id : ''
+    const action = typeof body.action === 'string' ? body.action : ''
+    const current = database.prepare('SELECT id FROM media_items WHERE id = ? AND classification_status = ?').get(id, 'review')
+    if (!current) return send(response, 404, { error: 'Item de revisão não encontrado.' })
+
+    if (action === 'ignore') {
+      database.prepare('UPDATE media_items SET classification_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('ignored', id)
+      return send(response, 200, { status: 'ignored' })
+    }
+
+    if (action === 'approve' || action === 'correct') {
+      const title = typeof body.title === 'string' ? body.title.trim() : ''
+      const kind = body.kind === 'movie' ? 'movie' : 'other'
+      if (!title) return send(response, 400, { error: 'Título obrigatório.' })
+      database.prepare(`
+        UPDATE media_items
+        SET title = ?, kind = ?, classification_status = 'approved', classification_reason = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(title, kind, id)
+      return send(response, 200, { status: 'approved', title, kind })
+    }
+
+    return send(response, 400, { error: 'Ação de revisão inválida.' })
+  }
+
   const archiveMatch = requestUrl.pathname.match(/^\/api\/catalog\/([^/]+)\/archive$/)
   if (archiveMatch && request.method === 'POST') {
     database.prepare('UPDATE media_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(archiveMatch[1])

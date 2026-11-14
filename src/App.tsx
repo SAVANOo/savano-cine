@@ -18,6 +18,8 @@ function App() {
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
   const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string } | null>(null)
   const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
+  const [reviewItems, setReviewItems] = useState<Array<{ id: string; title: string; kind: string; reason?: string; relativePath: string; sourceName: string; sourcePath: string }>>([])
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -25,6 +27,17 @@ function App() {
       .then(setPlayerCapabilities)
       .catch(() => undefined)
   }, [])
+
+  const refreshReview = useCallback(() => {
+    fetch('/api/review')
+      .then((response) => response.ok ? response.json() : [])
+      .then(setReviewItems)
+      .catch(() => setReviewItems([]))
+  }, [])
+
+  useEffect(() => {
+    refreshReview()
+  }, [refreshReview])
 
   useEffect(() => {
     Promise.all([
@@ -115,7 +128,7 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} />
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} />
         <main className="content">
           <button className="back-button" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
@@ -149,13 +162,14 @@ function App() {
           </section>}
         </main>
         {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
+        {reviewOpen && <ReviewPanel items={reviewItems} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
       </div>
     )
   }
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} />
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} />
       <main className="content">
         <header className="topbar">
           <div>
@@ -223,6 +237,7 @@ function App() {
         </section>
       </main>
       {selectedMedia && <VideoPlayer media={selectedMedia} profileId={activeProfileId} capabilities={playerCapabilities} onClose={() => setSelectedMedia(null)} />}
+      {reviewOpen && <ReviewPanel items={reviewItems} onRefresh={refreshReview} onClose={() => setReviewOpen(false)} />}
     </div>
   )
 }
@@ -248,12 +263,16 @@ function Sidebar({
   activeProfileId,
   onProfileChange,
   onProfilesChange,
+  reviewCount,
+  onReview,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
   activeProfileId: string
   onProfileChange: (id: string) => void
   onProfilesChange: (profiles: Profile[]) => void
+  reviewCount: number
+  onReview: () => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
@@ -292,7 +311,7 @@ function Sidebar({
           ))}
         </div>
         {offlineSources > 0 && <small className="offline-count">{offlineSources} fonte aguardando conexão</small>}
-        <button className="settings-button" type="button">⚙ Configurações</button>
+        <button className="settings-button" type="button" onClick={onReview}>⚑ Revisão {reviewCount > 0 ? `(${reviewCount})` : ''}</button>
       </div>
     </aside>
     {editingProfile !== undefined && (
@@ -309,6 +328,56 @@ function Sidebar({
       />
     )}
     </>
+  )
+}
+
+function ReviewPanel({
+  items,
+  onRefresh,
+  onClose,
+}: {
+  items: Array<{ id: string; title: string; kind: string; reason?: string; relativePath: string; sourceName: string; sourcePath: string }>
+  onRefresh: () => void
+  onClose: () => void
+}) {
+  const [savingId, setSavingId] = useState('')
+  const [drafts, setDrafts] = useState(() => Object.fromEntries(items.map((item) => [item.id, item.title])))
+
+  const update = async (item: typeof items[number], action: 'approve' | 'correct' | 'ignore') => {
+    setSavingId(item.id)
+    try {
+      const response = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, action, title: drafts[item.id], kind: 'movie' }),
+      })
+      if (!response.ok) throw new Error('Não foi possível atualizar o item.')
+      onRefresh()
+    } finally {
+      setSavingId('')
+    }
+  }
+
+  return (
+    <div className="review-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="review-panel" role="dialog" aria-modal="true" aria-label="Itens para revisão" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="review-heading"><div><p className="eyebrow">CATÁLOGO</p><h2>Itens para revisar</h2></div><button type="button" onClick={onClose}>×</button></div>
+        {items.length === 0 && <p className="empty-state">Nenhum item aguardando revisão.</p>}
+        <div className="review-list">
+          {items.map((item) => (
+            <article className="review-item" key={item.id}>
+              <div><strong>{item.title}</strong><small>{item.sourceName} · {item.relativePath}</small><small>{item.reason || 'Classificação manual necessária.'}</small></div>
+              <input value={drafts[item.id] ?? item.title} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))} aria-label={`Título de ${item.title}`} />
+              <div className="review-actions">
+                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'correct')}>Corrigir como filme</button>
+                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'approve')}>Aprovar</button>
+                <button type="button" disabled={savingId === item.id} onClick={() => void update(item, 'ignore')}>Ignorar</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }
 
