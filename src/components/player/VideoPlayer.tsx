@@ -320,11 +320,34 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         if (!stage) return
         if (document.fullscreenElement) void document.exitFullscreen()
         else void stage.requestFullscreen?.()
+      } else if (event.key.toLowerCase() === 'm') {
+        event.preventDefault()
+        setMuted((prev) => {
+          const nextMuted = !prev
+          applyVolume(volume, nextMuted)
+          return nextMuted
+        })
+        scheduleHideControls()
+      } else if (event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        setTrackMenuOpen((prev) => !prev)
+        scheduleHideControls()
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault()
+        const delta = event.key === 'ArrowUp' ? 0.1 : -0.1
+        setVolume((prev) => {
+          const nextVol = Math.max(0, Math.min(3, Math.round((prev + delta) * 100) / 100))
+          const nextMuted = nextVol === 0
+          setMuted(nextMuted)
+          applyVolume(nextVol, nextMuted)
+          return nextVol
+        })
+        scheduleHideControls()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [scheduleHideControls])
+  }, [applyVolume, scheduleHideControls, volume])
 
   return (
     <div

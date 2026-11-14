@@ -2120,6 +2120,29 @@ function reconcileMisclassifiedEpisodes() {
       ON CONFLICT(id) DO NOTHING
     `)
     const markEpisode = database.prepare(`UPDATE media_items SET kind = 'episode' WHERE id = ?`)
+    // Prune orphan show rows that have zero episodes
+    database.prepare(`
+      DELETE FROM artwork_candidates
+      WHERE show_id IN (
+        SELECT id FROM shows WHERE NOT EXISTS (
+          SELECT 1 FROM seasons s JOIN episodes e ON e.season_id = s.id WHERE s.show_id = shows.id
+        )
+      )
+    `).run()
+    database.prepare(`
+      DELETE FROM artwork
+      WHERE show_id IN (
+        SELECT id FROM shows WHERE NOT EXISTS (
+          SELECT 1 FROM seasons s JOIN episodes e ON e.season_id = s.id WHERE s.show_id = shows.id
+        )
+      )
+    `).run()
+    database.prepare(`
+      DELETE FROM shows
+      WHERE NOT EXISTS (
+        SELECT 1 FROM seasons s JOIN episodes e ON e.season_id = s.id WHERE s.show_id = shows.id
+      )
+    `).run()
     for (const row of rows) {
       let seasonNumber = null
       let episodeNumber = null
