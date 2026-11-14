@@ -16,13 +16,21 @@ function Test-LocalPort($port) {
   }
 }
 
-if (-not (Test-LocalPort 4174)) {
-  Start-Process -FilePath 'node' -ArgumentList 'scripts/api-server.mjs' -WorkingDirectory $projectRoot -WindowStyle Minimized
+function Stop-PortProcess($port) {
+  $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+  foreach ($conn in $conns) {
+    if ($conn.OwningProcess -and $conn.OwningProcess -gt 0) {
+      Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+  }
 }
 
-if (-not (Test-LocalPort 5173)) {
-  Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173' -WorkingDirectory $projectRoot -WindowStyle Minimized
-}
+Stop-PortProcess 4174
+Stop-PortProcess 5173
+Start-Sleep -Milliseconds 400
+
+Start-Process -FilePath 'node' -ArgumentList 'scripts/api-server.mjs' -WorkingDirectory $projectRoot -WindowStyle Minimized
+Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173' -WorkingDirectory $projectRoot -WindowStyle Minimized
 
 for ($i = 0; $i -lt 30; $i++) {
   if ((Test-LocalPort 4174) -and (Test-LocalPort 5173)) { break }
