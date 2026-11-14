@@ -67,3 +67,14 @@ O schema SQLite inicial está em `database/schema.sql`. Ele ainda não é carreg
 O comando `import` cria `data/catalog.db` localmente e importa os caminhos encontrados sem alterar os arquivos de mídia. A pasta `data/` fica fora do Git.
 
 Com o catálogo importado, `npm run api` inicia a API local em `http://127.0.0.1:4174`; o Vite encaminha as chamadas `/api` automaticamente durante o desenvolvimento.
+
+`npm run artwork` usa TVMaze para séries e Wikipedia para filmes, sem exigir `TMDB_API_KEY`.
+Para acervos cujo título é melhor atendido em outro idioma, a busca pode começar por uma
+Wikipedia configurável e recua para português e inglês:
+
+```powershell
+$env:CINE_WIKIPEDIA_LANG = "en"
+npm run artwork
+```
+
+As capas e metadados são gravados apenas em `data/` e os arquivos físicos do acervo permanecem inalterados.

@@ -5,6 +5,11 @@ import { DatabaseSync } from 'node:sqlite'
 const databasePath = path.resolve('data/catalog.db')
 const artworkRoot = path.resolve('data/artwork')
 const database = new DatabaseSync(databasePath)
+const configuredWikipediaLanguage = process.env.CINE_WIKIPEDIA_LANG?.trim().toLowerCase()
+const preferredWikipediaLanguage = /^[a-z]{2,3}(?:-[a-z]{2,4})?$/.test(configuredWikipediaLanguage || '')
+  ? configuredWikipediaLanguage
+  : 'pt'
+const wikipediaLanguages = [...new Set([preferredWikipediaLanguage, 'pt', 'en'])]
 
 await mkdir(path.join(artworkRoot, 'shows'), { recursive: true })
 ensureColumn('artwork', 'artwork_type', `TEXT NOT NULL DEFAULT 'poster'`)
@@ -121,7 +126,7 @@ for (const movie of movies) {
   }
 }
 
-console.log(`Arte baixada para ${downloaded} séries em ${artworkRoot}`)
+console.log(`Arte baixada para ${downloaded} séries; metadados de filmes via Wikipedia (${wikipediaLanguages.join(' → ')}) em ${artworkRoot}`)
 
 function ensureColumn(table, column, definition) {
   try {
@@ -145,21 +150,35 @@ function stripHtml(value) {
 }
 
 async function fetchWikipedia(title) {
-  const search = await fetch(`https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title)}&srlimit=1&format=json&origin=*`)
-  if (!search.ok) return null
-  const result = await search.json()
-  const page = result.query?.search?.[0]
-  if (!page) return null
+  for (const language of wikipediaLanguages) {
+    const api = `https://${language}.wikipedia.org/w/api.php`
+    const search = await fetch(`${api}?action=query&list=search&srsearch=${encodeURIComponent(title)}&srlimit=5&format=json&origin=*`)
+    if (!search.ok) continue
+    const result = await search.json()
+    const pages = result.query?.search || []
+    const page = pages.find((candidate) => normalizeTitle(candidate.title) === normalizeTitle(title))
+    if (!page) continue
 
-  const details = await fetch(`https://pt.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&piprop=original&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`)
-  if (!details.ok) return null
-  const data = await details.json()
-  const overview = data.query?.pages?.[page.pageid]?.extract?.trim()
-  if (!overview) return null
-  return {
-    overview,
-    pageId: page.pageid,
-    imageUrl: data.query?.pages?.[page.pageid]?.original?.source,
-    year: title.match(/\b(19\d{2}|20\d{2})\b/)?.[1] ? Number(title.match(/\b(19\d{2}|20\d{2})\b/)[1]) : null,
+    const details = await fetch(`${api}?action=query&prop=extracts|pageimages&piprop=original&exintro=1&explaintext=1&pageids=${page.pageid}&format=json&origin=*`)
+    if (!details.ok) continue
+    const data = await details.json()
+    const overview = data.query?.pages?.[page.pageid]?.extract?.trim()
+    if (!overview) continue
+    return {
+      overview,
+      pageId: page.pageid,
+      imageUrl: data.query?.pages?.[page.pageid]?.original?.source,
+      year: title.match(/\b(19\d{2}|20\d{2})\b/)?.[1] ? Number(title.match(/\b(19\d{2}|20\d{2})\b/)[1]) : null,
+    }
   }
+  return null
+}
+
+function normalizeTitle(value) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(19\d{2}|20\d{2})\b/g, '')
+    .replace(/[^a-z0-9]+/gi, '')
+    .toLowerCase()
 }

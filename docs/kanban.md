@@ -14,12 +14,13 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Média | Tela de revisão | Listagem e ações locais implementadas; falta validar com itens reais `review` |
 | Média | Rating por perfil | API, migração compatível e controle na página de detalhe implementados; falta validar persistência por dois perfis |
 | Média | Tags e filtros pesquisáveis | Filtros de gênero e tags derivados do catálogo adicionados; falta testar com metadados ampliados |
+| Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; falta ampliar cobertura sem aceitar correspondências ambíguas |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Alta | Arte e metadados de filmes | Buscar poster, banner, ano, sinopse e gêneros com fonte pública configurável, sem alterar o arquivo físico |
+| Alta | Revisão de correspondências de arte | Exibir candidatos e permitir confirmação antes de aplicar metadados ambíguos |
 
 ## Backlog
 
