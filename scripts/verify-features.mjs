@@ -171,6 +171,19 @@ try {
     'https://media.local:4174/api/media/abc',
   )
   console.log('PASS adapter HTTP/remoto valida protocolo e resolve stream')
+
+  // 7. Verificar endpoint de logs de erro e ausência de vídeos promocionais na biblioteca
+  const logsRes = await api('/api/logs/errors')
+  assert.equal(logsRes.status, 200)
+  assert.ok(Array.isArray(logsRes.body), 'GET /api/logs/errors deve retornar um array')
+  console.log(`PASS endpoint de monitoria de erros (/api/logs/errors, ${logsRes.body.length} registros)`)
+
+  const promoHits = libraryRes.body.filter((item) => {
+    const text = `${item.title || ''} ${item.filePath || ''}`.toLowerCase()
+    return text.includes('1xbet') || text.includes('dinheiro livre') || text.includes('dinheiro_livre')
+  })
+  assert.equal(promoHits.length, 0, 'Biblioteca não deve expor vídeos promocionais/anúncios (1XBET)')
+  console.log('PASS biblioteca livre de vídeos promocionais (1XBET/anúncios)')
 } finally {
   database.prepare('DELETE FROM artwork_candidates WHERE id = ?').run(tempIds.candidateId)
   for (const profileId of tempIds.profiles) {

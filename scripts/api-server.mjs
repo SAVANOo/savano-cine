@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -23,6 +23,7 @@ const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
+ignorePromotionalAds()
 refreshSourceStatuses()
 const catalogRefresh = {
   state: 'idle',
@@ -35,12 +36,31 @@ const catalogRefresh = {
 }
 
 createServer(async (request, response) => {
+  try {
+    await handleApiRequest(request, response)
+  } catch (error) {
+    logApiError(request, error)
+    if (!response.headersSent) {
+      send(response, 500, { error: 'Erro interno na API local. Verifique os logs de monitoria.' })
+    } else if (!response.destroyed) {
+      response.destroy()
+    }
+  }
+}).listen(port, '127.0.0.1', () => {
+  console.log(`Savano Cine API em http://127.0.0.1:${port}`)
+})
+
+async function handleApiRequest(request, response) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host}`)
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
 
   if (requestUrl.pathname === '/api/health') {
     return send(response, 200, { status: 'ok' })
+  }
+
+  if (requestUrl.pathname === '/api/logs/errors' && request.method === 'GET') {
+    return send(response, 200, readRecentErrorLogs())
   }
 
   if (requestUrl.pathname === '/api/player/capabilities') {
@@ -519,9 +539,7 @@ createServer(async (request, response) => {
   }
 
   return send(response, 404, { error: 'Rota não encontrada' })
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Savano Cine API em http://127.0.0.1:${port}`)
-})
+}
 
 function refreshSourceStatuses() {
   const sources = database.prepare(`
@@ -755,21 +773,17 @@ async function transcodeMedia(mediaId, request, response) {
     })
   }
 
-  if (request.headers.range) {
-    return send(response, 416, {
-      error: 'Range não está disponível para o stream transcodificado.',
-      available: true,
-    })
-  }
-
   const executable = getRuntimeExecutable('CINE_FFMPEG_PATH', 'ffmpeg.exe')
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
   const audioStream = parseStreamIndex(requestUrl.searchParams.get('audioStream'))
   const subtitleStream = parseStreamIndex(requestUrl.searchParams.get('subtitleStream'))
+  const startSeconds = Number(requestUrl.searchParams.get('start') || 0)
+  const seekArgs = Number.isFinite(startSeconds) && startSeconds > 0 ? ['-ss', String(Math.floor(startSeconds))] : []
   const transcoder = spawn(executable, [
     '-hide_banner',
     '-loglevel', 'error',
     '-nostdin',
+    ...seekArgs,
     '-i', filePath,
     '-map', '0:v:0?',
     '-map', audioStream === null ? '0:a:0?' : `0:${audioStream}?`,
@@ -1756,4 +1770,59 @@ async function searchArtworkCandidatesForTarget(targetType, targetId, customQuer
   }
 
   return { added, groups: listPendingArtworkCandidates() }
+}
+
+const errorLogDirectory = path.resolve(root, '..', 'data', 'logs')
+const errorLogFile = path.join(errorLogDirectory, 'api-errors.log')
+
+function logApiError(request, error) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    method: request?.method || 'UNKNOWN',
+    path: String(request?.url || '/').split('?')[0],
+    message: error instanceof Error ? error.message : String(error),
+  }
+  console.error(`[API ERROR] ${entry.method} ${entry.path}: ${entry.message}`)
+  try {
+    mkdirSync(errorLogDirectory, { recursive: true })
+    appendFileSync(errorLogFile, `${JSON.stringify(entry)}\n`, 'utf8')
+  } catch {
+    // Evita falha em cascata caso o diretório de log não esteja gravável
+  }
+}
+
+function readRecentErrorLogs() {
+  try {
+    if (!existsSync(errorLogFile)) return []
+    const lines = readFileSync(errorLogFile, 'utf8').trim().split(/\r?\n/).filter(Boolean)
+    return lines.slice(-50).reverse().map((line) => {
+      try {
+        return JSON.parse(line)
+      } catch {
+        return null
+      }
+    }).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function ignorePromotionalAds() {
+  try {
+    database.prepare(`
+      UPDATE media_items
+      SET kind = 'other',
+          classification_status = 'ignored',
+          classification_reason = 'promotional'
+      WHERE (
+        LOWER(title) LIKE '%1xbet%'
+        OR LOWER(title) LIKE '%dinheiro livre%'
+        OR LOWER(relative_path) LIKE '%1xbet%'
+        OR LOWER(relative_path) LIKE '%dinheiro_livre%'
+      )
+        AND (kind != 'other' OR classification_status != 'ignored')
+    `).run()
+  } catch {
+    // Mantém inicialização resiliente
+  }
 }

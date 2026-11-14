@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { library as mockLibrary, mediaSources as mockSources } from './data/mockCatalog'
 import { profiles as mockProfiles } from './data/mockCatalog'
 import type { Episode, LibraryItem, MediaKind, MediaSource, Profile, ResumeInfo, ReviewItem } from './domain/catalog'
+import { getAvatarStyle, PROFILE_AVATAR_GROUPS, translateGenre } from './domain/uiHelpers'
 import { messages } from './config/messages'
 import './App.css'
 
@@ -17,7 +18,7 @@ function App() {
   const [sources, setSources] = useState(mockSources)
   const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
   const [activeProfileId, setActiveProfileId] = useState('profile-savio')
-  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string } | null>(null)
+  const [selectedMedia, setSelectedMedia] = useState<{ title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number } | null>(null)
   const [playerCapabilities, setPlayerCapabilities] = useState<{ ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null>(null)
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [reviewError, setReviewError] = useState('')
@@ -28,7 +29,15 @@ function App() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [catalogHistory, setCatalogHistory] = useState<CatalogHistory>({ archived: [], titleChanges: [] })
   const [catalogRefresh, setCatalogRefresh] = useState<CatalogRefreshStatus>({ state: 'idle', sourceIds: [], results: [] })
+  const [profileFading, setProfileFading] = useState(false)
   const lastRefreshState = useRef(catalogRefresh.state)
+
+  const handleProfileChange = useCallback((nextId: string) => {
+    if (nextId === activeProfileId) return
+    setProfileFading(true)
+    setActiveProfileId(nextId)
+    window.setTimeout(() => setProfileFading(false), 280)
+  }, [activeProfileId])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -206,7 +215,11 @@ function App() {
     const normalizedQuery = query.trim().toLocaleLowerCase()
 
     return catalog.filter((item) => {
-      const matchesFilter = activeFilter === 'Tudo' || item.kind === activeFilter || item.genres?.includes(activeFilter) || item.tags?.includes(activeFilter)
+      const itemLabels = [...(item.genres ?? []), ...(item.tags ?? [])]
+      const matchesFilter = activeFilter === 'Tudo'
+        || item.kind === activeFilter
+        || itemLabels.includes(activeFilter)
+        || itemLabels.some((label) => translateGenre(label) === activeFilter)
       const matchesQuery =
         !normalizedQuery || item.title.toLocaleLowerCase().includes(normalizedQuery)
 
@@ -214,9 +227,13 @@ function App() {
     })
   }, [activeFilter, catalog, query])
 
-  const genreFilters = useMemo(() => Array.from(new Set(catalog.flatMap((item) => [...(item.genres ?? []), ...(item.tags ?? [])])))
-    .filter((tag) => !['Filme', 'Série'].includes(tag))
-    .sort((a, b) => a.localeCompare(b)), [catalog])
+  const genreFilters = useMemo(() => Array.from(new Set(
+    catalog
+      .flatMap((item) => [...(item.genres ?? []), ...(item.tags ?? [])])
+      .map((tag) => translateGenre(tag)),
+  ))
+    .filter((tag) => !['Filme', 'Série', 'Revisão'].includes(tag))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalog])
 
   const selectedEpisodes =
     selectedShow?.seasons?.find((season) => season.number === selectedSeason)?.episodes ?? []
@@ -234,6 +251,15 @@ function App() {
   const closeShow = () => {
     setSelectedShow(null)
     window.history.pushState({}, '', '/inicio')
+  }
+
+  const goHome = () => {
+    setSelectedMedia(null)
+    setReviewOpen(false)
+    setArtworkReviewOpen(false)
+    setHistoryOpen(false)
+    setActiveFilter('Tudo')
+    closeShow()
   }
 
   const searchArtworkForItem = async (item: LibraryItem) => {
@@ -273,8 +299,8 @@ function App() {
   if (selectedShow) {
     return (
       <div className="app-shell">
-        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} />
-        <main className="content">
+        <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={handleProfileChange} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} onGoHome={goHome} />
+        <main className={profileFading ? 'content content--fading' : 'content'}>
           <button className="back-button controller-focus" type="button" onClick={closeShow}>
             ← Voltar para biblioteca
           </button>
@@ -316,8 +342,8 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={setActiveProfileId} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} />
-      <main className="content">
+      <Sidebar sources={sources} profiles={profiles} activeProfileId={activeProfileId} onProfileChange={handleProfileChange} onProfilesChange={setProfiles} reviewCount={reviewItems.length} onReview={() => setReviewOpen(true)} artworkCount={artworkCandidates.length} onArtworkReview={() => { refreshArtworkCandidates(); setArtworkReviewOpen(true) }} historyCount={catalogHistory.archived.length + catalogHistory.titleChanges.length} onHistory={() => { refreshHistory(); setHistoryOpen(true) }} catalogRefresh={catalogRefresh} onCatalogRefresh={updateCatalog} onSourceAdded={refreshSources} onGoHome={goHome} />
+      <main className={profileFading ? 'content content--fading' : 'content'}>
         <header className="topbar">
           <div>
             <p className="eyebrow">SUA BIBLIOTECA</p>
@@ -369,7 +395,7 @@ function App() {
               <h2>Sua biblioteca</h2>
             </div>
             <div className="filters" role="group" aria-label="Filtrar biblioteca">
-              {(['Tudo', 'Filme', 'Série', ...genreFilters]).map((filter) => (
+              {(['Tudo', 'Filme', 'Série'] as const).map((filter) => (
                 <button
                   className={activeFilter === filter ? 'filter active' : 'filter'}
                   key={filter}
@@ -379,6 +405,19 @@ function App() {
                   {filter === 'Tudo' ? 'Tudo' : `${filter}s`}
                 </button>
               ))}
+              {genreFilters.length > 0 && (
+                <select
+                  className="filter-select"
+                  aria-label="Filtrar por gênero ou tag"
+                  value={genreFilters.includes(activeFilter) ? activeFilter : ''}
+                  onChange={(event) => setActiveFilter(event.target.value || 'Tudo')}
+                >
+                  <option value="">Gênero / Tag…</option>
+                  {genreFilters.map((genre) => (
+                    <option key={genre} value={genre}>{genre}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
           <div className="media-grid">
@@ -439,6 +478,7 @@ function Sidebar({
   catalogRefresh,
   onCatalogRefresh,
   onSourceAdded,
+  onGoHome,
 }: {
   sources: typeof mockSources
   profiles: Profile[]
@@ -454,6 +494,7 @@ function Sidebar({
   catalogRefresh: CatalogRefreshStatus
   onCatalogRefresh: () => void
   onSourceAdded?: () => void
+  onGoHome?: () => void
 }) {
   const offlineSources = sources.filter((source) => source.status === 'offline').length
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
@@ -486,10 +527,10 @@ function Sidebar({
   return (
     <>
     <aside className="sidebar">
-      <div className="brand">
+      <button className="brand brand-button controller-focus" type="button" onClick={onGoHome} title="Ir para o início">
         <span className="brand-mark">S</span>
-        <span>{messages.appName}</span>
-      </div>
+        <span className="brand-name">{messages.appName}</span>
+      </button>
       <ProfileSwitcher
         profiles={profiles}
         activeProfile={activeProfile}
@@ -799,37 +840,40 @@ function ProfileSwitcher({
 
   if (!activeProfile) return null
 
+  const activeStyle = getAvatarStyle(activeProfile.avatarKey)
+
   return (
     <div className="profile-switcher">
       <button className="profile-button controller-focus" type="button" onClick={() => setOpen(!open)}>
-        <span className={`profile-avatar avatar-${activeProfile.avatarKey}`}>{activeProfile.avatarKey === 'cartman' ? 'C' : activeProfile.name[0]}</span>
+        <span className="profile-avatar" style={{ background: activeStyle.background }}>{activeStyle.badge}</span>
         <span><strong>{activeProfile.name}</strong><small>Trocar perfil</small></span>
         <span className="profile-chevron">{open ? '⌃' : '⌄'}</span>
       </button>
       {open && (
         <div className="profile-menu">
           <p>Quem está assistindo?</p>
-          {profiles.map((profile) => (
-            <button
-              className="profile-option controller-focus"
-              type="button"
-              key={profile.id}
-              onClick={() => { onProfileChange(profile.id); setOpen(false) }}
-            >
-              <span className={`profile-avatar avatar-${profile.avatarKey}`}>{profile.avatarKey === 'cartman' ? 'C' : profile.name[0]}</span>
-              <span>{profile.name}</span>
-              {profile.id === activeProfile.id && <b>✓</b>}
-              <span className="profile-edit" onClick={(event) => { event.stopPropagation(); onEditProfile(profile) }}>Editar</span>
-            </button>
-          ))}
+          {profiles.map((profile) => {
+            const style = getAvatarStyle(profile.avatarKey)
+            return (
+              <button
+                className="profile-option controller-focus"
+                type="button"
+                key={profile.id}
+                onClick={() => { onProfileChange(profile.id); setOpen(false) }}
+              >
+                <span className="profile-avatar" style={{ background: style.background }}>{style.badge}</span>
+                <span>{profile.name}</span>
+                {profile.id === activeProfile.id && <b>✓</b>}
+                <span className="profile-edit" onClick={(event) => { event.stopPropagation(); onEditProfile(profile) }}>Editar</span>
+              </button>
+            )
+          })}
           <button className="profile-add controller-focus" type="button" onClick={onCreateProfile}>＋ Criar perfil</button>
         </div>
       )}
     </div>
   )
 }
-
-const avatarPresets = ['cartman', 'south-park', 'ben-10', 'savino'] as const
 
 function ProfileEditor({
   profile,
@@ -841,7 +885,7 @@ function ProfileEditor({
   onSaved: (profile: Profile) => void
 }) {
   const [name, setName] = useState(profile?.name ?? '')
-  const [avatarKey, setAvatarKey] = useState(profile?.avatarKey ?? avatarPresets[0])
+  const [avatarKey, setAvatarKey] = useState(profile?.avatarKey ?? PROFILE_AVATAR_GROUPS[0].options[0].key)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -864,22 +908,45 @@ function ProfileEditor({
     }
   }
 
+  const currentStyle = getAvatarStyle(avatarKey)
+
   return (
-    <div className="profile-modal-backdrop" role="presentation">
-      <form className="profile-modal" onSubmit={save}>
+    <div className="profile-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <form className="profile-modal profile-modal--wide" onSubmit={save} onMouseDown={(event) => event.stopPropagation()}>
         <div className="profile-modal-heading">
-          <div><p className="eyebrow">PERFIL</p><h2>{profile ? 'Editar perfil' : 'Criar perfil'}</h2></div>
-          <button type="button" onClick={onClose}>×</button>
+          <div>
+            <p className="eyebrow">PERFIL</p>
+            <h2>{profile ? 'Escolha o ícone do seu perfil' : 'Criar perfil'}</h2>
+          </div>
+          <button className="modal-close-button controller-focus" type="button" aria-label="Fechar editor de perfil" onClick={onClose}>×</button>
         </div>
-        <label>Nome<input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} autoFocus /></label>
-        <fieldset><legend>Avatar</legend><div className="avatar-presets">
-          {avatarPresets.map((preset) => (
-            <button className={avatarKey === preset ? 'avatar-preset selected' : 'avatar-preset'} type="button" key={preset} onClick={() => setAvatarKey(preset)}>
-              <span className={`profile-avatar avatar-${preset}`}>{preset === 'cartman' ? 'C' : preset === 'south-park' ? 'S' : preset === 'ben-10' ? 'B' : 'S'}</span>
-              <small>{preset}</small>
-            </button>
+        <div className="profile-editor-header">
+          <span className="profile-avatar profile-avatar--lg" style={{ background: currentStyle.background }}>{currentStyle.badge}</span>
+          <label className="profile-name-field">
+            Nome do perfil
+            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} autoFocus required />
+          </label>
+        </div>
+        <div className="avatar-series-list">
+          {PROFILE_AVATAR_GROUPS.map((group) => (
+            <section className="avatar-series-block" key={group.series}>
+              <h3>{group.series}</h3>
+              <div className="avatar-series-row">
+                {group.options.map((option) => (
+                  <button
+                    className={avatarKey === option.key ? 'avatar-preset selected controller-focus' : 'avatar-preset controller-focus'}
+                    type="button"
+                    key={option.key}
+                    onClick={() => setAvatarKey(option.key)}
+                  >
+                    <span className="profile-avatar profile-avatar--md" style={{ background: option.gradient }}>{option.badge}</span>
+                    <small>{option.label}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
           ))}
-        </div></fieldset>
+        </div>
         {error && <p className="profile-error">{error}</p>}
         <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar perfil'}</button></div>
       </form>
@@ -897,7 +964,7 @@ function ShowHeader({
 }: {
   show: LibraryItem
   profileId: string
-  onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }) => void
+  onPlay: (media: { title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number }) => void
   onSearchArtwork?: (show: LibraryItem) => void
   onCatalogUpdated?: () => void
   onArchived?: () => void
@@ -952,43 +1019,65 @@ function ShowHeader({
   const backdropImage = show.artwork.bannerUrl || show.artwork.posterUrl
 
   return (
-    <section className={backdropImage ? 'show-header show-header--backdrop' : 'show-header'}>
-      {backdropImage && <div className="show-header-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${backdropImage})` }} />}
-      <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
-        {show.artwork.posterUrl && <img className="poster-image" src={show.artwork.posterUrl} alt="" />}
-        {!show.artwork.posterUrl && <strong>{show.title}</strong>}
+    <section className="show-detail-shell">
+      <div className={backdropImage ? 'show-hero show-hero--backdrop' : 'show-hero'}>
+        {backdropImage && <div className="show-hero-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${backdropImage})` }} />}
+        <div className="show-hero-content">
+          <p className="eyebrow">{show.kind.toUpperCase()}</p>
+          <h1 className="show-hero-title">{show.title}</h1>
+          <div className="show-stats">
+            {show.year && <span>{show.year}</span>}
+            <span>{show.meta}</span>
+            {show.genres?.map((genre) => <span key={genre}>{translateGenre(genre)}</span>)}
+          </div>
+          <div className="detail-actions">
+            {show.kind === 'Filme' && show.mediaUrl && (
+              <button
+                className="primary-button detail-play-hero controller-focus"
+                type="button"
+                onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId, overview: show.overview, year: show.year })}
+              >
+                ▶ Assistir
+              </button>
+            )}
+            {onSearchArtwork && <button className="settings-button controller-focus" type="button" onClick={() => onSearchArtwork(show)}>🖼 Buscar arte/metadados</button>}
+            <button className="settings-button controller-focus" type="button" onClick={() => setEditing((value) => !value)}>✎ Editar metadados</button>
+            {show.kind === 'Filme' && show.mediaId && <button className="settings-button controller-focus" type="button" disabled={saving} onClick={() => void archiveItem()}>Arquivar</button>}
+          </div>
+        </div>
       </div>
-      <div className="show-copy">
-        <p className="eyebrow">{show.kind.toUpperCase()}</p>
-        <h1>{show.title}</h1>
-        <p className="show-description">{show.overview || 'Descrição ainda não cadastrada para este título.'}</p>
-        <div className="show-stats">
-          {show.year && <span>{show.year}</span>}
-          <span>{show.meta}</span>
-          <span>{show.detail}</span>
-          {show.genres?.map((genre) => <span key={genre}>{genre}</span>)}
+
+      <div className="show-details-grid">
+        <div className="show-details-main">
+          <p className="show-description">{show.overview || 'Descrição ainda não cadastrada para este título.'}</p>
+          {editing && (
+            <form className="metadata-edit-form" onSubmit={saveMetadata}>
+              <label>Título<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} required /></label>
+              <label>Ano<input type="number" min="1900" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /></label>
+              {show.kind === 'Filme' && <label>Tags (separadas por vírgula)<input value={draftTags} onChange={(event) => setDraftTags(event.target.value)} /></label>}
+              <label>Sinopse<textarea rows={3} value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} /></label>
+              {editError && <small className="form-error" role="alert">{editError}</small>}
+              <div className="detail-actions">
+                <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar metadados'}</button>
+                <button className="settings-button" type="button" onClick={() => setEditing(false)}>Cancelar</button>
+              </div>
+            </form>
+          )}
         </div>
-        {show.kind === 'Filme' && <p className="subtitle-summary">{show.subtitles?.length ? `Legendas locais: ${show.subtitles.map((subtitle) => subtitle.label).join(', ')}` : 'Sem legenda local cadastrada'}</p>}
-        <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
-        <div className="detail-actions">
-          {show.kind === 'Filme' && show.mediaUrl && <button className="primary-button detail-play" type="button" onClick={() => onPlay({ title: show.title, url: show.mediaUrl!, subtitleUrl: show.subtitleUrl, mediaId: show.mediaId })}>▶ Assistir</button>}
-          {onSearchArtwork && <button className="settings-button controller-focus" type="button" onClick={() => onSearchArtwork(show)}>🖼 Buscar arte/metadados</button>}
-          <button className="settings-button controller-focus" type="button" onClick={() => setEditing((value) => !value)}>✎ Editar metadados</button>
-          {show.kind === 'Filme' && show.mediaId && <button className="settings-button controller-focus" type="button" disabled={saving} onClick={() => void archiveItem()}>Arquivar</button>}
-        </div>
-        {editing && (
-          <form className="metadata-edit-form" onSubmit={saveMetadata}>
-            <label>Título<input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} required /></label>
-            <label>Ano<input type="number" min="1900" max="2100" value={draftYear} onChange={(event) => setDraftYear(event.target.value)} /></label>
-            {show.kind === 'Filme' && <label>Tags (separadas por vírgula)<input value={draftTags} onChange={(event) => setDraftTags(event.target.value)} /></label>}
-            <label>Sinopse<textarea rows={3} value={draftOverview} onChange={(event) => setDraftOverview(event.target.value)} /></label>
-            {editError && <small className="form-error" role="alert">{editError}</small>}
-            <div className="detail-actions">
-              <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar metadados'}</button>
-              <button className="settings-button" type="button" onClick={() => setEditing(false)}>Cancelar</button>
+
+        <aside className="show-details-meta">
+          <div className="meta-block">
+            <small>Arquivo</small>
+            <span className="meta-file">{show.detail}</span>
+          </div>
+          {show.kind === 'Filme' && (
+            <div className="meta-block">
+              <small>Legendas locais</small>
+              <span>{show.subtitles?.length ? show.subtitles.map((subtitle) => subtitle.label).join(', ') : 'Nenhuma cadastrada'}</span>
             </div>
-          </form>
-        )}
+          )}
+          <RatingControl profileId={profileId} mediaId={show.kind === 'Filme' ? show.mediaId : undefined} showId={show.kind === 'Série' ? show.id : undefined} />
+        </aside>
       </div>
     </section>
   )
@@ -996,6 +1085,7 @@ function ShowHeader({
 
 function RatingControl({ profileId, mediaId, showId }: { profileId: string; mediaId?: string; showId?: string }) {
   const [score, setScore] = useState<number | null>(null)
+  const [hoverStars, setHoverStars] = useState<number | null>(null)
   const [review, setReview] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -1012,12 +1102,15 @@ function RatingControl({ profileId, mediaId, showId }: { profileId: string; medi
       .catch(() => undefined)
   }, [mediaId, profileId, showId])
 
-  const save = async () => {
-    if (score === null) return
+  const selectedStars = score === null ? 0 : Math.max(1, Math.min(5, Math.round(score / 2)))
+  const activeStars = hoverStars ?? selectedStars
+
+  const save = async (nextScore = score) => {
+    if (nextScore === null) return
     const response = await fetch('/api/rating', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId, mediaId, showId, score, review }),
+      body: JSON.stringify({ profileId, mediaId, showId, score: nextScore, review }),
     })
     if (response.ok) {
       setSaved(true)
@@ -1027,10 +1120,26 @@ function RatingControl({ profileId, mediaId, showId }: { profileId: string; medi
 
   return (
     <div className="rating-control">
-      <div className="rating-heading"><span>Sua avaliação</span><small>{saved ? 'Salva' : `Perfil: ${profileId === 'profile-savio' ? 'Savio' : 'Família'}`}</small></div>
-      <div className="rating-score">
-        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
-          <button type="button" key={value} className={score === value ? 'rating-choice selected' : 'rating-choice'} onClick={() => setScore(value)} aria-label={`Nota ${value}`}>{value}</button>
+      <div className="rating-heading">
+        <span>Sua avaliação</span>
+        <small>{saved ? 'Salva ✓' : selectedStars > 0 ? `${selectedStars}/5 estrelas` : 'Toque para avaliar'}</small>
+      </div>
+      <div className="rating-stars" onMouseLeave={() => setHoverStars(null)}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            type="button"
+            key={star}
+            className={star <= activeStars ? 'star-button active controller-focus' : 'star-button controller-focus'}
+            onMouseEnter={() => setHoverStars(star)}
+            onClick={() => {
+              const nextScore = star * 2
+              setScore(nextScore)
+              void save(nextScore)
+            }}
+            aria-label={`${star} estrela${star > 1 ? 's' : ''}`}
+          >
+            ★
+          </button>
         ))}
       </div>
       <div className="rating-footer">
@@ -1098,10 +1207,13 @@ function EpisodeRow({ episode, onPlay }: { episode: Episode; onPlay: (media: { t
   )
 }
 
-function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string }; profileId: string; capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
+function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { title: string; url: string; subtitleUrl?: string; mediaId?: string; overview?: string; year?: number }; profileId: string; capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
   const lastSavedPosition = useRef(0)
   const pendingPosition = useRef(0)
+  const hideTimer = useRef<number | null>(null)
+  const pauseOverlayTimer = useRef<number | null>(null)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
   const [subtitleUrl, setSubtitleUrl] = useState('')
   const [streamInfo, setStreamInfo] = useState<{ available: boolean; reason?: string; audio: Array<{ index: number; language?: string; title?: string; codec?: string }>; subtitles: Array<{ index: number; language?: string; title?: string; codec?: string }> } | null>(null)
@@ -1110,11 +1222,30 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
   const [playbackUrl, setPlaybackUrl] = useState(media.url)
   const [rate, setRate] = useState(1)
   const [volume, setVolume] = useState(1)
+  const [isPlaying, setIsPlaying] = useState(true)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const [pausedOverlayVisible, setPausedOverlayVisible] = useState(false)
+  const [trackMenuOpen, setTrackMenuOpen] = useState(false)
   const [onlineSubtitlesOpen, setOnlineSubtitlesOpen] = useState(false)
   const [onlineSubtitlesLoading, setOnlineSubtitlesLoading] = useState(false)
   const [onlineSubtitlesMessage, setOnlineSubtitlesMessage] = useState('')
   const [onlineSubtitlesResults, setOnlineSubtitlesResults] = useState<Array<{ fileId: number; language: string; release: string; downloads: number; hearingImpaired: boolean }>>([])
   const [downloadingSubtitleId, setDownloadingSubtitleId] = useState<number | null>(null)
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true)
+    if (hideTimer.current) window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => {
+      if (videoRef.current && !videoRef.current.paused && !trackMenuOpen && !onlineSubtitlesOpen) {
+        setControlsVisible(false)
+      }
+    }, 2800)
+  }, [onlineSubtitlesOpen, trackMenuOpen])
+
+  useEffect(() => () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current)
+    if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
+  }, [])
 
   useEffect(() => {
     if (!media.mediaId) return
@@ -1164,33 +1295,39 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
 
   const changeAudioStream = (value: string) => {
     setAudioStream(value)
+    const currentPos = videoRef.current?.currentTime ?? 0
     if (!value) {
-      pendingPosition.current = videoRef.current?.currentTime ?? 0
+      pendingPosition.current = currentPos
       setPlaybackUrl(media.url)
       return
     }
     if (!media.mediaId || !capabilities?.transcoding) return
-    pendingPosition.current = videoRef.current?.currentTime ?? 0
-    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(value)}`)
+    pendingPosition.current = currentPos
+    const startParam = currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''
+    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(value)}${startParam}`)
   }
 
   const changeSubtitleStream = (value: string) => {
     setSubtitleStream(value)
+    const currentPos = videoRef.current?.currentTime ?? 0
     if (!value) {
-      pendingPosition.current = videoRef.current?.currentTime ?? 0
+      pendingPosition.current = currentPos
       setPlaybackUrl(audioStream
-        ? `/api/media/${encodeURIComponent(media.mediaId!)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream)}`
+        ? `/api/media/${encodeURIComponent(media.mediaId!)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream)}${currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''}`
         : media.url)
       return
     }
     if (!media.mediaId || !capabilities?.transcoding) return
-    pendingPosition.current = videoRef.current?.currentTime ?? 0
-    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream || '0')}&subtitleStream=${encodeURIComponent(value)}`)
+    pendingPosition.current = currentPos
+    const startParam = currentPos > 1 ? `&start=${Math.floor(currentPos)}` : ''
+    setPlaybackUrl(`/api/media/${encodeURIComponent(media.mediaId)}/transcode?format=mp4&audioStream=${encodeURIComponent(audioStream || '0')}&subtitleStream=${encodeURIComponent(value)}${startParam}`)
   }
 
   const restorePosition = () => {
-    if (pendingPosition.current > 0 && videoRef.current) {
+    if (pendingPosition.current > 0 && videoRef.current && playbackUrl === media.url) {
       videoRef.current.currentTime = pendingPosition.current
+      pendingPosition.current = 0
+    } else if (playbackUrl !== media.url) {
       pendingPosition.current = 0
     }
   }
@@ -1209,8 +1346,18 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
     if (videoRef.current) videoRef.current.volume = value
   }
 
+  const togglePlay = () => {
+    if (!videoRef.current) return
+    if (videoRef.current.paused) void videoRef.current.play()
+    else videoRef.current.pause()
+  }
+
   const toggleFullscreen = () => {
-    void videoRef.current?.requestFullscreen()
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+      return
+    }
+    void (stageRef.current ?? videoRef.current)?.requestFullscreen()
   }
 
   const searchOnlineSubtitles = async () => {
@@ -1261,53 +1408,153 @@ function VideoPlayer({ media, profileId, capabilities, onClose }: { media: { tit
     }
   }
 
+  const showOverlay = controlsVisible || !isPlaying || trackMenuOpen || onlineSubtitlesOpen
+
   return (
     <div className="player-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="player-modal" role="dialog" aria-modal="true" aria-label={`Reproduzindo ${media.title}`} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="player-heading">
+      <section
+        ref={stageRef}
+        className="player-modal player-modal--immersive"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Reproduzindo ${media.title}`}
+        onMouseDown={(event) => event.stopPropagation()}
+        onMouseMove={revealControls}
+        onMouseLeave={() => { if (isPlaying && !trackMenuOpen && !onlineSubtitlesOpen) setControlsVisible(false) }}
+      >
+        <div className={showOverlay ? 'player-heading player-overlay-bar' : 'player-heading player-overlay-bar hidden'}>
           <div><span>ASSISTINDO AGORA</span><strong>{media.title}</strong></div>
-          <button className="player-close controller-focus" type="button" autoFocus aria-label="Fechar player" onClick={onClose}>×</button>
+          <button className="player-close modal-close-button controller-focus" type="button" autoFocus aria-label="Fechar player" onClick={onClose}>×</button>
         </div>
-        <video ref={videoRef} className="video-player" src={playbackUrl} controls autoPlay playsInline onLoadedMetadata={restorePosition} onTimeUpdate={saveProgress} onEnded={saveProgress}>
-          {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
-          {media.mediaId && streamInfo?.available && capabilities?.ffmpeg && streamInfo.subtitles.map((track) => (
-            <track
-              key={`embedded-${track.index}`}
-              kind="subtitles"
-              srcLang={track.language || 'und'}
-              label={`Embutida · ${track.title || track.language || `Faixa ${track.index + 1}`}`}
-              src={`/api/media/${encodeURIComponent(media.mediaId!)}/subtitles/embedded/${track.index}`}
-            />
-          ))}
-        </video>
-        <div className="player-controls">
+
+        <div className="player-stage">
+          <video
+            ref={videoRef}
+            className="video-player"
+            src={playbackUrl}
+            controls
+            autoPlay
+            playsInline
+            onLoadedMetadata={restorePosition}
+            onPlay={() => {
+              setIsPlaying(true)
+              setPausedOverlayVisible(false)
+              if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
+              revealControls()
+            }}
+            onPause={() => {
+              setIsPlaying(false)
+              setControlsVisible(true)
+              if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
+              pauseOverlayTimer.current = window.setTimeout(() => setPausedOverlayVisible(true), 2200)
+            }}
+            onTimeUpdate={saveProgress}
+            onEnded={saveProgress}
+          >
+            {subtitleUrl && <track kind="subtitles" srcLang="pt-BR" label="Português" src={subtitleUrl} default />}
+            {media.mediaId && streamInfo?.available && capabilities?.ffmpeg && streamInfo.subtitles.map((track) => (
+              <track
+                key={`embedded-${track.index}`}
+                kind="subtitles"
+                srcLang={track.language || 'und'}
+                label={`Embutida · ${track.title || track.language || `Faixa ${track.index + 1}`}`}
+                src={`/api/media/${encodeURIComponent(media.mediaId!)}/subtitles/embedded/${track.index}`}
+              />
+            ))}
+          </video>
+
+          {pausedOverlayVisible && !isPlaying && (
+            <div className="player-paused-overlay" onClick={togglePlay}>
+              <div className="player-paused-info">
+                <span className="eyebrow">Você está assistindo a</span>
+                <h2>{media.title}</h2>
+                {media.year && <small>{media.year}</small>}
+                {media.overview && <p>{media.overview.slice(0, 220)}{media.overview.length > 220 ? '…' : ''}</p>}
+              </div>
+              <span className="player-paused-badge">Pausado</span>
+            </div>
+          )}
+
+          {trackMenuOpen && (
+            <div className="player-track-popover" role="dialog" aria-label="Idioma e legendas">
+              <div className="track-column">
+                <h4>Idioma (Áudio)</h4>
+                <button
+                  type="button"
+                  className={audioStream === '' ? 'track-choice active' : 'track-choice'}
+                  onClick={() => changeAudioStream('')}
+                >
+                  {audioStream === '' ? '✓ ' : ''}Original (padrão)
+                </button>
+                {streamInfo?.available && streamInfo.audio.map((track) => {
+                  const id = String(track.index)
+                  const disabled = !capabilities?.transcoding
+                  return (
+                    <button
+                      type="button"
+                      key={track.index}
+                      disabled={disabled}
+                      className={audioStream === id ? 'track-choice active' : 'track-choice'}
+                      onClick={() => changeAudioStream(id)}
+                    >
+                      {audioStream === id ? '✓ ' : ''}{track.title || track.language || `Faixa ${track.index + 1}`}
+                    </button>
+                  )
+                })}
+                {!streamInfo?.available && <small className="track-hint">FFprobe indisponível para listar faixas internas.</small>}
+              </div>
+
+              <div className="track-column">
+                <h4>Legendas</h4>
+                <button
+                  type="button"
+                  className={subtitleUrl === '' && subtitleStream === '' ? 'track-choice active' : 'track-choice'}
+                  onClick={() => { setSubtitleUrl(''); changeSubtitleStream('') }}
+                >
+                  {subtitleUrl === '' && subtitleStream === '' ? '✓ ' : ''}Desligadas
+                </button>
+                {subtitleTracks.map((track) => (
+                  <button
+                    type="button"
+                    key={track.url}
+                    className={subtitleUrl === track.url ? 'track-choice active' : 'track-choice'}
+                    onClick={() => { setSubtitleUrl(track.url); setSubtitleStream('') }}
+                  >
+                    {subtitleUrl === track.url ? '✓ ' : ''}{track.label}
+                  </button>
+                ))}
+                {streamInfo?.available && streamInfo.subtitles.map((track) => {
+                  const id = String(track.index)
+                  return (
+                    <button
+                      type="button"
+                      key={`sub-${track.index}`}
+                      disabled={!capabilities?.transcoding}
+                      className={subtitleStream === id ? 'track-choice active' : 'track-choice'}
+                      onClick={() => { setSubtitleUrl(''); changeSubtitleStream(id) }}
+                    >
+                      {subtitleStream === id ? '✓ ' : ''}Embutida · {track.title || track.language || `Faixa ${track.index + 1}`}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className={showOverlay ? 'player-controls player-controls--floating' : 'player-controls player-controls--floating hidden'}>
+          <button type="button" onClick={togglePlay}>{isPlaying ? '⏸ Pausar' : '▶ Continuar'}</button>
           <button type="button" onClick={() => seek(-10)}>↶ 10s</button>
           <button type="button" onClick={() => seek(10)}>10s ↷</button>
           <label>Velocidade<select value={rate} onChange={(event) => changeRate(Number(event.target.value))}>
             {[0.75, 1, 1.25, 1.5, 2].map((value) => <option value={value} key={value}>{value}x</option>)}
           </select></label>
           <label>Volume<input type="range" min="0" max="1" step="0.05" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} /></label>
-          <label>Legenda<select value={subtitleUrl} onChange={(event) => setSubtitleUrl(event.target.value)}>
-            <option value="">Sem legenda</option>
-            {subtitleTracks.map((track) => <option value={track.url} key={track.url}>{track.label}</option>)}
-          </select></label>
-          {media.mediaId && <label title={!streamInfo?.available ? 'Instale/configure FFprobe para listar faixas internas' : !capabilities?.transcoding ? 'Instale/configure FFmpeg para trocar a faixa de áudio' : undefined}>
-            Áudio
-            <select
-              value={audioStream}
-              disabled={!streamInfo?.available || !capabilities?.transcoding || streamInfo.audio.length === 0}
-              onChange={(event) => changeAudioStream(event.target.value)}
-            >
-              <option value="">{!streamInfo?.available ? 'Original (requer FFprobe)' : !capabilities?.transcoding ? 'Original (requer FFmpeg)' : 'Original'}</option>
-              {streamInfo?.audio.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
-            </select>
-          </label>}
-          {streamInfo?.available && streamInfo.subtitles.length > 0 && <label>Legenda embutida<select value={subtitleStream} disabled={!capabilities?.transcoding} onChange={(event) => changeSubtitleStream(event.target.value)}>
-            <option value="">Original</option>
-            {streamInfo.subtitles.map((track) => <option value={track.index} key={track.index}>{track.title || track.language || `Faixa ${track.index + 1}`}</option>)}
-          </select></label>}
-          {media.mediaId && <button type="button" onClick={() => { const next = !onlineSubtitlesOpen; setOnlineSubtitlesOpen(next); if (next && onlineSubtitlesResults.length === 0) void searchOnlineSubtitles() }}>Legendas online</button>}
-          <button type="button" onClick={toggleFullscreen}>Tela cheia</button>
+          <button type="button" className={trackMenuOpen ? 'active' : undefined} onClick={() => { setTrackMenuOpen((v) => !v); setOnlineSubtitlesOpen(false) }}>
+            💬 Áudio e legendas
+          </button>
+          {media.mediaId && <button type="button" onClick={() => { setTrackMenuOpen(false); const next = !onlineSubtitlesOpen; setOnlineSubtitlesOpen(next); if (next && onlineSubtitlesResults.length === 0) void searchOnlineSubtitles() }}>Legendas online</button>}
+          <button type="button" onClick={toggleFullscreen}>⛶ Tela cheia</button>
         </div>
         {onlineSubtitlesOpen && (
           <div className="subtitle-search-box">

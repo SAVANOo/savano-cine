@@ -71,6 +71,13 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Cabeçalho panorâmico com backdrop na página de detalhe, barra de controles do player com acabamento translúcido e estados vazios estilizados.
 - `SelfHostedSourceAdapter` integrado ao refresh do catálogo e ao streaming remoto (`302 Location`), validado em `scripts/verify-features.mjs`.
 - `FFmpeg` e `FFprobe` (`Gyan.FFmpeg 9.0.2`) instalados e disponíveis no `PATH`, validados via `npm run doctor` e `/api/player/capabilities`.
+- Handler centralizado de erros na API (`scripts/api-server.mjs`) com log estruturado em JSONL (`data/logs/api-errors.log`) e endpoint `GET /api/logs/errors` para monitoria.
+- Filtro automático de vídeos promocionais/anúncios (`1XBET`, `dinheiro_livre`, `promo`, etc.) no scanner (`scripts/scan-media.mjs`) e saneamento automático na inicialização da API (`ignorePromotionalAds`), mantendo o catálogo livre de anúncios sem alterar arquivos físicos.
+- Correção do transcode ao trocar faixa de áudio (`transcodeMedia` em `scripts/api-server.mjs`): remoção do bloqueio `416` para requisições com header `Range: bytes=0-` do `<video>` e suporte a seek via `?start=<segundos>`.
+- Redesign do player estilo Netflix (`VideoPlayer` em `src/App.tsx` e `src/App.css`): controles embutidos com auto-hide por inatividade do mouse, overlay de pausa após 2,2s ("Você está assistindo a..." / "Pausado") e popover flutuante em duas colunas **Idioma | Legendas**.
+- Redesign da página de detalhes estilo Netflix (`ShowHeader`): hero com backdrop, título em destaque e botão **▶ Assistir** proeminente, com detalhes técnicos, legendas locais e avaliação em bloco lateral secundário.
+- Avaliação por 5 estrelas (`RatingControl`, mapeando `1..5` estrelas para `2..10` no SQLite) e ajuste de overflow em `.card-detail` para evitar texto vazando dos cards.
+- Editor de perfil estilo Netflix com grupos de avatares temáticos por série (`Os Clássicos`, `South Park`, `Ben 10`, `Gravity Falls` em `src/domain/uiHelpers.ts`), transição com fade ao trocar de perfil, cursor temático nos cards clicáveis, filtros compactos com dropdown e gêneros traduzidos para PT-BR, correção do botão fechar `×` do modal de revisão de arte e marca **Savano Cine** clicável na sidebar (recolhendo para apenas o ícone `S` em telas menores).
 
 ## Regras do quadro
 

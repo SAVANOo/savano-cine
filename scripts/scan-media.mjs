@@ -150,7 +150,7 @@ function classifyMedia(filePath, sourceRoot) {
       }
     }
 
-    if (/^(1xbet|bludv|comando|trailer|lucas firmo|www\.)/i.test(normalizedFilename)) {
+    if (/(^|[\W_])(1xbet|dinheiro[_ ]livre|bludv\.?com|comando\.?to|lucas firmo)([\W_]|$)|^(trailer|www\.|promo[\W_])/i.test(normalizedFilename)) {
       return {
         tipo: 'outro',
         titulo: cleanTitle(filename),
