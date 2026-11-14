@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
+import { SelfHostedSourceAdapter } from './source-adapters.mjs'
 
 const baseUrl = (process.env.CINE_API_URL || 'http://127.0.0.1:4174').replace(/\/+$/, '')
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -160,6 +161,16 @@ try {
     'restauração manual do título',
   )
   console.log('PASS edição de metadados e restauração reversível de título')
+
+  // 6. Verificar protocolo e resolução do adapter HTTP/remoto
+  const remoteAdapter = new SelfHostedSourceAdapter()
+  assert.equal(remoteAdapter.isSupportedUrl('https://media.local:4174'), true)
+  assert.equal(remoteAdapter.isSupportedUrl('ftp://media.local/files'), false)
+  assert.equal(
+    remoteAdapter.resolveStream('https://media.local:4174/', '/api/media/abc')?.url,
+    'https://media.local:4174/api/media/abc',
+  )
+  console.log('PASS adapter HTTP/remoto valida protocolo e resolve stream')
 } finally {
   database.prepare('DELETE FROM artwork_candidates WHERE id = ?').run(tempIds.candidateId)
   for (const profileId of tempIds.profiles) {

@@ -606,6 +606,16 @@ function startCatalogRefresh(sources) {
 async function runCatalogRefresh(sources) {
   try {
     for (const source of sources) {
+      const adapter = getAdapterForSource(source.rootPath)
+      if (adapter.kind === 'self_hosted') {
+        const synced = await adapter.syncToDatabase(database, source.id, source.rootPath)
+        catalogRefresh.results.push({
+          sourceId: source.id,
+          status: 'ok',
+          message: `${synced} itens remotos sincronizados`,
+        })
+        continue
+      }
       const result = await runImporter(source)
       catalogRefresh.results.push(result)
     }
@@ -716,6 +726,14 @@ async function transcodeMedia(mediaId, request, response) {
   `).get(mediaId)
   if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
 
+  const adapter = getAdapterForSource(media.rootPath)
+  if (adapter.kind === 'self_hosted') {
+    const remote = adapter.resolveStream(media.rootPath, media.relativePath)
+    if (!remote?.url) return send(response, 400, { error: 'Stream remoto inválido.' })
+    response.writeHead(302, { Location: remote.url })
+    return response.end()
+  }
+
   const filePath = path.resolve(media.rootPath, media.relativePath)
   const rootPath = path.resolve(media.rootPath)
   if (filePath === rootPath || !filePath.startsWith(`${rootPath}${path.sep}`)) {
@@ -816,6 +834,14 @@ async function analyzeMediaStreams(mediaId, response) {
   `).get(mediaId)
 
   if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const adapter = getAdapterForSource(media.rootPath)
+  if (adapter.kind === 'self_hosted') {
+    const remote = adapter.resolveStream(media.rootPath, media.relativePath)
+    if (!remote?.url) return send(response, 400, { error: 'Stream remoto inválido.' })
+    response.writeHead(302, { Location: remote.url })
+    return response.end()
+  }
 
   const filePath = path.resolve(media.rootPath, media.relativePath)
   const rootPath = path.resolve(media.rootPath)
@@ -1387,6 +1413,14 @@ function streamMedia(mediaId, request, response) {
   `).get(mediaId)
 
   if (!media) return send(response, 404, { error: 'Mídia não encontrada.' })
+
+  const adapter = getAdapterForSource(media.rootPath)
+  if (adapter.kind === 'self_hosted') {
+    const remote = adapter.resolveStream(media.rootPath, media.relativePath)
+    if (!remote?.url) return send(response, 400, { error: 'Stream remoto inválido.' })
+    response.writeHead(302, { Location: remote.url })
+    return response.end()
+  }
 
   const filePath = path.resolve(media.rootPath, media.relativePath)
   const rootPath = path.resolve(media.rootPath)

@@ -80,7 +80,43 @@ export class SelfHostedSourceAdapter {
     const response = await fetch(`${base}/api/library`, { signal: AbortSignal.timeout(8000) })
     if (!response.ok) return []
     const items = await response.json()
-    return Array.isArray(items) ? items : []
+    if (!Array.isArray(items)) return []
+    return items
+      .filter((item) => item && typeof item.title === 'string')
+      .map((item) => ({
+        externalId: String(item.mediaId || item.id || item.title),
+        title: item.title,
+        kind: item.kind === 'Série' ? 'collection' : 'movie',
+        relativePath: String(item.mediaUrl || `/api/media/${encodeURIComponent(String(item.mediaId || item.id || ''))}`).replace(/^\/+/, ''),
+        year: Number.isInteger(item.year) ? item.year : undefined,
+        extension: 'mp4',
+        overview: typeof item.overview === 'string' ? item.overview : undefined,
+      }))
+  }
+
+  async syncToDatabase(database, sourceId, rootPath) {
+    const items = await this.listItems(rootPath)
+    const upsert = database.prepare(`
+      INSERT INTO media_items (
+        id, source_id, relative_path, title, kind, classification_status,
+        classification_reason, year, overview, extension, exists_on_disk
+      )
+      VALUES (?, ?, ?, ?, 'movie', 'approved', 'self-hosted-adapter', ?, ?, 'mp4', 1)
+      ON CONFLICT(source_id, relative_path) DO UPDATE SET
+        title = excluded.title,
+        year = COALESCE(excluded.year, media_items.year),
+        overview = COALESCE(excluded.overview, media_items.overview),
+        exists_on_disk = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `)
+    let synced = 0
+    for (const item of items) {
+      if (item.kind !== 'movie' || !item.relativePath) continue
+      const itemId = `remote-${sourceId}-${item.externalId}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+      upsert.run(itemId, sourceId, item.relativePath, item.title, item.year || null, item.overview || null)
+      synced += 1
+    }
+    return synced
   }
 
   resolveStream(rootPath, relativePath) {

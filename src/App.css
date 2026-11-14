@@ -1097,18 +1097,23 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding-top: 12px;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(18, 19, 27, 0.85);
 }
 
 .player-controls button,
 .player-controls select {
-  padding: 7px 9px;
+  padding: 7px 11px;
   border: 1px solid #343744;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #dfe0e7;
   background: #1b1d26;
   font-size: 11px;
+  transition: border-color 150ms ease, background 150ms ease;
 }
 
 .player-controls button {
@@ -1266,8 +1271,11 @@ h2 {
 }
 
 .empty-state {
-  padding: 40px 0;
-  color: #858796;
+  padding: 36px 24px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #9799a8;
+  background: rgba(255, 255, 255, 0.02);
   text-align: center;
 }
 
@@ -1287,11 +1295,31 @@ h2 {
 }
 
 .show-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 30px;
-  padding: 26px 0 42px;
-  border-bottom: 1px solid #242630;
+  overflow: hidden;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: linear-gradient(125deg, #191a24 0%, #12131b 100%);
+}
+
+.show-header-backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.22;
+  filter: blur(18px) saturate(1.2);
+  transform: scale(1.08);
+  pointer-events: none;
+}
+
+.show-header > *:not(.show-header-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 
 .show-poster {

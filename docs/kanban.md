@@ -19,8 +19,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
 | Média | Troca de faixa de áudio com FFmpeg/FFprobe no ambiente | Garantir FFmpeg e FFprobe configurados no sistema (`CINE_FFMPEG_PATH`/`CINE_FFPROBE_PATH`) para habilitar troca real de faixa de áudio em MKV/MP4 multi-áudio |
-| Média | Polimento visual contínuo (tela de detalhe e player customizado) | Refinar cabeçalho de detalhe com backdrop panorâmico, controles customizados de player e estados vazios ilustrados |
-| Baixa | Adapter HTTP/remoto de fontes autorizadas | Implementar adapter concreto baseado em `src/domain/sourceAdapter.ts` para servidores próprios |
 
 ## Backlog
 
@@ -70,6 +68,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 - Adapters concretos (`LocalSourceAdapter` e `SelfHostedSourceAdapter`) em `scripts/source-adapters.mjs`, cadastro de fontes via `POST /api/sources` na sidebar e edição reversível de metadados (`PATCH /api/catalog/:id`) + arquivamento na página de detalhe.
 - Correção de acentuação em legendas `.srt`/`.vtt` com decodificação UTF-8 e fallback automático para Windows-1252/Latin-1, além de exibição permanente dos seletores de legenda e faixa de áudio no player.
 - Primeira etapa de polimento visual do frontend: pôsteres tipográficos com título/ano para itens sem capa, badge `CC` para legendas disponíveis, fallback de poster no hero e bordas/sombras cinematográficas nos cards e hero.
+- Cabeçalho panorâmico com backdrop na página de detalhe, barra de controles do player com acabamento translúcido e estados vazios estilizados.
+- `SelfHostedSourceAdapter` integrado ao refresh do catálogo e ao streaming remoto (`302 Location`), validado em `scripts/verify-features.mjs`.
 
 ## Regras do quadro
 

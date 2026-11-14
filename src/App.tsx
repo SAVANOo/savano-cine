@@ -949,8 +949,11 @@ function ShowHeader({
     }
   }
 
+  const backdropImage = show.artwork.bannerUrl || show.artwork.posterUrl
+
   return (
-    <section className="show-header">
+    <section className={backdropImage ? 'show-header show-header--backdrop' : 'show-header'}>
+      {backdropImage && <div className="show-header-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${backdropImage})` }} />}
       <div className={`show-poster poster ${show.posterClass}`} style={show.artwork.bannerUrl ? { backgroundImage: `url(${show.artwork.bannerUrl})` } : undefined}>
         {show.artwork.posterUrl && <img className="poster-image" src={show.artwork.posterUrl} alt="" />}
         {!show.artwork.posterUrl && <strong>{show.title}</strong>}
