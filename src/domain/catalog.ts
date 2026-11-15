@@ -19,6 +19,8 @@ export type Profile = {
   name: string
   avatarKey: 'cartman' | 'south-park' | 'ben-10' | 'savino'
   isKids?: boolean
+  hasPassword?: boolean
+  watchedCount?: number
 }
 
 export type SubtitleTrack = {

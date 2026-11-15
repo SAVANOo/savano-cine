@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { execFile, spawn, spawnSync } from 'node:child_process'
@@ -13,10 +14,12 @@ import {
   ensureStremioAddonsTable,
   fetchAddonCatalog,
   fetchAddonMeta,
+  fetchFallbackMeta,
   installStremioAddon,
   listStremioAddons,
   queryAddonStreams,
   queryAddonSubtitles,
+  searchAddonFallback,
   setStremioAddonEnabled,
 } from './stremio-addons.mjs'
 import {
@@ -28,7 +31,11 @@ import {
 import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
+const host = process.env.CINE_HOST?.trim() || '127.0.0.1'
+const accessPin = process.env.CINE_ACCESS_PIN?.trim() || ''
+const pinToken = accessPin ? createHash('sha256').update(`savano-cine:${accessPin}`).digest('hex') : ''
 const root = path.dirname(fileURLToPath(import.meta.url))
+const distDir = path.resolve(root, '..', 'dist')
 const databasePath = path.resolve(root, '..', 'data', 'catalog.db')
 
 if (!existsSync(databasePath)) {
@@ -40,6 +47,7 @@ if (!existsSync(databasePath)) {
 const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
+ensureColumn('profiles', 'passcode_hash', 'TEXT')
 ensureArtworkCandidatesTable()
 ensureWatchlistTable()
 ensureStremioAddonsTable(database)
@@ -69,17 +77,106 @@ createServer(async (request, response) => {
       response.destroy()
     }
   }
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Savano Cine API em http://127.0.0.1:${port}`)
+}).listen(port, host, () => {
+  console.log(`Savano Cine API em http://${host}:${port}`)
 })
 
+const STATIC_MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.json': 'application/json; charset=utf-8',
+  '.ico': 'image/x-icon',
+}
+
+function hashProfilePasscode(profileId, passcode) {
+  return createHash('sha256').update(`profile-lock:${profileId}:${passcode}`).digest('hex')
+}
+
+function isPinAuthenticated(request) {
+  if (!accessPin) return true
+  const headerPin = request.headers['x-cine-pin']
+  if (typeof headerPin === 'string' && headerPin === accessPin) return true
+  const cookieHeader = String(request.headers.cookie || '')
+  const match = cookieHeader.match(/(?:^|;\s*)sc_pin_ok=([^;]+)/)
+  if (!match) return false
+  const received = decodeURIComponent(match[1])
+  if (received.length !== pinToken.length) return false
+  return timingSafeEqual(Buffer.from(received), Buffer.from(pinToken))
+}
+
+function serveStaticDist(pathname, response) {
+  const indexFile = path.join(distDir, 'index.html')
+  if (!existsSync(indexFile)) return false
+  const safePath = decodeURIComponent(pathname.split('?')[0] || '/')
+  const relative = safePath === '/' ? 'index.html' : safePath.replace(/^\/+/, '')
+  let target = path.resolve(distDir, relative)
+  if (!target.startsWith(distDir + path.sep) && target !== indexFile) {
+    return false
+  }
+  if (!existsSync(target) || statSync(target).isDirectory()) {
+    target = indexFile
+  }
+  const ext = path.extname(target).toLowerCase()
+  response.writeHead(200, {
+    'Content-Type': STATIC_MIME_TYPES[ext] || 'application/octet-stream',
+  })
+  createReadStream(target).pipe(response)
+  return true
+}
+
 async function handleApiRequest(request, response) {
-  const requestUrl = new URL(request.url || '/', `http://${request.headers.host}`)
+  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
+
+  if (!requestUrl.pathname.startsWith('/api/')) {
+    if (serveStaticDist(requestUrl.pathname, response)) return
+  }
+
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
 
   if (requestUrl.pathname === '/api/health') {
-    return send(response, 200, { status: 'ok' })
+    return send(response, 200, { status: 'ok', pinRequired: Boolean(accessPin) })
+  }
+
+  if (requestUrl.pathname === '/api/auth/pin') {
+    if (request.method === 'GET') {
+      return send(response, 200, {
+        required: Boolean(accessPin),
+        authenticated: isPinAuthenticated(request),
+      })
+    }
+    if (request.method === 'POST') {
+      if (!accessPin) return send(response, 200, { authenticated: true })
+      let body
+      try {
+        body = await readJson(request)
+      } catch {
+        return send(response, 400, { error: 'JSON inválido.' })
+      }
+      const submitted = typeof body.pin === 'string' ? body.pin.trim() : ''
+      if (!submitted || submitted !== accessPin) {
+        return send(response, 401, { error: 'PIN incorreto.' })
+      }
+      response.setHeader(
+        'Set-Cookie',
+        `sc_pin_ok=${encodeURIComponent(pinToken)}; HttpOnly; SameSite=Lax; Max-Age=86400; Path=/`,
+      )
+      return send(response, 200, { authenticated: true })
+    }
+    if (request.method === 'DELETE') {
+      response.setHeader('Set-Cookie', 'sc_pin_ok=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/')
+      return send(response, 200, { authenticated: false })
+    }
+  }
+
+  if (accessPin && !isPinAuthenticated(request)) {
+    return send(response, 401, { error: 'PIN de acesso necessário.', pinRequired: true })
   }
 
   if (requestUrl.pathname === '/api/logs/errors' && request.method === 'GET') {
@@ -296,22 +393,84 @@ async function handleApiRequest(request, response) {
       if (!name || !avatarKey) return send(response, 400, { error: 'Nome e avatar são obrigatórios.' })
 
       const isKids = body.isKids ? 1 : 0
-      database.prepare(`
-        INSERT INTO profiles (id, name, avatar_key, is_kids)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, avatar_key = excluded.avatar_key, is_kids = excluded.is_kids
-      `).run(id, name, avatarKey, isKids)
+      const rawPassword = typeof body.password === 'string' ? body.password.trim() : ''
+      const clearPassword = Boolean(body.clearPassword)
+      if (clearPassword) {
+        database.prepare(`
+          INSERT INTO profiles (id, name, avatar_key, is_kids, passcode_hash)
+          VALUES (?, ?, ?, ?, NULL)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            avatar_key = excluded.avatar_key,
+            is_kids = excluded.is_kids,
+            passcode_hash = NULL
+        `).run(id, name, avatarKey, isKids)
+      } else {
+        const nextHash = rawPassword ? hashProfilePasscode(id, rawPassword) : null
+        database.prepare(`
+          INSERT INTO profiles (id, name, avatar_key, is_kids, passcode_hash)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            avatar_key = excluded.avatar_key,
+            is_kids = excluded.is_kids,
+            passcode_hash = COALESCE(excluded.passcode_hash, profiles.passcode_hash)
+        `).run(id, name, avatarKey, isKids, nextHash)
+      }
 
-      return send(response, 200, { id, name, avatarKey, isKids })
+      const saved = database.prepare(`
+        SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids,
+          (p.passcode_hash IS NOT NULL AND p.passcode_hash != '') AS hasPassword,
+          (SELECT COUNT(*) FROM watch_progress wp WHERE wp.profile_id = p.id AND wp.watched = 1) AS watchedCount
+        FROM profiles p
+        WHERE p.id = ?
+      `).get(id)
+      return send(response, 200, {
+        ...saved,
+        isKids: Boolean(saved?.isKids),
+        hasPassword: Boolean(saved?.hasPassword),
+        watchedCount: Number(saved?.watchedCount || 0),
+      })
     }
 
     const profiles = database.prepare(`
-      SELECT id, name, avatar_key AS avatarKey, is_kids AS isKids
-      FROM profiles
-      ORDER BY created_at
-    `).all()
+      SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids,
+        (p.passcode_hash IS NOT NULL AND p.passcode_hash != '') AS hasPassword,
+        (SELECT COUNT(*) FROM watch_progress wp WHERE wp.profile_id = p.id AND wp.watched = 1) AS watchedCount
+      FROM profiles p
+      ORDER BY p.created_at
+    `).all().map((row) => ({
+      ...row,
+      isKids: Boolean(row.isKids),
+      hasPassword: Boolean(row.hasPassword),
+      watchedCount: Number(row.watchedCount || 0),
+    }))
 
     return send(response, 200, profiles)
+  }
+
+  const unlockProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)\/unlock$/)
+  if (unlockProfileMatch && request.method === 'POST') {
+    const profileId = decodeURIComponent(unlockProfileMatch[1])
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const row = database.prepare('SELECT id, passcode_hash FROM profiles WHERE id = ?').get(profileId)
+    if (!row) return send(response, 404, { error: 'Perfil não encontrado.' })
+    if (!row.passcode_hash) return send(response, 200, { unlocked: true })
+    const submitted = typeof body.password === 'string' ? body.password.trim() : ''
+    if (!submitted) return send(response, 401, { error: 'Informe a senha do perfil.' })
+    const candidate = hashProfilePasscode(profileId, submitted)
+    if (
+      candidate.length !== row.passcode_hash.length ||
+      !timingSafeEqual(Buffer.from(candidate), Buffer.from(row.passcode_hash))
+    ) {
+      return send(response, 401, { error: 'Senha do perfil incorreta.' })
+    }
+    return send(response, 200, { unlocked: true })
   }
 
   const deleteProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)$/)
@@ -350,6 +509,30 @@ async function handleApiRequest(request, response) {
       return send(response, 201, installed)
     } catch (error) {
       return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao instalar addon.' })
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/search' && request.method === 'GET') {
+    const q = requestUrl.searchParams.get('q') || ''
+    if (!q.trim()) return send(response, 200, { metas: [] })
+    try {
+      const metas = await searchAddonFallback(q)
+      return send(response, 200, { metas })
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha na busca.' })
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/fallback-meta' && request.method === 'GET') {
+    const type = requestUrl.searchParams.get('type') || 'movie'
+    const id = requestUrl.searchParams.get('id') || ''
+    if (!id.trim()) return send(response, 400, { error: 'Parâmetro id é obrigatório.' })
+    try {
+      const meta = await fetchFallbackMeta(type, id)
+      if (!meta) return send(response, 404, { error: 'Metadado não encontrado.' })
+      return send(response, 200, { meta })
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao carregar metadados.' })
     }
   }
 

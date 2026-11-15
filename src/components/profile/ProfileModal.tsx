@@ -20,6 +20,8 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
   const [name, setName] = useState(profile?.name ?? '')
   const [avatarKey, setAvatarKey] = useState<string>(profile?.avatarKey ?? 'savino')
   const [isKids, setIsKids] = useState(Boolean(profile?.isKids))
+  const [password, setPassword] = useState('')
+  const [clearPassword, setClearPassword] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState('')
@@ -40,6 +42,8 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
           name: name.trim(),
           avatarKey,
           isKids,
+          password: password.trim() || undefined,
+          clearPassword,
         }),
       })
       const body = await response.json().catch(() => null)
@@ -98,6 +102,33 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
             />
             Perfil Infantil
           </label>
+          <div className="flex w-full flex-wrap items-end gap-3 border-t border-white/10 pt-3">
+            <label className="min-w-[200px] flex-1 text-xs font-semibold text-[var(--sc-text-secondary)]">
+              {profile?.hasPassword ? 'Nova senha do perfil (opcional)' : 'Senha do perfil (opcional)'}
+              <input
+                type="password"
+                value={password}
+                disabled={clearPassword}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={profile?.hasPassword ? 'Deixe vazio para manter a atual' : 'Ex.: 1234'}
+                className="mt-1.5 h-9 w-full rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none disabled:opacity-40"
+              />
+            </label>
+            {profile?.hasPassword ? (
+              <label className="flex items-center gap-2 pb-2 text-xs text-amber-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={clearPassword}
+                  onChange={(event) => {
+                    setClearPassword(event.target.checked)
+                    if (event.target.checked) setPassword('')
+                  }}
+                  className="accent-[var(--sc-accent)]"
+                />
+                Remover senha deste perfil
+              </label>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex max-h-[52vh] flex-col gap-5 overflow-y-auto pr-1">

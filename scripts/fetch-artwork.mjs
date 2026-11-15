@@ -325,6 +325,14 @@ async function fetchWikipedia(title, movieId, movieYear = null) {
       const data = await details.json()
       const rawOverview = data.query?.pages?.[page.pageid]?.extract?.trim()
       if (!rawOverview || /pode referir-se a|may refer to/i.test(rawOverview.slice(0, 140))) continue
+      if (
+        !/\((?:filme|film)\b/i.test(page.title) &&
+        !/\b(filme|anima[çc][aã]o|longa-metragem|dirigido|dire[çc][aã]o|cinema|film|animated|directed by)\b/i.test(
+          rawOverview.slice(0, 400),
+        )
+      ) {
+        continue
+      }
       return {
         overview: summarizeOverview(rawOverview),
         pageId: page.pageid,

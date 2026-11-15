@@ -12,6 +12,7 @@ import type {
   CatalogRefreshStatus,
 } from './components/modals/CatalogModals'
 import { VideoPlayer } from './components/player/VideoPlayer'
+import { PinGate } from './components/profile/PinGate'
 import { ProfileGate } from './components/profile/ProfileGate'
 import { ProfileModal } from './components/profile/ProfileModal'
 import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
@@ -71,7 +72,16 @@ export function App() {
   }
 
   const initialCookieProfile = getProfileSessionCookie()
+  const [theme, setTheme] = useState<'dark' | 'light' | 'momolada'>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('sc_theme') : null
+    return saved === 'light' || saved === 'momolada' ? saved : 'dark'
+  })
+  const [pinLocked, setPinLocked] = useState(false)
   const [profileGateOpen, setProfileGateOpen] = useState(() => !initialCookieProfile)
+  const [pendingUnlockProfile, setPendingUnlockProfile] = useState<Profile | null>(null)
+  const [unlockPassword, setUnlockPassword] = useState('')
+  const [unlockError, setUnlockError] = useState('')
+  const [unlockedProfiles, setUnlockedProfiles] = useState<Set<string>>(() => new Set())
   const [activeProfileId, setActiveProfileId] = useState(() => initialCookieProfile || 'profile-savio')
   const [catalog, setCatalog] = useState<LibraryItem[]>(
     () => readCachedCatalog(initialCookieProfile || 'profile-savio') ?? mockLibrary,
@@ -118,7 +128,16 @@ export function App() {
     setSelectedShowId(item?.id ?? null)
   }, [])
 
-  const handleProfileChange = useCallback(
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem('sc_theme', theme)
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [theme])
+
+  const completeProfileSwitch = useCallback(
     (nextId: string) => {
       setProfileSessionCookie(nextId)
       setProfileGateOpen(false)
@@ -135,6 +154,20 @@ export function App() {
       window.setTimeout(() => setProfileFading(false), 240)
     },
     [activeProfileId],
+  )
+
+  const handleProfileChange = useCallback(
+    (nextId: string) => {
+      const target = profiles.find((p) => p.id === nextId)
+      if (target?.hasPassword && !unlockedProfiles.has(nextId)) {
+        setPendingUnlockProfile(target)
+        setUnlockPassword('')
+        setUnlockError('')
+        return
+      }
+      completeProfileSwitch(nextId)
+    },
+    [completeProfileSwitch, profiles, unlockedProfiles],
   )
 
   useEffect(() => {
@@ -187,6 +220,17 @@ export function App() {
       window.clearTimeout(timer)
     }
   }, [query])
+
+  useEffect(() => {
+    fetch('/api/auth/pin')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { required?: boolean; authenticated?: boolean } | null) => {
+        if (data?.required && !data.authenticated) {
+          setPinLocked(true)
+        }
+      })
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -621,7 +665,10 @@ export function App() {
         activeProfile={activeProfile}
         profiles={profiles}
         activeKind={activeKind}
-        onSelectKind={setActiveKind}
+        onSelectKind={(nextKind) => {
+          setActiveKind(nextKind)
+          goHome()
+        }}
         onSelectProfile={handleProfileChange}
         onOpenProfileEditor={(profile) => {
           setEditingProfile(profile)
@@ -655,6 +702,8 @@ export function App() {
         }
         adminBadgeCount={reviewItems.length + artworkCandidates.length}
         gamepadConnected={Boolean(connectedGamepad)}
+        theme={theme}
+        onChangeTheme={setTheme}
       />
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-8 sm:py-7">
@@ -958,7 +1007,16 @@ export function App() {
         />
       )}
 
-      {profileGateOpen && !profileEditorOpen && (
+      {pinLocked && (
+        <PinGate
+          onUnlocked={() => {
+            setPinLocked(false)
+            refreshCatalogAndSources()
+          }}
+        />
+      )}
+
+      {!pinLocked && profileGateOpen && !profileEditorOpen && (
         <ProfileGate
           profiles={profiles}
           backdropUrl={heroItems[0]?.artwork.bannerUrl || heroItems[0]?.artwork.posterUrl}
@@ -972,6 +1030,68 @@ export function App() {
             setProfileEditorOpen(true)
           }}
         />
+      )}
+
+      {pendingUnlockProfile && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Desbloquear perfil ${pendingUnlockProfile.name}`}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+        >
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault()
+              setUnlockError('')
+              try {
+                const res = await fetch(`/api/profiles/${encodeURIComponent(pendingUnlockProfile.id)}/unlock`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ password: unlockPassword }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) {
+                  setUnlockError(data?.error || 'Senha incorreta.')
+                  return
+                }
+                const unlockedId = pendingUnlockProfile.id
+                setUnlockedProfiles((prev) => new Set(prev).add(unlockedId))
+                setPendingUnlockProfile(null)
+                setUnlockPassword('')
+                completeProfileSwitch(unlockedId)
+              } catch {
+                setUnlockError('Falha ao validar senha do perfil.')
+              }
+            }}
+            className="w-full max-w-sm space-y-4 rounded-[var(--sc-radius-xl)] border border-white/15 bg-[#12141c] p-6 text-white shadow-2xl"
+          >
+            <h2 className="m-0 text-lg font-bold">Senha do perfil: {pendingUnlockProfile.name}</h2>
+            <input
+              type="password"
+              autoFocus
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              placeholder="Digite a senha deste perfil"
+              className="w-full rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-white outline-none focus:border-white/50"
+            />
+            {unlockError ? <p className="text-xs text-red-400">{unlockError}</p> : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingUnlockProfile(null)}
+                className="rounded-[var(--sc-radius-md)] border border-white/15 bg-transparent px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="rounded-[var(--sc-radius-md)] bg-[var(--sc-accent)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--sc-accent-hover)] cursor-pointer"
+              >
+                Desbloquear
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       <ProfileModal

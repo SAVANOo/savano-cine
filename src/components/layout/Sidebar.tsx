@@ -5,6 +5,8 @@ import {
   FolderPlus,
   Gamepad2,
   Home,
+  Lock,
+  Palette,
   Pencil,
   PlayCircle,
   Plus,
@@ -38,6 +40,8 @@ type SidebarProps = {
   refreshStatus: string
   adminBadgeCount: number
   gamepadConnected?: boolean
+  theme: 'dark' | 'light' | 'momolada'
+  onChangeTheme: (theme: 'dark' | 'light' | 'momolada') => void
 }
 
 /** Persistent navigation rail with responsive brand collapse, profiles, and catalog tools. */
@@ -61,6 +65,8 @@ export function Sidebar({
   refreshStatus,
   adminBadgeCount,
   gamepadConnected,
+  theme,
+  onChangeTheme,
 }: SidebarProps) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [addingSource, setAddingSource] = useState(false)
@@ -179,7 +185,15 @@ export function Sidebar({
                         style.badge
                       )}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1 truncate">
+                        <span className="truncate">{profile.name}</span>
+                        {profile.hasPassword && <Lock className="h-3 w-3 shrink-0 text-amber-300" />}
+                      </span>
+                      <span className="block text-[10px] text-[var(--sc-text-muted)]">
+                        {profile.watchedCount ?? 0} assistido(s)
+                      </span>
+                    </span>
                     {selected && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />}
                   </button>
                   <button
@@ -226,7 +240,6 @@ export function Sidebar({
               type="button"
               onClick={() => {
                 onSelectKind(key)
-                onGoHome()
               }}
               className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
                 active
@@ -276,6 +289,33 @@ export function Sidebar({
 
       {/* Compact Sources & Refresh */}
       <div className="mt-auto hidden flex-col gap-2.5 border-t border-[var(--sc-border-subtle)] pt-3 lg:flex">
+        <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-2">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sc-text-secondary)]">
+            <Palette className="h-3.5 w-3.5" />
+            <span>Tema</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {[
+              { id: 'dark' as const, label: 'Escuro' },
+              { id: 'light' as const, label: 'Claro' },
+              { id: 'momolada' as const, label: 'Momolada' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onChangeTheme(opt.id)}
+                className={`rounded-[var(--sc-radius-sm)] px-1.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                  theme === opt.id
+                    ? 'bg-[var(--sc-accent)] text-white'
+                    : 'bg-black/20 text-[var(--sc-text-secondary)] hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {gamepadConnected && (
           <div className="flex items-center gap-2 rounded-[var(--sc-radius-md)] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-200">
             <Gamepad2 className="h-3.5 w-3.5 shrink-0" />

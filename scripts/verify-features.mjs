@@ -222,6 +222,37 @@ try {
   })
   assert.equal(badAddon.status, 400)
   console.log('PASS endpoints de addons Stremio (/api/addons) validam protocolo HTTP/HTTPS')
+
+  // 10. Verificar contador de assistidos e senha opcional no perfil
+  const setPass = await api('/api/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: tempIds.profiles[0],
+      name: 'Teste Pass',
+      avatarKey: 'savino',
+      password: 'segredo-verify',
+    }),
+  })
+  assert.equal(setPass.status, 200)
+  assert.equal(setPass.body?.hasPassword, true)
+  assert.equal(typeof setPass.body?.watchedCount, 'number')
+
+  const wrongUnlock = await api(`/api/profiles/${encodeURIComponent(tempIds.profiles[0])}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'errada' }),
+  })
+  assert.equal(wrongUnlock.status, 401)
+
+  const rightUnlock = await api(`/api/profiles/${encodeURIComponent(tempIds.profiles[0])}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'segredo-verify' }),
+  })
+  assert.equal(rightUnlock.status, 200)
+  assert.equal(rightUnlock.body?.unlocked, true)
+  console.log('PASS senha por perfil e contador watchedCount validados')
 } finally {
   database.prepare('DELETE FROM artwork_candidates WHERE id = ?').run(tempIds.candidateId)
   for (const profileId of tempIds.profiles) {

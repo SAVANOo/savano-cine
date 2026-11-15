@@ -33,3 +33,64 @@
   --sc-cursor-default: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M4 3 L19 12 L11.5 14 L8.5 21 Z' fill='%2311131b' stroke='%23e50914' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E") 4 3, auto;
   --sc-cursor-play: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='11' fill='%23e50914' stroke='%23ffffff' stroke-width='2'/%3E%3Cpolygon points='11,9 20,14 11,19' fill='%23ffffff'/%3E%3C/svg%3E") 14 14, pointer;
 }
+
+:root[data-theme="momolada"] {
+  --sc-bg-canvas: #1b0b14;
+  --sc-bg-elevated: #28101d;
+  --sc-bg-surface: #341627;
+  --sc-bg-surface-hover: #441d33;
+  --sc-bg-glass: rgba(27, 11, 20, 0.86);
+
+  --sc-border-subtle: rgba(255, 165, 212, 0.14);
+  --sc-border-strong: rgba(255, 165, 212, 0.28);
+  --sc-border-focus: rgba(255, 79, 163, 0.8);
+
+  --sc-text-primary: #fff3f9;
+  --sc-text-secondary: #f1bcd7;
+  --sc-text-muted: #c684a7;
+
+  --sc-accent: #ff4fa3;
+  --sc-accent-hover: #ff70b5;
+  --sc-accent-soft: rgba(255, 79, 163, 0.22);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --sc-bg-canvas: #f3f4f8;
+  --sc-bg-elevated: #ffffff;
+  --sc-bg-surface: #e7eaf2;
+  --sc-bg-surface-hover: #dce1ec;
+  --sc-bg-glass: rgba(255, 255, 255, 0.88);
+
+  --sc-border-subtle: rgba(17, 19, 26, 0.11);
+  --sc-border-strong: rgba(17, 19, 26, 0.22);
+  --sc-border-focus: rgba(217, 4, 41, 0.72);
+
+  --sc-text-primary: #11131a;
+  --sc-text-secondary: #434a5c;
+  --sc-text-muted: #666e82;
+
+  --sc-accent: #d90429;
+  --sc-accent-hover: #ef233c;
+  --sc-accent-soft: rgba(217, 4, 41, 0.14);
+  --sc-shadow-card: 0 10px 24px rgba(17, 19, 26, 0.08);
+}
+
+:root[data-theme="light"] aside,
+:root[data-theme="light"] main {
+  color: var(--sc-text-primary);
+}
+
+:root[data-theme="light"] aside .text-white,
+:root[data-theme="light"] main > header .text-white,
+:root[data-theme="light"] main > section > h1,
+:root[data-theme="light"] main section h2,
+:root[data-theme="light"] main article h3 {
+  color: var(--sc-text-primary);
+}
+
+:root[data-theme="light"] main header input,
+:root[data-theme="light"] main header select {
+  color: var(--sc-text-primary);
+  background: var(--sc-bg-elevated);
+}

@@ -66,6 +66,9 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
   const [addonSubtitles, setAddonSubtitles] = useState<AddonSubtitleItem[]>([])
   const [loadingStreams, setLoadingStreams] = useState(false)
   const [streamTargetLabel, setStreamTargetLabel] = useState('')
+  const [streamSearchQuery, setStreamSearchQuery] = useState('')
+  const [streamSearchResults, setStreamSearchResults] = useState<AddonMetaItem[]>([])
+  const [searchingStreamTitles, setSearchingStreamTitles] = useState(false)
 
   const loadAddons = useCallback(async () => {
     try {
@@ -261,6 +264,50 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       setFeedback('Erro ao consultar streams nos addons.')
     } finally {
       setLoadingStreams(false)
+    }
+  }
+
+  async function runFallbackSearch(event: FormEvent) {
+    event.preventDefault()
+    if (!streamSearchQuery.trim()) return
+    setSearchingStreamTitles(true)
+    setFeedback('')
+    setActiveItem(null)
+    setStreams([])
+    try {
+      const response = await fetch(`/api/addons/search?q=${encodeURIComponent(streamSearchQuery.trim())}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        setFeedback(payload?.error || 'Não foi possível buscar títulos.')
+        setStreamSearchResults([])
+        return
+      }
+      setStreamSearchResults(Array.isArray(payload?.metas) ? payload.metas : [])
+    } catch {
+      setFeedback('Erro ao buscar títulos para consulta nos addons.')
+      setStreamSearchResults([])
+    } finally {
+      setSearchingStreamTitles(false)
+    }
+  }
+
+  async function openFallbackItem(item: AddonMetaItem) {
+    setActiveItem(item)
+    setStreams([])
+    setAddonSubtitles([])
+    setStreamTargetLabel('')
+    setLoadingMeta(true)
+    try {
+      const params = new URLSearchParams({ type: item.type, id: item.id })
+      const response = await fetch(`/api/addons/fallback-meta?${params.toString()}`)
+      const payload = await response.json().catch(() => null)
+      if (response.ok && payload?.meta) {
+        setActiveItem(payload.meta)
+      }
+    } catch {
+      // keep summary item
+    } finally {
+      setLoadingMeta(false)
     }
   }
 
@@ -461,9 +508,64 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
               ))}
             </div>
           )}
+        </div>
+      ) : addons.length > 0 ? (
+        <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+          <div>
+            <h3 className="text-base font-bold text-white">Buscar título ou ID IMDb para consultar streams</h3>
+            <p className="mt-1 text-xs text-[var(--sc-text-secondary)]">
+              Addons apenas de <code className="text-white/90">stream</code> não trazem catálogo próprio. Pesquise um filme, série ou ID IMDb (ex.: <code className="text-white/90">Matrix</code> ou <code className="text-white/90">tt0133093</code>) abaixo para listar os streams disponíveis nos seus addons ativos.
+            </p>
+          </div>
+          <form onSubmit={runFallbackSearch} className="flex flex-wrap gap-2">
+            <input
+              type="search"
+              value={streamSearchQuery}
+              onChange={(e) => setStreamSearchQuery(e.target.value)}
+              placeholder="Digite o nome do filme/série ou tt..."
+              className="min-w-[240px] flex-1 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-white outline-none focus:border-white/40"
+            />
+            <Button type="submit" disabled={searchingStreamTitles}>
+              <Search className="h-4 w-4" />
+              {searchingStreamTitles ? 'Buscando...' : 'Buscar título'}
+            </Button>
+          </form>
 
-          {activeItem ? (
-            <div className="mt-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-black/40 p-4 space-y-4">
+          {streamSearchResults.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
+              {streamSearchResults.map((item) => (
+                <button
+                  key={`fb-${item.type}-${item.id}`}
+                  type="button"
+                  onClick={() => void openFallbackItem(item)}
+                  className={`group overflow-hidden rounded-[var(--sc-radius-md)] border text-left transition cursor-pointer ${
+                    activeItem?.id === item.id
+                      ? 'border-[var(--sc-accent)] bg-white/10'
+                      : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30'
+                  }`}
+                >
+                  <div className="aspect-[2/3] w-full bg-black/50">
+                    {item.poster ? (
+                      <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
+                        {item.type === 'series' ? <Tv className="h-8 w-8" /> : <Film className="h-8 w-8" />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <p className="truncate text-xs font-semibold text-white">{item.name}</p>
+                    <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeItem ? (
+        <div className="mt-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-black/40 p-4 space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-2xl space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -632,8 +734,6 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
               ) : null}
             </div>
           ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

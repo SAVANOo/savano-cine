@@ -333,3 +333,95 @@ export async function queryAddonSubtitles(database, { type, id }) {
     .filter((entry) => entry.status === 'fulfilled')
     .flatMap((entry) => entry.value)
 }
+
+export async function searchAddonFallback(query) {
+  const q = String(query || '').trim()
+  if (!q) return []
+
+  if (/^tt\d{5,10}$/i.test(q)) {
+    const id = q.toLowerCase()
+    const results = await Promise.allSettled(
+      ['movie', 'series'].map(async (type) => {
+        const res = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${encodeURIComponent(id)}.json`, {
+          signal: AbortSignal.timeout(6000),
+        })
+        if (!res.ok) return null
+        const data = await res.json().catch(() => null)
+        const meta = data?.meta
+        if (!meta) return null
+        return {
+          id: String(meta.id || id),
+          type: String(meta.type || type),
+          name: String(meta.name || id),
+          poster: typeof meta.poster === 'string' ? meta.poster : null,
+          background: typeof meta.background === 'string' ? meta.background : null,
+          description: typeof meta.description === 'string' ? meta.description : '',
+          releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+          genres: Array.isArray(meta.genres) ? meta.genres : [],
+        }
+      }),
+    )
+    return results
+      .filter((r) => r.status === 'fulfilled' && r.value)
+      .map((r) => r.value)
+  }
+
+  const results = await Promise.allSettled(
+    ['movie', 'series'].map(async (type) => {
+      const url = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(q)}.json`
+      const res = await fetch(url, { signal: AbortSignal.timeout(7000) })
+      if (!res.ok) return []
+      const data = await res.json().catch(() => ({}))
+      const metas = Array.isArray(data?.metas) ? data.metas : []
+      return metas.slice(0, 12).map((meta) => ({
+        id: String(meta.id || ''),
+        type: String(meta.type || type),
+        name: String(meta.name || 'Sem título'),
+        poster: typeof meta.poster === 'string' ? meta.poster : null,
+        background: typeof meta.background === 'string' ? meta.background : null,
+        description: typeof meta.description === 'string' ? meta.description : '',
+        releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+        genres: Array.isArray(meta.genres) ? meta.genres.filter((g) => typeof g === 'string') : [],
+      }))
+    }),
+  )
+
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .flatMap((r) => r.value)
+    .slice(0, 24)
+}
+
+export async function fetchFallbackMeta(type, metaId) {
+  assertSafeSegment(type, 'Tipo')
+  assertSafeSegment(metaId, 'ID de mídia')
+  const url = `https://v3-cinemeta.strem.io/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) return null
+  const payload = await response.json().catch(() => ({}))
+  const meta = payload?.meta
+  if (!meta) return null
+  return {
+    id: String(meta.id || metaId),
+    type: String(meta.type || type),
+    name: String(meta.name || 'Sem título'),
+    poster: typeof meta.poster === 'string' ? meta.poster : null,
+    background: typeof meta.background === 'string' ? meta.background : null,
+    description: typeof meta.description === 'string' ? meta.description : '',
+    releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+    genres: Array.isArray(meta.genres) ? meta.genres : [],
+    videos: Array.isArray(meta.videos)
+      ? meta.videos.map((v) => ({
+          id: String(v.id || ''),
+          title: String(v.title || v.name || `Episódio ${v.episode ?? ''}`),
+          season: typeof v.season === 'number' ? v.season : null,
+          episode: typeof v.episode === 'number' ? v.episode : null,
+          thumbnail: typeof v.thumbnail === 'string' ? v.thumbnail : null,
+          overview: typeof v.overview === 'string' ? v.overview : '',
+        }))
+      : [],
+  }
+}

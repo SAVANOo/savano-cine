@@ -100,4 +100,23 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(gate).toBeHidden()
     await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
   })
+
+  test('Navbar Filmes e Séries filtram o catálogo ao clicar', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText(/Novo volume/i)).toBeVisible()
+    await page.getByRole('navigation').getByRole('button', { name: 'Filmes', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Filmes', exact: true })).toBeVisible()
+    await page.getByRole('navigation').getByRole('button', { name: 'Séries', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Séries', exact: true })).toBeVisible()
+  })
+
+  test('Alternador de temas aplica Escuro, Claro e Momolada', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Momolada', exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'momolada')
+    await page.getByRole('button', { name: 'Claro', exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await page.getByRole('button', { name: 'Escuro', exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
 })

@@ -1,4 +1,4 @@
-import { Pencil, Plus } from 'lucide-react'
+import { Lock, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 import type { Profile } from '../../domain/catalog'
 import { getAvatarStyle } from '../../domain/uiHelpers'
@@ -77,6 +77,15 @@ export function ProfileGate({
                     <span className="text-3xl font-black text-white">{style.badge}</span>
                   )}
 
+                  {Boolean(profile.hasPassword) && (
+                    <span
+                      title="Perfil protegido por senha"
+                      className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+
                   {Boolean(profile.isKids) && (
                     <span className="absolute right-1.5 bottom-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
                       Infantil
@@ -93,6 +102,9 @@ export function ProfileGate({
                 </div>
                 <span className="max-w-full truncate text-sm font-semibold text-[var(--sc-text-secondary)] transition group-hover:text-white">
                   {profile.name}
+                </span>
+                <span className="text-[11px] text-[var(--sc-text-muted)]">
+                  {profile.watchedCount ?? 0} assistido(s)
                 </span>
               </button>
             )
