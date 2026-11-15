@@ -35,23 +35,32 @@
 }
 
 :root[data-theme="momolada"] {
-  --sc-bg-canvas: #1b0b14;
-  --sc-bg-elevated: #28101d;
-  --sc-bg-surface: #341627;
-  --sc-bg-surface-hover: #441d33;
-  --sc-bg-glass: rgba(27, 11, 20, 0.86);
+  color-scheme: light;
+  --sc-bg-canvas: #ffeaf4;
+  --sc-bg-elevated: #fff6fb;
+  --sc-bg-surface: #ffd6ea;
+  --sc-bg-surface-hover: #ffc2e0;
+  --sc-bg-glass: rgba(255, 240, 248, 0.9);
 
-  --sc-border-subtle: rgba(255, 165, 212, 0.14);
-  --sc-border-strong: rgba(255, 165, 212, 0.28);
-  --sc-border-focus: rgba(255, 79, 163, 0.8);
+  --sc-border-subtle: rgba(214, 31, 122, 0.18);
+  --sc-border-strong: rgba(214, 31, 122, 0.34);
+  --sc-border-focus: rgba(225, 29, 116, 0.85);
 
-  --sc-text-primary: #fff3f9;
-  --sc-text-secondary: #f1bcd7;
-  --sc-text-muted: #c684a7;
+  --sc-text-primary: #3d0c27;
+  --sc-text-secondary: #74264f;
+  --sc-text-muted: #9e4d78;
 
-  --sc-accent: #ff4fa3;
-  --sc-accent-hover: #ff70b5;
-  --sc-accent-soft: rgba(255, 79, 163, 0.22);
+  --sc-accent: #e11d74;
+  --sc-accent-hover: #f43f8e;
+  --sc-accent-soft: rgba(225, 29, 116, 0.16);
+  --sc-shadow-card: 0 10px 24px rgba(214, 31, 122, 0.12);
+}
+
+:root[data-theme="momolada"] body {
+  background-image:
+    radial-gradient(circle at 20px 20px, rgba(255, 105, 180, 0.12) 2px, transparent 0),
+    radial-gradient(circle at 60px 60px, rgba(255, 182, 217, 0.18) 2px, transparent 0);
+  background-size: 80px 80px;
 }
 
 :root[data-theme="light"] {
@@ -76,11 +85,18 @@
   --sc-shadow-card: 0 10px 24px rgba(17, 19, 26, 0.08);
 }
 
+:root[data-theme="momolada"] aside,
+:root[data-theme="momolada"] main,
 :root[data-theme="light"] aside,
 :root[data-theme="light"] main {
   color: var(--sc-text-primary);
 }
 
+:root[data-theme="momolada"] aside .text-white,
+:root[data-theme="momolada"] main > header .text-white,
+:root[data-theme="momolada"] main > section > h1,
+:root[data-theme="momolada"] main section h2,
+:root[data-theme="momolada"] main article h3,
 :root[data-theme="light"] aside .text-white,
 :root[data-theme="light"] main > header .text-white,
 :root[data-theme="light"] main > section > h1,
@@ -89,6 +105,8 @@
   color: var(--sc-text-primary);
 }
 
+:root[data-theme="momolada"] main header input,
+:root[data-theme="momolada"] main header select,
 :root[data-theme="light"] main header input,
 :root[data-theme="light"] main header select {
   color: var(--sc-text-primary);

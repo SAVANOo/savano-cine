@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AddonStreamModal, type AddonMetaSummary } from './components/addons/AddonStreamModal'
 import { AdminView } from './components/admin/AdminView'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
@@ -48,14 +49,15 @@ function getInitialDeepLinkId(): string | null {
 }
 
 export function App() {
-  const [activeKind, setActiveKind] = useState<'Todos' | 'Filme' | 'Série' | 'Continuar'>('Todos')
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [addonSearchResults, setAddonSearchResults] = useState<
-    Array<{ id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; addonName: string }>
+    Array<{ id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string; addonName: string }>
   >([])
+  const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(null)
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons'>('review')
@@ -180,19 +182,20 @@ export function App() {
       fetch('/api/addons')
         .then((res) => (res.ok ? res.json() : []))
         .then(async (addons: Array<{ id: string; name: string; enabled: boolean; catalogs: Array<{ type: string; id: string }> }>) => {
-          const enabled = (addons || []).filter((a) => a.enabled && a.catalogs?.length > 0)
-          if (enabled.length === 0) {
+          const enabledAddons = (addons || []).filter((a) => a.enabled)
+          if (enabledAddons.length === 0) {
             if (active) setAddonSearchResults([])
             return
           }
-          const lookups = enabled.slice(0, 3).flatMap((addon) =>
+          const catalogAddons = enabledAddons.filter((a) => a.catalogs?.length > 0)
+          const lookups = catalogAddons.slice(0, 3).flatMap((addon) =>
             addon.catalogs.slice(0, 2).map((cat) =>
               fetch(
                 `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
               )
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) =>
-                  (data?.metas || []).slice(0, 4).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null }) => ({
+                  (data?.metas || []).slice(0, 4).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
                     ...meta,
                     addonName: addon.name,
                   })),
@@ -203,12 +206,23 @@ export function App() {
           const chunks = await Promise.all(lookups)
           if (!active) return
           const seen = new Set<string>()
-          const merged = chunks.flat().filter((item) => {
+          let merged = chunks.flat().filter((item) => {
             const key = `${item.type}:${item.id}`
             if (seen.has(key)) return false
             seen.add(key)
             return true
           })
+          if (merged.length === 0) {
+            const fallbackRes = await fetch(`/api/addons/search?q=${encodeURIComponent(trimmed)}`).catch(() => null)
+            const fallbackData = fallbackRes && fallbackRes.ok ? await fallbackRes.json().catch(() => null) : null
+            if (!active) return
+            merged = (fallbackData?.metas || []).slice(0, 12).map(
+              (meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
+                ...meta,
+                addonName: enabledAddons[0]?.name || 'Addons',
+              }),
+            )
+          }
           setAddonSearchResults(merged.slice(0, 12))
         })
         .catch(() => {
@@ -464,7 +478,7 @@ export function App() {
     const list = catalog.filter((item) => {
       if (activeKind === 'Continuar') {
         if (!item.resume && (item.progress ?? 0) <= 0) return false
-      } else if (activeKind !== 'Todos' && item.kind !== activeKind) {
+      } else if (activeKind !== 'Todos' && activeKind !== 'Local' && item.kind !== activeKind) {
         return false
       }
       if (activeGenre !== 'Todos' && !(item.genres ?? []).includes(activeGenre)) return false
@@ -834,11 +848,13 @@ export function App() {
               <h1 className="m-0 text-xl font-bold text-white">
                 {activeKind === 'Todos'
                   ? 'Resultados'
-                  : activeKind === 'Continuar'
-                    ? 'Continuar assistindo'
-                    : activeKind === 'Filme'
-                      ? 'Filmes'
-                      : 'Séries'}
+                  : activeKind === 'Local'
+                    ? 'Acervo Local'
+                    : activeKind === 'Continuar'
+                      ? 'Continuar assistindo'
+                      : activeKind === 'Filme'
+                        ? 'Filmes'
+                        : 'Séries'}
                 {activeGenre !== 'Todos' ? ` · ${translateGenre(activeGenre)}` : ''}
               </h1>
               <span className="text-xs text-[var(--sc-text-muted)]">
@@ -899,10 +915,16 @@ export function App() {
                     <button
                       key={`addon-${item.type}-${item.id}`}
                       type="button"
-                      onClick={() => {
-                        setAdminTab('addons')
-                        setAdminOpen(true)
-                      }}
+                      onClick={() =>
+                        setActiveAddonItem({
+                          id: item.id,
+                          type: item.type,
+                          name: item.name,
+                          poster: item.poster,
+                          description: item.description || '',
+                          releaseInfo: item.releaseInfo,
+                        })
+                      }
                       className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
                     >
                       <div className="aspect-[2/3] w-full bg-black/50">
@@ -1006,6 +1028,12 @@ export function App() {
           }}
         />
       )}
+
+      <AddonStreamModal
+        item={activeAddonItem}
+        onClose={() => setActiveAddonItem(null)}
+        onPlayStream={(media) => setSelectedMedia(media)}
+      />
 
       {pinLocked && (
         <PinGate

@@ -4,6 +4,7 @@ import {
   Film,
   FolderPlus,
   Gamepad2,
+  HardDrive,
   Home,
   Lock,
   Palette,
@@ -13,6 +14,7 @@ import {
   Puzzle,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   Tv,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -25,8 +27,8 @@ type SidebarProps = {
   sourcesError: string
   activeProfile: Profile
   profiles: Profile[]
-  activeKind: 'Todos' | 'Filme' | 'Série' | 'Continuar'
-  onSelectKind: (kind: 'Todos' | 'Filme' | 'Série' | 'Continuar') => void
+  activeKind: 'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar'
+  onSelectKind: (kind: 'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar') => void
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
@@ -107,7 +109,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-5 border-b border-[var(--sc-border-subtle)] bg-[#0b0c12] p-4 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-5">
+    <aside className="flex w-full shrink-0 flex-col gap-5 border-b border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-4 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-5">
       {/* Clickable Brand */}
       <div className="flex items-center justify-between gap-3">
         <button
@@ -116,11 +118,23 @@ export function Sidebar({
           title="Voltar para o início"
           className="flex items-center gap-2.5 border-0 bg-transparent p-0 text-left cursor-pointer"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--sc-radius-md)] bg-gradient-to-br from-[#e50914] to-[#9b1c31] text-base font-black text-white shadow-lg shadow-red-950/50">
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--sc-radius-md)] bg-gradient-to-br from-[#e50914] to-[#9b1c31] text-base font-black text-white shadow-lg shadow-red-950/30">
             S
+            {theme === 'momolada' && (
+              <svg
+                viewBox="0 0 24 14"
+                aria-hidden="true"
+                className="absolute -top-2 -right-2 h-4 w-5 drop-shadow"
+              >
+                <path d="M12 7 L3 2 Q1 7 3 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
+                <path d="M12 7 L21 2 Q23 7 21 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
+                <circle cx="12" cy="7" r="2.6" fill="#ff85c0" stroke="#fff" strokeWidth="1" />
+              </svg>
+            )}
           </span>
-          <span className="hidden text-base font-bold tracking-tight text-white md:inline">
+          <span className="hidden items-center gap-1.5 text-base font-bold tracking-tight text-white md:inline-flex">
             Savano Cine
+            {theme === 'momolada' && <Sparkles className="h-3.5 w-3.5 text-[var(--sc-accent)]" />}
           </span>
         </button>
       </div>
@@ -230,6 +244,7 @@ export function Sidebar({
         {[
           { key: 'Todos' as const, label: 'Início', icon: Home },
           { key: 'Continuar' as const, label: 'Continuar assistindo', icon: PlayCircle },
+          { key: 'Local' as const, label: 'Acervo Local', icon: HardDrive },
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {

@@ -1,55 +1,17 @@
-import { ExternalLink, Film, Globe, Play, Plus, Power, Puzzle, Search, Trash2, Tv } from 'lucide-react'
+import { Film, Globe, Plus, Power, Puzzle, Search, Trash2, Tv } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { StremioAddonDescriptor } from '../../domain/sourceAdapter'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-
-type AddonMetaItem = {
-  id: string
-  type: string
-  name: string
-  poster: string | null
-  background: string | null
-  description: string
-  releaseInfo: string | null
-  genres: string[]
-  videos?: Array<{
-    id: string
-    title: string
-    season: number | null
-    episode: number | null
-    thumbnail: string | null
-    overview: string
-  }>
-}
-
-type AddonStreamItem = {
-  addonId: string
-  addonName: string
-  name: string
-  title: string
-  url: string | null
-  isDirectHttp: boolean
-  ytId: string | null
-  infoHash: string | null
-  fileIdx?: number | null
-}
-
-type AddonSubtitleItem = {
-  addonId: string
-  addonName: string
-  id: string
-  lang: string
-  url: string
-}
+import { AddonStreamModal, type AddonMetaSummary } from './AddonStreamModal'
 
 type StremioAddonsPanelProps = {
   onPlayStream: (media: PlayableMedia) => void
 }
 
-/** Stremio-compatible Addon manager, catalog explorer, and HTTP stream launcher. */
+/** Stremio-compatible Addon manager, catalog explorer, and instant stream modal launcher. */
 export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
   const [addons, setAddons] = useState<StremioAddonDescriptor[]>([])
   const [manifestUrl, setManifestUrl] = useState('')
@@ -58,16 +20,11 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
   const [selectedAddonId, setSelectedAddonId] = useState('')
   const [selectedCatalogKey, setSelectedCatalogKey] = useState('')
   const [catalogSearch, setCatalogSearch] = useState('')
-  const [catalogItems, setCatalogItems] = useState<AddonMetaItem[]>([])
+  const [catalogItems, setCatalogItems] = useState<AddonMetaSummary[]>([])
   const [loadingCatalog, setLoadingCatalog] = useState(false)
-  const [activeItem, setActiveItem] = useState<AddonMetaItem | null>(null)
-  const [loadingMeta, setLoadingMeta] = useState(false)
-  const [streams, setStreams] = useState<AddonStreamItem[]>([])
-  const [addonSubtitles, setAddonSubtitles] = useState<AddonSubtitleItem[]>([])
-  const [loadingStreams, setLoadingStreams] = useState(false)
-  const [streamTargetLabel, setStreamTargetLabel] = useState('')
+  const [activeItem, setActiveItem] = useState<AddonMetaSummary | null>(null)
   const [streamSearchQuery, setStreamSearchQuery] = useState('')
-  const [streamSearchResults, setStreamSearchResults] = useState<AddonMetaItem[]>([])
+  const [streamSearchResults, setStreamSearchResults] = useState<AddonMetaSummary[]>([])
   const [searchingStreamTitles, setSearchingStreamTitles] = useState(false)
 
   const loadAddons = useCallback(async () => {
@@ -220,60 +177,11 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
     }
   }
 
-  async function openCatalogItem(item: AddonMetaItem) {
-    setActiveItem(item)
-    setStreams([])
-    setStreamTargetLabel('')
-    if (selectedAddon && selectedAddon.resources.includes('meta')) {
-      setLoadingMeta(true)
-      try {
-        const params = new URLSearchParams({ type: item.type, id: item.id })
-        const response = await fetch(`/api/addons/${encodeURIComponent(selectedAddon.id)}/meta?${params.toString()}`)
-        const payload = await response.json().catch(() => null)
-        if (response.ok && payload?.meta) {
-          setActiveItem(payload.meta)
-        }
-      } catch {
-        // keep summary item
-      } finally {
-        setLoadingMeta(false)
-      }
-    }
-  }
-
-  async function searchStreams(type: string, targetId: string, label: string) {
-    setLoadingStreams(true)
-    setStreamTargetLabel(label)
-    setStreams([])
-    setAddonSubtitles([])
-    try {
-      const params = new URLSearchParams({ type, id: targetId })
-      const [streamRes, subRes] = await Promise.all([
-        fetch(`/api/addons/streams?${params.toString()}`),
-        fetch(`/api/addons/subtitles?${params.toString()}`),
-      ])
-      const payload = await streamRes.json().catch(() => null)
-      const subPayload = await subRes.json().catch(() => null)
-      if (!streamRes.ok) {
-        setFeedback(payload?.error || 'Erro ao buscar streams.')
-        return
-      }
-      setStreams(Array.isArray(payload?.streams) ? payload.streams : [])
-      setAddonSubtitles(Array.isArray(subPayload?.subtitles) ? subPayload.subtitles : [])
-    } catch {
-      setFeedback('Erro ao consultar streams nos addons.')
-    } finally {
-      setLoadingStreams(false)
-    }
-  }
-
   async function runFallbackSearch(event: FormEvent) {
     event.preventDefault()
     if (!streamSearchQuery.trim()) return
     setSearchingStreamTitles(true)
     setFeedback('')
-    setActiveItem(null)
-    setStreams([])
     try {
       const response = await fetch(`/api/addons/search?q=${encodeURIComponent(streamSearchQuery.trim())}`)
       const payload = await response.json().catch(() => null)
@@ -288,26 +196,6 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       setStreamSearchResults([])
     } finally {
       setSearchingStreamTitles(false)
-    }
-  }
-
-  async function openFallbackItem(item: AddonMetaItem) {
-    setActiveItem(item)
-    setStreams([])
-    setAddonSubtitles([])
-    setStreamTargetLabel('')
-    setLoadingMeta(true)
-    try {
-      const params = new URLSearchParams({ type: item.type, id: item.id })
-      const response = await fetch(`/api/addons/fallback-meta?${params.toString()}`)
-      const payload = await response.json().catch(() => null)
-      if (response.ok && payload?.meta) {
-        setActiveItem(payload.meta)
-      }
-    } catch {
-      // keep summary item
-    } finally {
-      setLoadingMeta(false)
     }
   }
 
@@ -484,12 +372,8 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                 <button
                   key={`${item.type}-${item.id}`}
                   type="button"
-                  onClick={() => void openCatalogItem(item)}
-                  className={`group overflow-hidden rounded-[var(--sc-radius-md)] border text-left transition cursor-pointer ${
-                    activeItem?.id === item.id
-                      ? 'border-[var(--sc-accent)] bg-white/10'
-                      : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30'
-                  }`}
+                  onClick={() => setActiveItem({ ...item, addonId: selectedAddon.id, addonName: selectedAddon.name })}
+                  className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
                 >
                   <div className="aspect-[2/3] w-full bg-black/50">
                     {item.poster ? (
@@ -514,7 +398,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
           <div>
             <h3 className="text-base font-bold text-white">Buscar título ou ID IMDb para consultar streams</h3>
             <p className="mt-1 text-xs text-[var(--sc-text-secondary)]">
-              Addons apenas de <code className="text-white/90">stream</code> não trazem catálogo próprio. Pesquise um filme, série ou ID IMDb (ex.: <code className="text-white/90">Matrix</code> ou <code className="text-white/90">tt0133093</code>) abaixo para listar os streams disponíveis nos seus addons ativos.
+              Addons apenas de <code className="text-white/90">stream</code> não trazem catálogo próprio. Pesquise um filme, série ou ID IMDb (ex.: <code className="text-white/90">Matrix</code> ou <code className="text-white/90">tt0133093</code>) e clique no card para abrir os streams direto.
             </p>
           </div>
           <form onSubmit={runFallbackSearch} className="flex flex-wrap gap-2">
@@ -537,12 +421,8 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                 <button
                   key={`fb-${item.type}-${item.id}`}
                   type="button"
-                  onClick={() => void openFallbackItem(item)}
-                  className={`group overflow-hidden rounded-[var(--sc-radius-md)] border text-left transition cursor-pointer ${
-                    activeItem?.id === item.id
-                      ? 'border-[var(--sc-accent)] bg-white/10'
-                      : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30'
-                  }`}
+                  onClick={() => setActiveItem(item)}
+                  className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
                 >
                   <div className="aspect-[2/3] w-full bg-black/50">
                     {item.poster ? (
@@ -564,176 +444,11 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
         </div>
       ) : null}
 
-      {activeItem ? (
-        <div className="mt-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-black/40 p-4 space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-2xl space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-lg font-bold text-white">{activeItem.name}</h4>
-                    {activeItem.releaseInfo ? <Badge tone="neutral">{activeItem.releaseInfo}</Badge> : null}
-                  </div>
-                  {activeItem.genres.length > 0 ? (
-                    <p className="text-xs text-[var(--sc-text-muted)]">{activeItem.genres.join(' · ')}</p>
-                  ) : null}
-                  {activeItem.description ? (
-                    <p className="text-sm text-[var(--sc-text-secondary)]">{activeItem.description}</p>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => void searchStreams(activeItem.type, activeItem.id, activeItem.name)}
-                  disabled={loadingStreams}
-                >
-                  <Play className="h-4 w-4" />
-                  {loadingStreams ? 'Buscando streams...' : 'Buscar streams nos addons'}
-                </Button>
-              </div>
-
-              {loadingMeta ? (
-                <p className="text-xs text-[var(--sc-text-muted)]">Carregando episódios...</p>
-              ) : null}
-
-              {activeItem.videos && activeItem.videos.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--sc-text-muted)]">
-                    Episódios ({activeItem.videos.length})
-                  </p>
-                  <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-                    {activeItem.videos.slice(0, 60).map((video) => (
-                      <button
-                        key={video.id}
-                        type="button"
-                        onClick={() =>
-                          void searchStreams(
-                            'series',
-                            video.id,
-                            `${activeItem.name} — T${video.season ?? '?'}:E${video.episode ?? '?'} ${video.title}`,
-                          )
-                        }
-                        className="flex items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left text-xs text-white hover:border-white/30 cursor-pointer"
-                      >
-                        <span className="truncate">
-                          T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
-                        </span>
-                        <Play className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {streamTargetLabel ? (
-                <div className="space-y-2 border-t border-white/10 pt-3">
-                  <p className="text-xs font-semibold text-white">
-                    Streams encontrados para: <span className="text-amber-300">{streamTargetLabel}</span>
-                  </p>
-                  {loadingStreams ? (
-                    <p className="text-xs text-[var(--sc-text-secondary)]">Consultando addons habilitados...</p>
-                  ) : streams.length === 0 ? (
-                    <p className="text-xs text-[var(--sc-text-secondary)]">
-                      Nenhum stream retornado pelos addons ativos com recurso <code className="text-white/80">stream</code>.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {streams.map((stream, index) => (
-                        <div
-                          key={`${stream.addonId}-${index}`}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-white">{stream.addonName} · {stream.name}</p>
-                            <p className="truncate text-xs text-[var(--sc-text-secondary)]">{stream.title}</p>
-                          </div>
-                          {stream.isDirectHttp && stream.url ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() =>
-                                onPlayStream({
-                                  mediaId: '',
-                                  title: `${streamTargetLabel} (${stream.addonName})`,
-                                  url: stream.url!,
-                                  overview: activeItem.description,
-                                  externalSubtitles: addonSubtitles.slice(0, 10).map((sub) => ({
-                                    label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                                    url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                                  })),
-                                })
-                              }
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              Reproduzir no Player
-                            </Button>
-                          ) : stream.ytId ? (
-                            <a
-                              href={`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Abrir no YouTube
-                            </a>
-                          ) : stream.infoHash ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                const params = new URLSearchParams({ infoHash: stream.infoHash! })
-                                if (typeof stream.fileIdx === 'number') {
-                                  params.set('fileIdx', String(stream.fileIdx))
-                                }
-                                onPlayStream({
-                                  mediaId: '',
-                                  title: `${streamTargetLabel} (${stream.addonName})`,
-                                  url: `/api/addons/torrent-stream?${params.toString()}`,
-                                  overview: activeItem.description,
-                                  externalSubtitles: addonSubtitles.slice(0, 10).map((sub) => ({
-                                    label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                                    url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                                  })),
-                                })
-                              }}
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              Reproduzir Torrent
-                            </Button>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs text-amber-300">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Sem URL HTTP direta
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {addonSubtitles.length > 0 ? (
-                    <div className="pt-2">
-                      <p className="mb-1.5 text-xs font-semibold text-white/80">
-                        Legendas encontradas ({addonSubtitles.length}):
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {addonSubtitles.slice(0, 12).map((sub, idx) => (
-                          <a
-                            key={`${sub.addonId}-${sub.id}-${idx}`}
-                            href={sub.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-1 text-[11px] text-white/90 hover:border-white/30"
-                          >
-                            {sub.lang.toUpperCase()} · {sub.addonName}
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+      <AddonStreamModal
+        item={activeItem}
+        onClose={() => setActiveItem(null)}
+        onPlayStream={onPlayStream}
+      />
     </div>
   )
 }
