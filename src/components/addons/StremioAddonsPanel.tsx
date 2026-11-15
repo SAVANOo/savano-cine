@@ -34,6 +34,7 @@ type AddonStreamItem = {
   isDirectHttp: boolean
   ytId: string | null
   infoHash: string | null
+  fileIdx?: number | null
 }
 
 type AddonSubtitleItem = {
@@ -571,10 +572,35 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                               <ExternalLink className="h-3.5 w-3.5" />
                               Abrir no YouTube
                             </a>
+                          ) : stream.infoHash ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                const params = new URLSearchParams({ infoHash: stream.infoHash! })
+                                if (typeof stream.fileIdx === 'number') {
+                                  params.set('fileIdx', String(stream.fileIdx))
+                                }
+                                onPlayStream({
+                                  mediaId: '',
+                                  title: `${streamTargetLabel} (${stream.addonName})`,
+                                  url: `/api/addons/torrent-stream?${params.toString()}`,
+                                  overview: activeItem.description,
+                                  externalSubtitles: addonSubtitles.slice(0, 10).map((sub) => ({
+                                    label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                                    url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                                  })),
+                                })
+                              }}
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Reproduzir Torrent
+                            </Button>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs text-amber-300">
                               <ExternalLink className="h-3.5 w-3.5" />
-                              {stream.infoHash ? 'Torrent/P2P (requer stream HTTP/Debrid)' : 'Sem URL HTTP direta'}
+                              Sem URL HTTP direta
                             </span>
                           )}
                         </div>

@@ -13,6 +13,7 @@ import {
   queryAddonSubtitles,
   setStremioAddonEnabled,
 } from '../../scripts/stremio-addons.mjs'
+import { getTorrentStatus, isValidInfoHash } from '../../scripts/torrent-stream.mjs'
 
 test('normalizeManifestUrl validates HTTP/HTTPS and appends manifest.json', () => {
   assert.throws(() => normalizeManifestUrl('file:///etc/passwd'))
@@ -22,6 +23,13 @@ test('normalizeManifestUrl validates HTTP/HTTPS and appends manifest.json', () =
   assert.equal(normalized.baseUrl, 'https://example.com/addon')
   const stremioProto = normalizeManifestUrl('stremio://v3-cinemeta.strem.io/manifest.json')
   assert.equal(stremioProto.manifestUrl, 'https://v3-cinemeta.strem.io/manifest.json')
+})
+
+test('isValidInfoHash and getTorrentStatus validate SHA-1/Base32 infoHashes', async () => {
+  assert.equal(isValidInfoHash('0123456789abcdef0123456789abcdef01234567'), true)
+  assert.equal(isValidInfoHash('../bad-hash'), false)
+  const status = await getTorrentStatus('0123456789abcdef0123456789abcdef01234567')
+  assert.equal(status?.active, false)
 })
 
 test('Stremio addon lifecycle: install, catalog, meta, streams, subtitles, toggle and delete', async () => {

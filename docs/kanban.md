@@ -28,6 +28,7 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 ## Concluído
 
+- Motor de streaming Torrent sob demanda (`scripts/torrent-stream.mjs` com `webtorrent`, suporte HTTP Range, transcode FFmpeg para `.mkv`/`.avi` e limpeza automática de cache temporário) + suporte HLS (`.m3u8`) via `hls.js` no `VideoPlayer` e busca unificada (acervo local + addons Stremio) na Home.
 - Conector de Addons compatível com protocolo Stremio (`manifest.json` via HTTP/HTTPS): tabela `stremio_addons`, endpoints `/api/addons*` (`scripts/stremio-addons.mjs`), aba **Addons (Stremio)** com atalho na Sidebar, explorador de catálogos/episódios, busca de streams e legendas e reprodução direta no `VideoPlayer`.
 - Sinopses em PT-BR (TMDB `pt-BR` + fallback Wikipedia PT para séries) e banners widescreen (`background` do TVMaze + `w1280` TMDB) em `scripts/fetch-artwork.mjs`.
 - Exclusão de perfil (`DELETE /api/profiles/:id`) e tela *"Quem está assistindo?"* (`ProfileGate`) com cookie `sc_profile_session` (TTL 24h), além de organização dos 32 avatares em subpastas por coleção (`public/avatars/<colecao>/`).

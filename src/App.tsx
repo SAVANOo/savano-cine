@@ -52,6 +52,9 @@ export function App() {
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
+  const [addonSearchResults, setAddonSearchResults] = useState<
+    Array<{ id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; addonName: string }>
+  >([])
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons'>('review')
@@ -133,6 +136,57 @@ export function App() {
     },
     [activeProfileId],
   )
+
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (trimmed.length < 2) {
+      return
+    }
+    let active = true
+    const timer = window.setTimeout(() => {
+      fetch('/api/addons')
+        .then((res) => (res.ok ? res.json() : []))
+        .then(async (addons: Array<{ id: string; name: string; enabled: boolean; catalogs: Array<{ type: string; id: string }> }>) => {
+          const enabled = (addons || []).filter((a) => a.enabled && a.catalogs?.length > 0)
+          if (enabled.length === 0) {
+            if (active) setAddonSearchResults([])
+            return
+          }
+          const lookups = enabled.slice(0, 3).flatMap((addon) =>
+            addon.catalogs.slice(0, 2).map((cat) =>
+              fetch(
+                `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
+              )
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) =>
+                  (data?.metas || []).slice(0, 4).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null }) => ({
+                    ...meta,
+                    addonName: addon.name,
+                  })),
+                )
+                .catch(() => []),
+            ),
+          )
+          const chunks = await Promise.all(lookups)
+          if (!active) return
+          const seen = new Set<string>()
+          const merged = chunks.flat().filter((item) => {
+            const key = `${item.type}:${item.id}`
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          setAddonSearchResults(merged.slice(0, 12))
+        })
+        .catch(() => {
+          if (active) setAddonSearchResults([])
+        })
+    }, 400)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [query])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -774,6 +828,52 @@ export function App() {
                     onToggleWatchlist={(target) => void toggleWatchlist(target)}
                   />
                 ))}
+              </div>
+            )}
+            {query.trim().length >= 2 && addonSearchResults.length > 0 && (
+              <div className="mt-4 space-y-3 border-t border-[var(--sc-border-subtle)] pt-5">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="m-0 text-base font-bold text-white">Resultados nos Addons (Stremio)</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminTab('addons')
+                      setAdminOpen(true)
+                    }}
+                    className="text-xs font-semibold text-[var(--sc-accent)] hover:underline cursor-pointer"
+                  >
+                    Abrir explorador de Addons →
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                  {addonSearchResults.map((item) => (
+                    <button
+                      key={`addon-${item.type}-${item.id}`}
+                      type="button"
+                      onClick={() => {
+                        setAdminTab('addons')
+                        setAdminOpen(true)
+                      }}
+                      className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
+                    >
+                      <div className="aspect-[2/3] w-full bg-black/50">
+                        {item.poster ? (
+                          <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-[var(--sc-text-muted)]">
+                            Sem capa
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2.5">
+                        <p className="truncate text-xs font-semibold text-white">{item.name}</p>
+                        <p className="truncate text-[11px] text-[var(--sc-text-muted)]">
+                          {item.addonName}{item.releaseInfo ? ` · ${item.releaseInfo}` : ''}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </section>

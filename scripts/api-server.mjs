@@ -19,6 +19,12 @@ import {
   queryAddonSubtitles,
   setStremioAddonEnabled,
 } from './stremio-addons.mjs'
+import {
+  getTorrentStatus,
+  isValidInfoHash,
+  serveTorrentStream,
+  stopTorrentStream,
+} from './torrent-stream.mjs'
 import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
@@ -398,6 +404,48 @@ async function handleApiRequest(request, response) {
     } catch {
       return send(response, 502, { error: 'Erro ao buscar legenda externa.' })
     }
+  }
+
+  if (requestUrl.pathname === '/api/addons/torrent-stream' && request.method === 'GET') {
+    const infoHash = requestUrl.searchParams.get('infoHash') || ''
+    const fileIdxRaw = requestUrl.searchParams.get('fileIdx')
+    const fileIdx = fileIdxRaw !== null && fileIdxRaw !== '' ? Number(fileIdxRaw) : null
+    if (!isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'infoHash inválido.' })
+    }
+    try {
+      await serveTorrentStream(request, response, {
+        infoHash,
+        fileIdx: Number.isInteger(fileIdx) ? fileIdx : null,
+      })
+      return
+    } catch (error) {
+      if (!response.headersSent) {
+        return send(response, 502, {
+          error: error instanceof Error ? error.message : 'Falha ao iniciar stream torrent.',
+        })
+      }
+      return
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/torrent-status' && request.method === 'GET') {
+    const infoHash = requestUrl.searchParams.get('infoHash') || ''
+    if (!isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'infoHash inválido.' })
+    }
+    const status = await getTorrentStatus(infoHash)
+    return send(response, 200, status)
+  }
+
+  const deleteTorrentMatch = requestUrl.pathname.match(/^\/api\/addons\/torrent-stream\/([^/]+)$/)
+  if (deleteTorrentMatch && request.method === 'DELETE') {
+    const infoHash = decodeURIComponent(deleteTorrentMatch[1])
+    if (!isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'infoHash inválido.' })
+    }
+    const stopped = await stopTorrentStream(infoHash)
+    return send(response, 200, { stopped, infoHash })
   }
 
   const addonCatalogMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)\/catalog$/)

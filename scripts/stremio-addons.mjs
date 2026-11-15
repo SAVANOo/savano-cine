@@ -288,6 +288,7 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
             ? stream.ytId
             : null,
         infoHash: typeof stream.infoHash === 'string' ? stream.infoHash : null,
+        fileIdx: Number.isInteger(stream.fileIdx) ? stream.fileIdx : null,
       }))
     }),
   )

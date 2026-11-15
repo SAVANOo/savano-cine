@@ -1,3 +1,4 @@
+import Hls from 'hls.js'
 import { ArrowLeft, Check, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
@@ -210,6 +211,31 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   useEffect(() => () => saveProgress(true), [saveProgress])
 
   useEffect(() => {
+    const video = videoRef.current
+    if (!video || !playbackUrl.includes('.m3u8')) return
+    if (!Hls.isSupported()) return
+    const hls = new Hls()
+    hls.loadSource(playbackUrl)
+    hls.attachMedia(video)
+    return () => {
+      hls.destroy()
+    }
+  }, [playbackUrl])
+
+  useEffect(() => {
+    if (!media.url.startsWith('/api/addons/torrent-stream?')) return
+    const query = media.url.split('?')[1] || ''
+    const infoHash = new URLSearchParams(query).get('infoHash')
+    if (!infoHash) return
+    return () => {
+      void fetch(`/api/addons/torrent-stream/${encodeURIComponent(infoHash)}`, {
+        method: 'DELETE',
+        keepalive: true,
+      }).catch(() => undefined)
+    }
+  }, [media.url])
+
+  useEffect(() => {
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -359,6 +385,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         event.preventDefault()
         setTrackMenuOpen((prev) => !prev)
         scheduleHideControls()
+      } else if (event.key.toLowerCase() === 'n' && media.nextEpisode && onPlayNext) {
+        event.preventDefault()
+        onPlayNext(media.nextEpisode)
       } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
         event.preventDefault()
         const delta = event.key === 'ArrowUp' ? 0.1 : -0.1
@@ -374,7 +403,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [applyVolume, scheduleHideControls, volume])
+  }, [applyVolume, media.nextEpisode, onPlayNext, scheduleHideControls, volume])
 
   return (
     <div
