@@ -47,42 +47,31 @@ for (const show of shows) {
     continue
   }
   const metadata = await response.json()
+  let overviewPt = null
+  if (tmdbApiKey) {
+    const tmdbShow = await fetchTmdbShowArtwork(show.title, show.id)
+    if (tmdbShow?.overview) overviewPt = tmdbShow.overview
+    if (tmdbShow?.backdropUrl) {
+      await downloadShowArtwork(show, 'banner', tmdbShow.backdropUrl, 'tmdb', String(tmdbShow.id))
+    }
+  }
+  if (!overviewPt) {
+    overviewPt = await fetchPtShowSummary(show.title)
+  }
   updateShow.run(
     metadata.premiered ? Number(metadata.premiered.slice(0, 4)) : null,
-    stripHtml(metadata.summary || ''),
+    overviewPt || stripHtml(metadata.summary || ''),
     JSON.stringify([...(metadata.type === 'Animation' ? ['Animação'] : []), ...(metadata.genres || [])]),
     show.id,
   )
   const posterUrl = metadata.image?.original || metadata.image?.medium
   if (!posterUrl) continue
 
-  const image = await fetch(posterUrl)
-  if (!image.ok) continue
-  const extension = image.headers.get('content-type')?.includes('png') ? 'png' : 'jpg'
-  const filename = `${slugify(show.title)}-poster.${extension}`
-  const relativePath = path.join('data', 'artwork', 'shows', filename)
-  await writeFile(path.resolve(relativePath), Buffer.from(await image.arrayBuffer()))
-
-  upsertArtwork.run(
-    `art-${show.id}-poster`,
-    show.id,
-    relativePath,
-    posterUrl,
-    'tvmaze',
-    String(metadata.id),
-    'local',
-    'poster',
-  )
-  upsertArtwork.run(
-    `art-${show.id}-banner`,
-    show.id,
-    relativePath,
-    posterUrl,
-    'tvmaze',
-    String(metadata.id),
-    'local',
-    'banner',
-  )
+  await downloadShowArtwork(show, 'poster', posterUrl, 'tvmaze', String(metadata.id))
+  if (!hasLocalShowArtwork(show.id, 'banner')) {
+    const tvmazeBg = await fetchTvmazeBackground(metadata.id)
+    await downloadShowArtwork(show, 'banner', tvmazeBg || posterUrl, 'tvmaze', String(metadata.id))
+  }
   downloaded += 1
 }
 
@@ -152,6 +141,9 @@ for (const movie of movies) {
   }
   if (tmdbApiKey) {
     const tmdb = await fetchTmdbArtwork(movie.title, movie.id)
+    if (tmdb?.overview) {
+      database.prepare('UPDATE media_items SET overview = ? WHERE id = ?').run(tmdb.overview, movie.id)
+    }
     if (tmdb?.backdropUrl && !hasLocalArtwork(movie.id, 'banner')) {
       await downloadMovieArtwork(movie, 'banner', tmdb.backdropUrl, 'tmdb', String(tmdb.id))
     }
@@ -466,11 +458,12 @@ async function fetchTmdbArtwork(title, movieId) {
     if (!search.ok) return null
     const results = (await search.json()).results || []
     const normalized = normalizeTitle(title)
-    const exact = results.filter((candidate) => normalizeTitle(candidate.title || '') === normalized)
-    if (exact.length === 1 && exact[0].backdrop_path) {
+    const exact = results.filter((candidate) => normalizeTitle(candidate.title || candidate.original_title || '') === normalized)
+    if (exact.length === 1) {
       return {
         id: exact[0].id,
-        backdropUrl: `https://image.tmdb.org/t/p/w1280${exact[0].backdrop_path}`,
+        overview: exact[0].overview || null,
+        backdropUrl: exact[0].backdrop_path ? `https://image.tmdb.org/t/p/w1280${exact[0].backdrop_path}` : null,
       }
     }
     for (const candidate of results.slice(0, 5)) {
@@ -488,6 +481,104 @@ async function fetchTmdbArtwork(title, movieId) {
       })
     }
     return null
+  } catch {
+    return null
+  }
+}
+
+async function fetchTmdbShowArtwork(title, showId) {
+  try {
+    const search = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=${encodeURIComponent(tmdbApiKey)}&query=${encodeURIComponent(title)}&include_adult=false&language=pt-BR`)
+    if (!search.ok) return null
+    const results = (await search.json()).results || []
+    const normalized = normalizeTitle(title)
+    const exact = results.filter((candidate) => normalizeTitle(candidate.name || candidate.original_name || '') === normalized)
+    if (exact.length === 1) {
+      return {
+        id: exact[0].id,
+        overview: exact[0].overview || null,
+        backdropUrl: exact[0].backdrop_path ? `https://image.tmdb.org/t/p/w1280${exact[0].backdrop_path}` : null,
+      }
+    }
+    for (const candidate of results.slice(0, 5)) {
+      if (!candidate.id || (!candidate.poster_path && !candidate.backdrop_path && !candidate.overview)) continue
+      saveArtworkCandidate({
+        showId,
+        provider: 'tmdb',
+        providerId: String(candidate.id),
+        title: candidate.name || candidate.original_name || title,
+        year: candidate.first_air_date ? Number(candidate.first_air_date.slice(0, 4)) : null,
+        overview: candidate.overview || null,
+        posterUrl: candidate.poster_path ? `https://image.tmdb.org/t/p/w500${candidate.poster_path}` : null,
+        backdropUrl: candidate.backdrop_path ? `https://image.tmdb.org/t/p/w1280${candidate.backdrop_path}` : null,
+        language: 'pt-BR',
+      })
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function hasLocalShowArtwork(showId, artworkType) {
+  return Boolean(database.prepare(`
+    SELECT 1 FROM artwork
+    WHERE show_id = ? AND artwork_type = ? AND source = 'local'
+    LIMIT 1
+  `).get(showId, artworkType))
+}
+
+async function downloadShowArtwork(show, artworkType, imageUrl, provider, providerId) {
+  try {
+    const image = await fetch(imageUrl)
+    if (!image.ok) return false
+    const extension = image.headers.get('content-type')?.includes('png') ? 'png' : 'jpg'
+    const filename = `${slugify(show.title)}-${artworkType}.${extension}`
+    const relativePath = path.join('data', 'artwork', 'shows', filename)
+    await writeFile(path.resolve(relativePath), Buffer.from(await image.arrayBuffer()))
+    upsertArtwork.run(
+      `art-${show.id}-${artworkType}`,
+      show.id,
+      relativePath,
+      imageUrl,
+      provider,
+      providerId,
+      'local',
+      artworkType,
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function fetchTvmazeBackground(tvmazeId) {
+  try {
+    const response = await fetch(`https://api.tvmaze.com/shows/${tvmazeId}/images`, {
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!response.ok) return null
+    const images = (await response.json()) || []
+    const bg = images.find((img) => img.type === 'background' && img.resolutions?.original?.url)
+    return bg?.resolutions?.original?.url || null
+  } catch {
+    return null
+  }
+}
+
+async function fetchPtShowSummary(title) {
+  try {
+    const response = await fetch(
+      `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, '_'))}`,
+      {
+        headers: { 'User-Agent': 'SavanoCine/1.0 (https://localhost; local-catalog)' },
+        signal: AbortSignal.timeout(6000),
+      },
+    )
+    if (!response.ok) return null
+    const data = await response.json()
+    if (data?.type === 'disambiguation' || !data?.extract) return null
+    return data.extract.trim() || null
   } catch {
     return null
   }

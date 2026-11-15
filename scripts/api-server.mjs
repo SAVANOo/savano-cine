@@ -8,6 +8,17 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 import { getAdapterForSource } from './source-adapters.mjs'
+import {
+  deleteStremioAddon,
+  ensureStremioAddonsTable,
+  fetchAddonCatalog,
+  fetchAddonMeta,
+  installStremioAddon,
+  listStremioAddons,
+  queryAddonStreams,
+  queryAddonSubtitles,
+  setStremioAddonEnabled,
+} from './stremio-addons.mjs'
 import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
@@ -25,6 +36,7 @@ const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureArtworkCandidatesTable()
 ensureWatchlistTable()
+ensureStremioAddonsTable(database)
 ignorePromotionalAds()
 reconcileMisclassifiedEpisodes()
 sanitizeExistingTitles()
@@ -310,6 +322,132 @@ async function handleApiRequest(request, response) {
     database.prepare('DELETE FROM watchlist WHERE profile_id = ?').run(profileId)
     database.prepare('DELETE FROM profiles WHERE id = ?').run(profileId)
     return send(response, 200, { deleted: true, id: profileId })
+  }
+
+  if (requestUrl.pathname === '/api/addons' && request.method === 'GET') {
+    return send(response, 200, listStremioAddons(database))
+  }
+
+  if (requestUrl.pathname === '/api/addons' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const manifestUrl = typeof body.manifestUrl === 'string' ? body.manifestUrl.trim() : ''
+    if (!manifestUrl) {
+      return send(response, 400, { error: 'Informe a URL do manifest.json do addon.' })
+    }
+    try {
+      const installed = await installStremioAddon(database, manifestUrl)
+      return send(response, 201, installed)
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao instalar addon.' })
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/streams' && request.method === 'GET') {
+    const type = requestUrl.searchParams.get('type') || 'movie'
+    const id = requestUrl.searchParams.get('id') || ''
+    const addonId = requestUrl.searchParams.get('addonId') || undefined
+    if (!id.trim()) return send(response, 400, { error: 'Parâmetro id é obrigatório.' })
+    try {
+      const streams = await queryAddonStreams(database, { type, id, addonId })
+      return send(response, 200, { streams })
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao buscar streams.' })
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/subtitles' && request.method === 'GET') {
+    const type = requestUrl.searchParams.get('type') || 'movie'
+    const id = requestUrl.searchParams.get('id') || ''
+    if (!id.trim()) return send(response, 400, { error: 'Parâmetro id é obrigatório.' })
+    try {
+      const subtitles = await queryAddonSubtitles(database, { type, id })
+      return send(response, 200, { subtitles })
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao buscar legendas.' })
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/subtitle-proxy' && request.method === 'GET') {
+    const target = requestUrl.searchParams.get('url') || ''
+    let parsed
+    try {
+      parsed = new URL(target)
+    } catch {
+      return send(response, 400, { error: 'URL de legenda inválida.' })
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return send(response, 400, { error: 'Protocolo inválido para legenda.' })
+    }
+    try {
+      const upstream = await fetch(parsed.toString(), { signal: AbortSignal.timeout(8000) })
+      if (!upstream.ok) return send(response, 502, { error: 'Falha ao baixar legenda externa.' })
+      const raw = await upstream.text()
+      const vtt = raw.trimStart().startsWith('WEBVTT')
+        ? raw
+        : `WEBVTT\n\n${raw.replace(/\r\n/g, '\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`
+      response.writeHead(200, {
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      })
+      return response.end(vtt)
+    } catch {
+      return send(response, 502, { error: 'Erro ao buscar legenda externa.' })
+    }
+  }
+
+  const addonCatalogMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)\/catalog$/)
+  if (addonCatalogMatch && request.method === 'GET') {
+    const addonId = decodeURIComponent(addonCatalogMatch[1])
+    const type = requestUrl.searchParams.get('type') || ''
+    const catalogId = requestUrl.searchParams.get('catalogId') || ''
+    const search = requestUrl.searchParams.get('search') || ''
+    try {
+      const result = await fetchAddonCatalog(database, addonId, { type, catalogId, search })
+      if (!result) return send(response, 404, { error: 'Addon não encontrado.' })
+      return send(response, 200, result)
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao carregar catálogo.' })
+    }
+  }
+
+  const addonMetaMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)\/meta$/)
+  if (addonMetaMatch && request.method === 'GET') {
+    const addonId = decodeURIComponent(addonMetaMatch[1])
+    const type = requestUrl.searchParams.get('type') || 'movie'
+    const metaId = requestUrl.searchParams.get('id') || ''
+    try {
+      const meta = await fetchAddonMeta(database, addonId, { type, metaId })
+      if (!meta) return send(response, 404, { error: 'Metadado não encontrado no addon.' })
+      return send(response, 200, { meta })
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao carregar metadados.' })
+    }
+  }
+
+  const addonIdMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)$/)
+  if (addonIdMatch && request.method === 'PATCH') {
+    const addonId = decodeURIComponent(addonIdMatch[1])
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const updated = setStremioAddonEnabled(database, addonId, Boolean(body.enabled))
+    if (!updated) return send(response, 404, { error: 'Addon não encontrado.' })
+    return send(response, 200, updated)
+  }
+
+  if (addonIdMatch && request.method === 'DELETE') {
+    const addonId = decodeURIComponent(addonIdMatch[1])
+    const deleted = deleteStremioAddon(database, addonId)
+    if (!deleted) return send(response, 404, { error: 'Addon não encontrado.' })
+    return send(response, 200, { deleted: true, id: addonId })
   }
 
   if (requestUrl.pathname === '/api/library') {

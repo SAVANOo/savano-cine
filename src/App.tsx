@@ -54,7 +54,7 @@ export function App() {
   const [query, setQuery] = useState('')
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
   const [adminOpen, setAdminOpen] = useState(false)
-  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs'>('review')
+  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons'>('review')
 
   const getProfileSessionCookie = () => {
     if (typeof document === 'undefined') return ''
@@ -579,9 +579,16 @@ export function App() {
         }}
         onOpenAdmin={() => {
           setSelectedShow(null)
+          setAdminTab('review')
+          setAdminOpen(true)
+        }}
+        onOpenAddons={() => {
+          setSelectedShow(null)
+          setAdminTab('addons')
           setAdminOpen(true)
         }}
         adminActive={adminOpen}
+        addonsActive={adminOpen && adminTab === 'addons'}
         onRefreshCatalog={() => void fetch('/api/catalog/refresh', { method: 'POST' })}
         onSourceAdded={refreshCatalogAndSources}
         refreshing={catalogRefresh.state === 'running'}
@@ -688,6 +695,7 @@ export function App() {
 
         {adminOpen ? (
           <AdminView
+            key={adminTab}
             initialTab={adminTab}
             reviewItems={reviewItems}
             reviewError={reviewError}
@@ -696,6 +704,7 @@ export function App() {
             history={catalogHistory}
             onBack={() => setAdminOpen(false)}
             onRefreshAll={refreshCatalogAndSources}
+            onPlayMedia={(media) => setSelectedMedia(media)}
           />
         ) : catalogLoading ? (
           <CatalogSkeleton />

@@ -42,7 +42,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
       : media.url,
   )
   const [playbackError, setPlaybackError] = useState('')
-  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>([])
+  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>(
+    () => media.externalSubtitles ?? [],
+  )
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null)
   const [audioStream, setAudioStream] = useState('')
   const [subtitleStream, setSubtitleStream] = useState('')

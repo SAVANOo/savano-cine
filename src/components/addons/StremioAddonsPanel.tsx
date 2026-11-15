@@ -1,0 +1,613 @@
+import { ExternalLink, Film, Globe, Play, Plus, Power, Puzzle, Search, Trash2, Tv } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
+import type { StremioAddonDescriptor } from '../../domain/sourceAdapter'
+import type { PlayableMedia } from '../../domain/uiHelpers'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+
+type AddonMetaItem = {
+  id: string
+  type: string
+  name: string
+  poster: string | null
+  background: string | null
+  description: string
+  releaseInfo: string | null
+  genres: string[]
+  videos?: Array<{
+    id: string
+    title: string
+    season: number | null
+    episode: number | null
+    thumbnail: string | null
+    overview: string
+  }>
+}
+
+type AddonStreamItem = {
+  addonId: string
+  addonName: string
+  name: string
+  title: string
+  url: string | null
+  isDirectHttp: boolean
+  ytId: string | null
+  infoHash: string | null
+}
+
+type AddonSubtitleItem = {
+  addonId: string
+  addonName: string
+  id: string
+  lang: string
+  url: string
+}
+
+type StremioAddonsPanelProps = {
+  onPlayStream: (media: PlayableMedia) => void
+}
+
+/** Stremio-compatible Addon manager, catalog explorer, and HTTP stream launcher. */
+export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
+  const [addons, setAddons] = useState<StremioAddonDescriptor[]>([])
+  const [manifestUrl, setManifestUrl] = useState('')
+  const [installing, setInstalling] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [selectedAddonId, setSelectedAddonId] = useState('')
+  const [selectedCatalogKey, setSelectedCatalogKey] = useState('')
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [catalogItems, setCatalogItems] = useState<AddonMetaItem[]>([])
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const [activeItem, setActiveItem] = useState<AddonMetaItem | null>(null)
+  const [loadingMeta, setLoadingMeta] = useState(false)
+  const [streams, setStreams] = useState<AddonStreamItem[]>([])
+  const [addonSubtitles, setAddonSubtitles] = useState<AddonSubtitleItem[]>([])
+  const [loadingStreams, setLoadingStreams] = useState(false)
+  const [streamTargetLabel, setStreamTargetLabel] = useState('')
+
+  const loadAddons = useCallback(async () => {
+    try {
+      const response = await fetch('/api/addons')
+      if (!response.ok) return
+      const data: StremioAddonDescriptor[] = await response.json()
+      setAddons(data)
+      if (!selectedAddonId && data.length > 0) {
+        const firstWithCatalog = data.find((a) => a.catalogs.length > 0) || data[0]
+        setSelectedAddonId(firstWithCatalog.id)
+        if (firstWithCatalog.catalogs.length > 0) {
+          setSelectedCatalogKey(`${firstWithCatalog.catalogs[0].type}::${firstWithCatalog.catalogs[0].id}`)
+        }
+      }
+    } catch {
+      // ignore initial load failure
+    }
+  }, [selectedAddonId])
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/addons')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: StremioAddonDescriptor[] | null) => {
+        if (!active || !data) return
+        setAddons(data)
+        if (data.length > 0) {
+          const firstWithCatalog = data.find((a) => a.catalogs.length > 0) || data[0]
+          setSelectedAddonId(firstWithCatalog.id)
+          if (firstWithCatalog.catalogs.length > 0) {
+            setSelectedCatalogKey(`${firstWithCatalog.catalogs[0].type}::${firstWithCatalog.catalogs[0].id}`)
+          }
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const selectedAddon = addons.find((a) => a.id === selectedAddonId) || null
+
+  const loadCatalog = useCallback(async (addonId: string, catalogKey: string, query: string) => {
+    if (!addonId || !catalogKey) return
+    const [type, catalogId] = catalogKey.split('::')
+    if (!type || !catalogId) return
+    setLoadingCatalog(true)
+    setFeedback('')
+    try {
+      const params = new URLSearchParams({ type, catalogId })
+      if (query.trim()) params.set('search', query.trim())
+      const response = await fetch(`/api/addons/${encodeURIComponent(addonId)}/catalog?${params.toString()}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        setFeedback(payload?.error || 'Não foi possível carregar o catálogo do addon.')
+        setCatalogItems([])
+        return
+      }
+      setCatalogItems(Array.isArray(payload?.metas) ? payload.metas : [])
+    } catch {
+      setFeedback('Erro ao consultar o catálogo do addon.')
+      setCatalogItems([])
+    } finally {
+      setLoadingCatalog(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedAddonId || !selectedCatalogKey) return
+    const [type, catalogId] = selectedCatalogKey.split('::')
+    if (!type || !catalogId) return
+    let active = true
+    const params = new URLSearchParams({ type, catalogId })
+    fetch(`/api/addons/${encodeURIComponent(selectedAddonId)}/catalog?${params.toString()}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!active) return
+        if (!response.ok) {
+          setFeedback(payload?.error || 'Não foi possível carregar o catálogo do addon.')
+          setCatalogItems([])
+          return
+        }
+        setCatalogItems(Array.isArray(payload?.metas) ? payload.metas : [])
+      })
+      .catch(() => {
+        if (active) setCatalogItems([])
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedAddonId, selectedCatalogKey])
+
+  async function handleInstall(event: FormEvent) {
+    event.preventDefault()
+    if (!manifestUrl.trim()) return
+    setInstalling(true)
+    setFeedback('')
+    try {
+      const response = await fetch('/api/addons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manifestUrl: manifestUrl.trim() }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        setFeedback(payload?.error || 'Não foi possível instalar o addon.')
+        return
+      }
+      setManifestUrl('')
+      setFeedback(`Addon "${payload.name}" instalado com sucesso.`)
+      await loadAddons()
+      setSelectedAddonId(payload.id)
+      if (payload.catalogs?.length > 0) {
+        setSelectedCatalogKey(`${payload.catalogs[0].type}::${payload.catalogs[0].id}`)
+      }
+    } catch {
+      setFeedback('Falha de rede ao instalar o addon.')
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  async function toggleAddon(addon: StremioAddonDescriptor) {
+    try {
+      const response = await fetch(`/api/addons/${encodeURIComponent(addon.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !addon.enabled }),
+      })
+      if (response.ok) await loadAddons()
+    } catch {
+      // ignore
+    }
+  }
+
+  async function removeAddon(addonId: string) {
+    try {
+      const response = await fetch(`/api/addons/${encodeURIComponent(addonId)}`, { method: 'DELETE' })
+      if (!response.ok) return
+      if (selectedAddonId === addonId) {
+        setSelectedAddonId('')
+        setSelectedCatalogKey('')
+        setCatalogItems([])
+        setActiveItem(null)
+      }
+      await loadAddons()
+    } catch {
+      // ignore
+    }
+  }
+
+  async function openCatalogItem(item: AddonMetaItem) {
+    setActiveItem(item)
+    setStreams([])
+    setStreamTargetLabel('')
+    if (selectedAddon && selectedAddon.resources.includes('meta')) {
+      setLoadingMeta(true)
+      try {
+        const params = new URLSearchParams({ type: item.type, id: item.id })
+        const response = await fetch(`/api/addons/${encodeURIComponent(selectedAddon.id)}/meta?${params.toString()}`)
+        const payload = await response.json().catch(() => null)
+        if (response.ok && payload?.meta) {
+          setActiveItem(payload.meta)
+        }
+      } catch {
+        // keep summary item
+      } finally {
+        setLoadingMeta(false)
+      }
+    }
+  }
+
+  async function searchStreams(type: string, targetId: string, label: string) {
+    setLoadingStreams(true)
+    setStreamTargetLabel(label)
+    setStreams([])
+    setAddonSubtitles([])
+    try {
+      const params = new URLSearchParams({ type, id: targetId })
+      const [streamRes, subRes] = await Promise.all([
+        fetch(`/api/addons/streams?${params.toString()}`),
+        fetch(`/api/addons/subtitles?${params.toString()}`),
+      ])
+      const payload = await streamRes.json().catch(() => null)
+      const subPayload = await subRes.json().catch(() => null)
+      if (!streamRes.ok) {
+        setFeedback(payload?.error || 'Erro ao buscar streams.')
+        return
+      }
+      setStreams(Array.isArray(payload?.streams) ? payload.streams : [])
+      setAddonSubtitles(Array.isArray(subPayload?.subtitles) ? subPayload.subtitles : [])
+    } catch {
+      setFeedback('Erro ao consultar streams nos addons.')
+    } finally {
+      setLoadingStreams(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold text-white">
+              <Puzzle className="h-5 w-5 text-[var(--sc-accent)]" />
+              Conector de Addons (Protocolo Stremio)
+            </h2>
+            <p className="mt-1 text-sm text-[var(--sc-text-secondary)]">
+              Cole a URL <code className="text-white/90">manifest.json</code> (ou link <code className="text-white/90">stremio://</code>) de qualquer addon compatível com Stremio para explorar catálogos, metadados, legendas e streams.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setManifestUrl('https://v3-cinemeta.strem.io/manifest.json')}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Cinemeta (Catálogo)
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setManifestUrl('https://opensubtitles-v3.strem.io/manifest.json')}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              OpenSubtitles v3 (Legendas)
+            </Button>
+          </div>
+        </div>
+
+        <form onSubmit={handleInstall} className="mt-4 flex flex-wrap gap-3">
+          <input
+            type="text"
+            value={manifestUrl}
+            onChange={(e) => setManifestUrl(e.target.value)}
+            placeholder="https://exemplo.com/manifest.json ou stremio://..."
+            className="min-w-[260px] flex-1 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-white outline-none focus:border-white/40"
+            required
+          />
+          <Button type="submit" disabled={installing}>
+            <Plus className="h-4 w-4" />
+            {installing ? 'Instalando...' : 'Instalar addon'}
+          </Button>
+        </form>
+
+        {feedback ? (
+          <p className="mt-3 text-sm text-amber-300">{feedback}</p>
+        ) : null}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {addons.length === 0 ? (
+          <div className="col-span-full rounded-[var(--sc-radius-lg)] border border-dashed border-[var(--sc-border-subtle)] p-8 text-center text-sm text-[var(--sc-text-secondary)]">
+            Nenhum addon Stremio instalado ainda. Cole um <code className="text-white/80">manifest.json</code> acima para começar.
+          </div>
+        ) : (
+          addons.map((addon) => (
+            <div
+              key={addon.id}
+              className={`flex flex-col justify-between rounded-[var(--sc-radius-lg)] border p-4 transition ${
+                selectedAddonId === addon.id
+                  ? 'border-[var(--sc-accent)] bg-[var(--sc-bg-elevated)]'
+                  : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)]'
+              }`}
+            >
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    {addon.logo ? (
+                      <img src={addon.logo} alt={addon.name} className="h-10 w-10 rounded-md bg-black/40 object-contain p-1" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10 text-white">
+                        <Puzzle className="h-5 w-5" />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-semibold text-white">{addon.name}</h3>
+                      <p className="text-xs text-[var(--sc-text-muted)]">v{addon.version} · {addon.id}</p>
+                    </div>
+                  </div>
+                  <Badge tone={addon.enabled ? 'accent' : 'neutral'}>
+                    {addon.enabled ? 'Ativo' : 'Pausado'}
+                  </Badge>
+                </div>
+                {addon.description ? (
+                  <p className="mt-2.5 line-clamp-2 text-xs text-[var(--sc-text-secondary)]">{addon.description}</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {addon.resources.map((res) => (
+                    <Badge key={res} tone="neutral">{res}</Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--sc-border-subtle)] pt-3">
+                {addon.catalogs.length > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={selectedAddonId === addon.id ? 'primary' : 'secondary'}
+                    onClick={() => {
+                      setSelectedAddonId(addon.id)
+                      setSelectedCatalogKey(`${addon.catalogs[0].type}::${addon.catalogs[0].id}`)
+                      setActiveItem(null)
+                    }}
+                  >
+                    Explorar ({addon.catalogs.length})
+                  </Button>
+                ) : null}
+                <Button type="button" size="sm" variant="ghost" onClick={() => void toggleAddon(addon)} title="Ativar/Pausar">
+                  <Power className="h-3.5 w-3.5" />
+                </Button>
+                <Button type="button" size="sm" variant="danger" onClick={() => void removeAddon(addon.id)} title="Remover addon">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {selectedAddon && selectedAddon.catalogs.length > 0 ? (
+        <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-bold text-white">Catálogo · {selectedAddon.name}</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={selectedCatalogKey}
+                onChange={(e) => setSelectedCatalogKey(e.target.value)}
+                aria-label="Selecionar catálogo do addon"
+                className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-white"
+              >
+                {selectedAddon.catalogs.map((cat) => (
+                  <option key={`${cat.type}::${cat.id}`} value={`${cat.type}::${cat.id}`}>
+                    {cat.name} ({cat.type})
+                  </option>
+                ))}
+              </select>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void loadCatalog(selectedAddon.id, selectedCatalogKey, catalogSearch)
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="search"
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  placeholder="Buscar no catálogo..."
+                  className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-white outline-none focus:border-white/40"
+                />
+                <Button type="submit" size="sm" variant="secondary">
+                  <Search className="h-3.5 w-3.5" />
+                  Buscar
+                </Button>
+              </form>
+            </div>
+          </div>
+
+          {loadingCatalog ? (
+            <p className="text-sm text-[var(--sc-text-secondary)]">Carregando itens do catálogo...</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
+              {catalogItems.map((item) => (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  onClick={() => void openCatalogItem(item)}
+                  className={`group overflow-hidden rounded-[var(--sc-radius-md)] border text-left transition cursor-pointer ${
+                    activeItem?.id === item.id
+                      ? 'border-[var(--sc-accent)] bg-white/10'
+                      : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30'
+                  }`}
+                >
+                  <div className="aspect-[2/3] w-full bg-black/50">
+                    {item.poster ? (
+                      <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
+                        {item.type === 'series' ? <Tv className="h-8 w-8" /> : <Film className="h-8 w-8" />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <p className="truncate text-xs font-semibold text-white">{item.name}</p>
+                    <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeItem ? (
+            <div className="mt-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-black/40 p-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-2xl space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-lg font-bold text-white">{activeItem.name}</h4>
+                    {activeItem.releaseInfo ? <Badge tone="neutral">{activeItem.releaseInfo}</Badge> : null}
+                  </div>
+                  {activeItem.genres.length > 0 ? (
+                    <p className="text-xs text-[var(--sc-text-muted)]">{activeItem.genres.join(' · ')}</p>
+                  ) : null}
+                  {activeItem.description ? (
+                    <p className="text-sm text-[var(--sc-text-secondary)]">{activeItem.description}</p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void searchStreams(activeItem.type, activeItem.id, activeItem.name)}
+                  disabled={loadingStreams}
+                >
+                  <Play className="h-4 w-4" />
+                  {loadingStreams ? 'Buscando streams...' : 'Buscar streams nos addons'}
+                </Button>
+              </div>
+
+              {loadingMeta ? (
+                <p className="text-xs text-[var(--sc-text-muted)]">Carregando episódios...</p>
+              ) : null}
+
+              {activeItem.videos && activeItem.videos.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--sc-text-muted)]">
+                    Episódios ({activeItem.videos.length})
+                  </p>
+                  <div className="grid max-h-60 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                    {activeItem.videos.slice(0, 60).map((video) => (
+                      <button
+                        key={video.id}
+                        type="button"
+                        onClick={() =>
+                          void searchStreams(
+                            'series',
+                            video.id,
+                            `${activeItem.name} — T${video.season ?? '?'}:E${video.episode ?? '?'} ${video.title}`,
+                          )
+                        }
+                        className="flex items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left text-xs text-white hover:border-white/30 cursor-pointer"
+                      >
+                        <span className="truncate">
+                          T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
+                        </span>
+                        <Play className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {streamTargetLabel ? (
+                <div className="space-y-2 border-t border-white/10 pt-3">
+                  <p className="text-xs font-semibold text-white">
+                    Streams encontrados para: <span className="text-amber-300">{streamTargetLabel}</span>
+                  </p>
+                  {loadingStreams ? (
+                    <p className="text-xs text-[var(--sc-text-secondary)]">Consultando addons habilitados...</p>
+                  ) : streams.length === 0 ? (
+                    <p className="text-xs text-[var(--sc-text-secondary)]">
+                      Nenhum stream retornado pelos addons ativos com recurso <code className="text-white/80">stream</code>.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {streams.map((stream, index) => (
+                        <div
+                          key={`${stream.addonId}-${index}`}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-white">{stream.addonName} · {stream.name}</p>
+                            <p className="truncate text-xs text-[var(--sc-text-secondary)]">{stream.title}</p>
+                          </div>
+                          {stream.isDirectHttp && stream.url ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() =>
+                                onPlayStream({
+                                  mediaId: '',
+                                  title: `${streamTargetLabel} (${stream.addonName})`,
+                                  url: stream.url!,
+                                  overview: activeItem.description,
+                                  externalSubtitles: addonSubtitles.slice(0, 10).map((sub) => ({
+                                    label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                                    url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                                  })),
+                                })
+                              }
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Reproduzir no Player
+                            </Button>
+                          ) : stream.ytId ? (
+                            <a
+                              href={`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Abrir no YouTube
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs text-amber-300">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              {stream.infoHash ? 'Torrent/P2P (requer stream HTTP/Debrid)' : 'Sem URL HTTP direta'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {addonSubtitles.length > 0 ? (
+                    <div className="pt-2">
+                      <p className="mb-1.5 text-xs font-semibold text-white/80">
+                        Legendas encontradas ({addonSubtitles.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {addonSubtitles.slice(0, 12).map((sub, idx) => (
+                          <a
+                            key={`${sub.addonId}-${sub.id}-${idx}`}
+                            href={sub.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-1 text-[11px] text-white/90 hover:border-white/30"
+                          >
+                            {sub.lang.toUpperCase()} · {sub.addonName}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}

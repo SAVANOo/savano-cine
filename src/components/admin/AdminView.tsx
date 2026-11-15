@@ -1,11 +1,13 @@
-import { ArrowLeft, AlertTriangle, Copy, Flag, History, Image, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Copy, Flag, History, Image, Puzzle, RefreshCw, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
+import type { PlayableMedia } from '../../domain/uiHelpers'
+import { StremioAddonsPanel } from '../addons/StremioAddonsPanel'
 import type { ArtworkCandidateGroup, CatalogHistory } from '../modals/CatalogModals'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
-type AdminTab = 'review' | 'artwork' | 'history' | 'logs'
+type AdminTab = 'review' | 'artwork' | 'history' | 'logs' | 'addons'
 
 type ErrorLogEntry = {
   timestamp?: string
@@ -33,6 +35,7 @@ type AdminViewProps = {
   history: CatalogHistory
   onBack: () => void
   onRefreshAll: () => void
+  onPlayMedia?: (media: PlayableMedia) => void
 }
 
 /** Dedicated Admin Console replacing cramped modals for catalog review, artwork, history, and error logs. */
@@ -45,6 +48,7 @@ export function AdminView({
   history,
   onBack,
   onRefreshAll,
+  onPlayMedia,
 }: AdminViewProps) {
   const [tab, setTab] = useState<AdminTab>(initialTab)
   const [busyId, setBusyId] = useState('')
@@ -219,6 +223,7 @@ export function AdminView({
             icon: History,
           },
           { key: 'logs' as const, label: 'Logs de Erro', icon: AlertTriangle },
+          { key: 'addons' as const, label: 'Addons (Stremio)', icon: Puzzle },
         ].map(({ key, label, icon: Icon }) => (
           <Button
             key={key}
@@ -236,6 +241,10 @@ export function AdminView({
         <div className="rounded-[var(--sc-radius-md)] border border-white/15 bg-[var(--sc-bg-surface)] px-4 py-3 text-xs text-white">
           {feedback}
         </div>
+      )}
+
+      {tab === 'addons' && (
+        <StremioAddonsPanel onPlayStream={(media) => onPlayMedia?.(media)} />
       )}
 
       {tab === 'review' && (

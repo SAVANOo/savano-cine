@@ -8,6 +8,7 @@ import {
   Pencil,
   PlayCircle,
   Plus,
+  Puzzle,
   RefreshCw,
   ShieldCheck,
   Tv,
@@ -28,7 +29,9 @@ type SidebarProps = {
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
   onOpenAdmin: () => void
+  onOpenAddons: () => void
   adminActive: boolean
+  addonsActive?: boolean
   onRefreshCatalog: () => void
   onSourceAdded: () => void
   refreshing: boolean
@@ -49,7 +52,9 @@ export function Sidebar({
   onOpenProfileEditor,
   onGoHome,
   onOpenAdmin,
+  onOpenAddons,
   adminActive,
+  addonsActive,
   onRefreshCatalog,
   onSourceAdded,
   refreshing,
@@ -237,9 +242,22 @@ export function Sidebar({
 
         <button
           type="button"
+          onClick={onOpenAddons}
+          className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+            addonsActive
+              ? 'bg-white/12 text-white'
+              : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+          }`}
+        >
+          <Puzzle className="h-4 w-4 shrink-0" />
+          <span>Addons</span>
+        </button>
+
+        <button
+          type="button"
           onClick={onOpenAdmin}
           className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
-            adminActive
+            adminActive && !addonsActive
               ? 'bg-white/12 text-white'
               : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
           }`}

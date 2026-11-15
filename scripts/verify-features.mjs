@@ -210,6 +210,18 @@ try {
   assert.equal(toggleOff.status, 200)
   assert.equal(toggleOff.body?.inWatchlist, false)
   console.log('PASS toggle de Minha Lista por perfil persistido')
+
+  // 9. Verificar endpoints de addons estilo Stremio
+  const addonsList = await api('/api/addons')
+  assert.equal(addonsList.status, 200)
+  assert.ok(Array.isArray(addonsList.body))
+  const badAddon = await api('/api/addons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manifestUrl: 'file:///etc/passwd' }),
+  })
+  assert.equal(badAddon.status, 400)
+  console.log('PASS endpoints de addons Stremio (/api/addons) validam protocolo HTTP/HTTPS')
 } finally {
   database.prepare('DELETE FROM artwork_candidates WHERE id = ?').run(tempIds.candidateId)
   for (const profileId of tempIds.profiles) {

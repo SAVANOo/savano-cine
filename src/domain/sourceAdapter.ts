@@ -1,4 +1,24 @@
-export type SourceAdapterKind = 'local' | 'self_hosted' | 'licensed_provider'
+export type SourceAdapterKind = 'local' | 'self_hosted' | 'stremio_addon' | 'licensed_provider'
+
+export type StremioAddonCatalog = {
+  type: string
+  id: string
+  name: string
+}
+
+export type StremioAddonDescriptor = {
+  id: string
+  manifestUrl: string
+  baseUrl: string
+  name: string
+  version: string
+  description: string
+  logo?: string | null
+  types: string[]
+  resources: string[]
+  catalogs: StremioAddonCatalog[]
+  enabled: boolean
+}
 
 export type SourceItemDescriptor = {
   externalId: string

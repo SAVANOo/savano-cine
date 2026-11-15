@@ -28,6 +28,9 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 ## Concluído
 
+- Conector de Addons compatível com protocolo Stremio (`manifest.json` via HTTP/HTTPS): tabela `stremio_addons`, endpoints `/api/addons*` (`scripts/stremio-addons.mjs`), aba **Addons (Stremio)** com atalho na Sidebar, explorador de catálogos/episódios, busca de streams e legendas e reprodução direta no `VideoPlayer`.
+- Sinopses em PT-BR (TMDB `pt-BR` + fallback Wikipedia PT para séries) e banners widescreen (`background` do TVMaze + `w1280` TMDB) em `scripts/fetch-artwork.mjs`.
+- Exclusão de perfil (`DELETE /api/profiles/:id`) e tela *"Quem está assistindo?"* (`ProfileGate`) com cookie `sc_profile_session` (TTL 24h), além de organização dos 32 avatares em subpastas por coleção (`public/avatars/<colecao>/`).
 - Estrutura React/TypeScript/Vite com SQLite local.
 - Importação idempotente de `D:\Filmes` e `E:\Filmes`.
 - Fontes removíveis identificadas na interface.

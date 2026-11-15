@@ -127,6 +127,7 @@ export type PlayableMedia = {
   title: string
   url: string
   subtitleUrl?: string
+  externalSubtitles?: Array<{ label: string; url: string }>
   mediaId?: string
   needsTranscode?: boolean
   overview?: string

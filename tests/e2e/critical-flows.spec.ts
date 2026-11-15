@@ -46,6 +46,8 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(page.getByRole('button', { name: /Buscar capas faltantes/i })).toBeVisible()
     await page.getByRole('button', { name: /Logs de Erro/i }).click()
     await expect(page.getByText(/data\/logs\/api-errors\.log/i)).toBeVisible()
+    await page.getByRole('button', { name: /Addons \(Stremio\)/i }).click()
+    await expect(page.getByRole('heading', { name: /Conector de Addons \(Protocolo Stremio\)/i })).toBeVisible()
   })
 
   test('Editor de perfil abre grupos de avatares estilo Netflix', async ({ page }) => {

@@ -1,0 +1,334 @@
+/**
+ * Stremio-compatible Addon protocol client and SQLite persistence.
+ * Supports manifest.json installation, catalog browsing, meta lookup,
+ * and stream/subtitle resolution over HTTP/HTTPS without modifying local files.
+ */
+
+const SAFE_SEGMENT_RE = /^[a-zA-Z0-9._:-]+$/
+
+export function ensureStremioAddonsTable(database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS stremio_addons (
+      id TEXT PRIMARY KEY,
+      manifest_url TEXT NOT NULL UNIQUE,
+      base_url TEXT NOT NULL,
+      name TEXT NOT NULL,
+      version TEXT NOT NULL DEFAULT '1.0.0',
+      description TEXT NOT NULL DEFAULT '',
+      logo TEXT,
+      types_json TEXT NOT NULL DEFAULT '[]',
+      resources_json TEXT NOT NULL DEFAULT '[]',
+      catalogs_json TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+}
+
+export function normalizeManifestUrl(rawUrl) {
+  let trimmed = String(rawUrl || '').trim()
+  if (/^stremio:\/\//i.test(trimmed)) {
+    trimmed = trimmed.replace(/^stremio:\/\//i, 'https://')
+  }
+  let parsed
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new Error('URL do manifest inválida.')
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Apenas URLs HTTP ou HTTPS são permitidas para addons Stremio.')
+  }
+  const cleanPath = parsed.pathname.replace(/\/+$/, '')
+  const manifestPath = cleanPath.endsWith('/manifest.json') ? cleanPath : `${cleanPath}/manifest.json`
+  parsed.pathname = manifestPath
+  parsed.search = ''
+  parsed.hash = ''
+  const manifestUrl = parsed.toString()
+  const baseUrl = manifestUrl.replace(/\/manifest\.json$/, '')
+  return { manifestUrl, baseUrl }
+}
+
+function normalizeResources(resources) {
+  if (!Array.isArray(resources)) return []
+  return resources
+    .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
+    .filter((entry) => typeof entry === 'string' && entry.length > 0)
+}
+
+function normalizeCatalogs(catalogs) {
+  if (!Array.isArray(catalogs)) return []
+  return catalogs
+    .filter((entry) => entry && typeof entry.type === 'string' && typeof entry.id === 'string')
+    .map((entry) => ({
+      type: entry.type,
+      id: entry.id,
+      name: typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `${entry.type} (${entry.id})`,
+    }))
+}
+
+function serializeAddonRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    manifestUrl: row.manifest_url,
+    baseUrl: row.base_url,
+    name: row.name,
+    version: row.version || '1.0.0',
+    description: row.description || '',
+    logo: row.logo || null,
+    types: JSON.parse(row.types_json || '[]'),
+    resources: JSON.parse(row.resources_json || '[]'),
+    catalogs: JSON.parse(row.catalogs_json || '[]'),
+    enabled: Boolean(row.enabled),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export function listStremioAddons(database) {
+  ensureStremioAddonsTable(database)
+  const rows = database.prepare('SELECT * FROM stremio_addons ORDER BY created_at DESC, name ASC').all()
+  return rows.map(serializeAddonRow)
+}
+
+export async function installStremioAddon(database, rawUrl) {
+  ensureStremioAddonsTable(database)
+  const { manifestUrl, baseUrl } = normalizeManifestUrl(rawUrl)
+  const response = await fetch(manifestUrl, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar manifest.json (HTTP ${response.status}).`)
+  }
+  const manifest = await response.json().catch(() => null)
+  if (!manifest || typeof manifest.id !== 'string' || typeof manifest.name !== 'string') {
+    throw new Error('Manifest Stremio inválido: campos id e name são obrigatórios.')
+  }
+
+  const addonId = manifest.id.trim()
+  const types = Array.isArray(manifest.types) ? manifest.types.filter((t) => typeof t === 'string') : []
+  const resources = normalizeResources(manifest.resources)
+  const catalogs = normalizeCatalogs(manifest.catalogs)
+
+  database.prepare(`
+    INSERT INTO stremio_addons (
+      id, manifest_url, base_url, name, version, description, logo,
+      types_json, resources_json, catalogs_json, enabled, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+      manifest_url = excluded.manifest_url,
+      base_url = excluded.base_url,
+      name = excluded.name,
+      version = excluded.version,
+      description = excluded.description,
+      logo = excluded.logo,
+      types_json = excluded.types_json,
+      resources_json = excluded.resources_json,
+      catalogs_json = excluded.catalogs_json,
+      enabled = 1,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    addonId,
+    manifestUrl,
+    baseUrl,
+    manifest.name.trim(),
+    String(manifest.version || '1.0.0'),
+    String(manifest.description || ''),
+    typeof manifest.logo === 'string' ? manifest.logo : null,
+    JSON.stringify(types),
+    JSON.stringify(resources),
+    JSON.stringify(catalogs),
+  )
+
+  return serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(addonId))
+}
+
+export function setStremioAddonEnabled(database, id, enabled) {
+  ensureStremioAddonsTable(database)
+  const result = database.prepare(`
+    UPDATE stremio_addons
+    SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(enabled ? 1 : 0, id)
+  if (result.changes === 0) return null
+  return serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(id))
+}
+
+export function deleteStremioAddon(database, id) {
+  ensureStremioAddonsTable(database)
+  const result = database.prepare('DELETE FROM stremio_addons WHERE id = ?').run(id)
+  return result.changes > 0
+}
+
+function assertSafeSegment(value, label) {
+  if (!value || !SAFE_SEGMENT_RE.test(value)) {
+    throw new Error(`${label} inválido.`)
+  }
+}
+
+export async function fetchAddonCatalog(database, addonId, { type, catalogId, search }) {
+  ensureStremioAddonsTable(database)
+  const addon = serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(addonId))
+  if (!addon) return null
+  assertSafeSegment(type, 'Tipo de catálogo')
+  assertSafeSegment(catalogId, 'ID do catálogo')
+
+  const extra = search?.trim() ? `/search=${encodeURIComponent(search.trim())}` : ''
+  const targetUrl = `${addon.baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extra}.json`
+  const response = await fetch(targetUrl, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) {
+    throw new Error(`Catálogo do addon respondeu HTTP ${response.status}.`)
+  }
+  const payload = await response.json().catch(() => ({}))
+  const metas = Array.isArray(payload?.metas) ? payload.metas : []
+  return {
+    addonId: addon.id,
+    addonName: addon.name,
+    type,
+    catalogId,
+    metas: metas.slice(0, 60).map((meta) => ({
+      id: String(meta.id || ''),
+      type: String(meta.type || type),
+      name: String(meta.name || meta.title || 'Sem título'),
+      poster: typeof meta.poster === 'string' ? meta.poster : null,
+      background: typeof meta.background === 'string' ? meta.background : null,
+      description: typeof meta.description === 'string' ? meta.description : '',
+      releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+      genres: Array.isArray(meta.genres) ? meta.genres.filter((g) => typeof g === 'string') : [],
+    })),
+  }
+}
+
+export async function fetchAddonMeta(database, addonId, { type, metaId }) {
+  ensureStremioAddonsTable(database)
+  const addon = serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(addonId))
+  if (!addon) return null
+  assertSafeSegment(type, 'Tipo')
+  assertSafeSegment(metaId, 'ID de mídia')
+
+  const targetUrl = `${addon.baseUrl}/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`
+  const response = await fetch(targetUrl, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!response.ok) {
+    throw new Error(`Metadados do addon responderam HTTP ${response.status}.`)
+  }
+  const payload = await response.json().catch(() => ({}))
+  const meta = payload?.meta
+  if (!meta) return null
+  return {
+    id: String(meta.id || metaId),
+    type: String(meta.type || type),
+    name: String(meta.name || 'Sem título'),
+    poster: typeof meta.poster === 'string' ? meta.poster : null,
+    background: typeof meta.background === 'string' ? meta.background : null,
+    description: typeof meta.description === 'string' ? meta.description : '',
+    releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+    genres: Array.isArray(meta.genres) ? meta.genres : [],
+    videos: Array.isArray(meta.videos)
+      ? meta.videos.map((v) => ({
+          id: String(v.id || ''),
+          title: String(v.title || v.name || `Episódio ${v.episode ?? ''}`),
+          season: typeof v.season === 'number' ? v.season : null,
+          episode: typeof v.episode === 'number' ? v.episode : null,
+          thumbnail: typeof v.thumbnail === 'string' ? v.thumbnail : null,
+          overview: typeof v.overview === 'string' ? v.overview : '',
+        }))
+      : [],
+  }
+}
+
+function isSafeHttpUrl(candidate) {
+  try {
+    const parsed = new URL(String(candidate || ''))
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export async function queryAddonStreams(database, { type, id, addonId }) {
+  ensureStremioAddonsTable(database)
+  assertSafeSegment(type, 'Tipo')
+  assertSafeSegment(id, 'ID de mídia')
+
+  const allAddons = listStremioAddons(database).filter((addon) => addon.enabled)
+  const targets = allAddons.filter((addon) => {
+    if (addonId && addon.id !== addonId) return false
+    return addon.resources.includes('stream')
+  })
+
+  const settled = await Promise.allSettled(
+    targets.map(async (addon) => {
+      const url = `${addon.baseUrl}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(7000),
+      })
+      if (!response.ok) return []
+      const payload = await response.json().catch(() => ({}))
+      const streams = Array.isArray(payload?.streams) ? payload.streams : []
+      return streams.map((stream) => ({
+        addonId: addon.id,
+        addonName: addon.name,
+        name: String(stream.name || addon.name),
+        title: String(stream.title || stream.description || stream.name || 'Stream'),
+        url: isSafeHttpUrl(stream.url) ? stream.url : null,
+        isDirectHttp: isSafeHttpUrl(stream.url),
+        ytId:
+          typeof stream.ytId === 'string' && /^[a-zA-Z0-9_-]{6,20}$/.test(stream.ytId)
+            ? stream.ytId
+            : null,
+        infoHash: typeof stream.infoHash === 'string' ? stream.infoHash : null,
+      }))
+    }),
+  )
+
+  return settled
+    .filter((entry) => entry.status === 'fulfilled')
+    .flatMap((entry) => entry.value)
+}
+
+export async function queryAddonSubtitles(database, { type, id }) {
+  ensureStremioAddonsTable(database)
+  assertSafeSegment(type, 'Tipo')
+  assertSafeSegment(id, 'ID de mídia')
+
+  const targets = listStremioAddons(database).filter(
+    (addon) => addon.enabled && addon.resources.includes('subtitles'),
+  )
+
+  const settled = await Promise.allSettled(
+    targets.map(async (addon) => {
+      const url = `${addon.baseUrl}/subtitles/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(7000),
+      })
+      if (!response.ok) return []
+      const payload = await response.json().catch(() => ({}))
+      const subs = Array.isArray(payload?.subtitles) ? payload.subtitles : []
+      return subs
+        .filter((sub) => isSafeHttpUrl(sub?.url))
+        .map((sub) => ({
+          addonId: addon.id,
+          addonName: addon.name,
+          id: String(sub.id || sub.url),
+          lang: String(sub.lang || 'und'),
+          url: sub.url,
+        }))
+    }),
+  )
+
+  return settled
+    .filter((entry) => entry.status === 'fulfilled')
+    .flatMap((entry) => entry.value)
+}
