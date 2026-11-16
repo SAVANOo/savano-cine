@@ -139,6 +139,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.goto('/?tab=server')
     await expect(page.getByRole('heading', { name: /Painel do Catálogo/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Servidor & Conexões/i })).toBeVisible()
+    await expect(page.getByText(/Downloads para o Acervo Local/i)).toBeVisible()
 
     const profilesRes = await request.get('/api/profiles')
     const profiles = (await profilesRes.json()) as Array<{ id: string; isAdmin?: boolean }>
@@ -161,6 +162,9 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
         ['POST', '/api/admin/tunnel/start'],
         ['POST', '/api/admin/tunnel/stop'],
         ['GET', '/api/logs/errors'],
+        ['POST', '/api/review'],
+        ['POST', '/api/catalog/fake-id/archive'],
+        ['POST', '/api/artwork/fetch'],
       ] as const) {
         const res = await request.fetch(url, {
           method,

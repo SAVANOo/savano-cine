@@ -295,6 +295,13 @@ async function handleApiRequest(request, response) {
     if (!requireAdmin(request, response)) return
   }
 
+  const isCatalogAdminWriteRoute =
+    request.method !== 'GET' &&
+    (requestUrl.pathname.startsWith('/api/review') ||
+      requestUrl.pathname.startsWith('/api/catalog/') ||
+      requestUrl.pathname.startsWith('/api/artwork/'))
+  if (isCatalogAdminWriteRoute && !requireAdmin(request, response)) return
+
   if (requestUrl.pathname === '/api/health') {
     return send(response, 200, { status: 'ok', pinRequired: Boolean(accessPin) })
   }

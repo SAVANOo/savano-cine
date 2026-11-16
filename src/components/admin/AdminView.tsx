@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { StremioAddonsPanel } from '../addons/StremioAddonsPanel'
+import { DownloadsPanel } from '../addons/DownloadsPanel'
 import type { ArtworkCandidateGroup, CatalogHistory } from '../modals/CatalogModals'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -452,6 +453,8 @@ export function AdminView({
               </div>
             </div>
           </div>
+
+          <DownloadsPanel alwaysVisible onRefreshCatalog={onRefreshAll} />
 
           <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 space-y-3">
             <div className="flex items-center justify-between gap-2">

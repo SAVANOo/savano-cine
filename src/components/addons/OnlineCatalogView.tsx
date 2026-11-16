@@ -5,6 +5,7 @@ import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Button } from '../ui/Button'
 import { SavanoLoader } from '../ui/SavanoLoader'
 import { AddonStreamModal, type AddonMetaSummary } from './AddonStreamModal'
+import { DownloadsPanel } from './DownloadsPanel'
 
 type AddonCatalogRef = {
   type: string
@@ -182,6 +183,8 @@ export function OnlineCatalogView({
           {loading ? 'Buscando...' : 'Buscar Online'}
         </Button>
       </form>
+
+      <DownloadsPanel />
 
       <div className="flex flex-wrap items-center gap-1.5">
         {(
