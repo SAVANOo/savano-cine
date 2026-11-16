@@ -21,14 +21,14 @@ type InstalledCatalogAddon = {
  * Loads trending online items for the hybrid Home carousel and performs
  * debounced cross-addon catalog search when the user types in the search bar.
  */
-export function useOnlineCatalogDiscovery(query: string) {
+export function useOnlineCatalogDiscovery(query: string, enabled = true) {
   const [addonSearchResults, setAddonSearchResults] = useState<OnlineMetaDiscoveryItem[]>([])
   const [addonSearching, setAddonSearching] = useState(false)
   const [homeTrendingOnline, setHomeTrendingOnline] = useState<OnlineMetaDiscoveryItem[]>([])
 
   useEffect(() => {
     const trimmed = query.trim()
-    if (trimmed.length < 2) {
+    if (!enabled || trimmed.length < 2) {
       return
     }
     let active = true
@@ -98,9 +98,10 @@ export function useOnlineCatalogDiscovery(query: string) {
       setAddonSearching(false)
       window.clearTimeout(timer)
     }
-  }, [query])
+  }, [enabled, query])
 
   useEffect(() => {
+    if (!enabled) return
     let active = true
     fetch('/api/addons')
       .then((res) => (res.ok ? res.json() : []))
@@ -155,7 +156,7 @@ export function useOnlineCatalogDiscovery(query: string) {
     return () => {
       active = false
     }
-  }, [])
+  }, [enabled])
 
   return { addonSearchResults, addonSearching, homeTrendingOnline }
 }

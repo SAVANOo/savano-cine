@@ -74,7 +74,6 @@ export function App() {
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [catalogNotice, setCatalogNotice] = useState('')
-  const { addonSearchResults, addonSearching, homeTrendingOnline } = useOnlineCatalogDiscovery(query)
   const [onlineContinueItems, setOnlineContinueItems] = useState<
     Array<{
       mediaKey?: string
@@ -129,12 +128,16 @@ export function App() {
   const [unlockPassword, setUnlockPassword] = useState('')
   const [unlockError, setUnlockError] = useState('')
   const [unlockedProfiles, setUnlockedProfiles] = useState<Set<string>>(() => new Set())
-  const [activeProfileId, setActiveProfileId] = useState(() => initialCookieProfile || 'profile-savio')
-  const [catalog, setCatalog] = useState<LibraryItem[]>(
-    () => readCachedCatalog(initialCookieProfile || 'profile-savio') ?? mockLibrary,
+  const [activeProfileId, setActiveProfileId] = useState(() => initialCookieProfile)
+  const { addonSearchResults, addonSearching, homeTrendingOnline } = useOnlineCatalogDiscovery(
+    query,
+    !pinLocked && !profileGateOpen && Boolean(activeProfileId),
   )
-  const [catalogLoading, setCatalogLoading] = useState(
-    () => !readCachedCatalog(initialCookieProfile || 'profile-savio'),
+  const [catalog, setCatalog] = useState<LibraryItem[]>(() =>
+    initialCookieProfile ? readCachedCatalog(initialCookieProfile) ?? mockLibrary : [],
+  )
+  const [catalogLoading, setCatalogLoading] = useState(() =>
+    Boolean(initialCookieProfile && !readCachedCatalog(initialCookieProfile)),
   )
   const [sources, setSources] = useState<MediaSource[]>(mockSources)
   const [sourcesError, setSourcesError] = useState('')
@@ -344,8 +347,10 @@ export function App() {
 
   useEffect(() => {
     refreshProfiles()
-    refreshCatalogAndSources()
-  }, [refreshCatalogAndSources, refreshProfiles])
+    if (!pinLocked && !profileGateOpen && activeProfileId) {
+      refreshCatalogAndSources()
+    }
+  }, [activeProfileId, pinLocked, profileGateOpen, refreshCatalogAndSources, refreshProfiles])
 
   useEffect(() => {
     let active = true
@@ -446,8 +451,12 @@ export function App() {
   }, [activeAddonItem, adminOpen, pendingUnlockProfile, profileEditorOpen, profileGateOpen, selectedMedia, selectedShow, setSelectedShow])
 
   const activeProfile =
-    profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
-  const isActiveAdmin = Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')
+    (activeProfileId ? profiles.find((p) => p.id === activeProfileId) : undefined) ??
+    profiles[0] ??
+    mockProfiles[0]
+  const isActiveAdmin =
+    Boolean(activeProfileId) &&
+    Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')
 
   useEffect(() => {
     if (typeof window === 'undefined' || isActiveAdmin) return
@@ -754,7 +763,9 @@ export function App() {
         Pular para o conteúdo
       </a>
 
-      <Sidebar
+      {!pinLocked && !profileGateOpen && Boolean(activeProfileId) && (
+        <>
+          <Sidebar
         sources={sources}
         sourcesError={sourcesError}
         activeProfile={activeProfile}
@@ -1337,6 +1348,8 @@ export function App() {
           </div>
         )}
       </main>
+        </>
+      )}
 
       {selectedMedia && (
         <Suspense fallback={null}>
