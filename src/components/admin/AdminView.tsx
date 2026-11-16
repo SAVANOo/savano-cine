@@ -404,50 +404,53 @@ export function AdminView({
                   )}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-[var(--sc-text-secondary)]">
+                  {tunnelBusy
+                    ? 'Atualizando túnel...'
+                    : tunnelUrl
+                      ? 'Túnel Público Ativo'
+                      : 'Túnel Público Desligado'}
+                </span>
+                <button
                   type="button"
-                  size="sm"
-                  variant="primary"
+                  role="switch"
+                  aria-checked={Boolean(tunnelUrl)}
+                  aria-label="Alternar Túnel Público"
                   disabled={tunnelBusy}
                   onClick={async () => {
                     setTunnelBusy(true)
                     try {
-                      const res = await fetch('/api/admin/tunnel/start', { method: 'POST' })
-                      const data = await res.json().catch(() => null)
-                      if (data?.tunnelUrl) {
-                        setTunnelUrl(data.tunnelUrl)
-                        const qr = await QRCode.toDataURL(data.tunnelUrl, { width: 140, margin: 1 }).catch(() => '')
-                        if (qr) setQrDataUrl(qr)
-                        setFeedback(`Túnel público ativo: ${data.tunnelUrl}`)
-                      } else if (data?.error) {
-                        setFeedback(data.error)
+                      if (tunnelUrl) {
+                        await fetch('/api/admin/tunnel/stop', { method: 'POST' })
+                        setTunnelUrl('')
+                        setFeedback('Túnel público encerrado.')
+                      } else {
+                        const res = await fetch('/api/admin/tunnel/start', { method: 'POST' })
+                        const data = await res.json().catch(() => null)
+                        if (data?.tunnelUrl) {
+                          setTunnelUrl(data.tunnelUrl)
+                          const qr = await QRCode.toDataURL(data.tunnelUrl, { width: 140, margin: 1 }).catch(() => '')
+                          if (qr) setQrDataUrl(qr)
+                          setFeedback(`Túnel público ativo: ${data.tunnelUrl}`)
+                        } else if (data?.error) {
+                          setFeedback(data.error)
+                        }
                       }
                     } finally {
                       setTunnelBusy(false)
                     }
                   }}
+                  className={`relative inline-flex h-7 w-13 shrink-0 items-center rounded-full border border-white/15 transition-colors cursor-pointer disabled:opacity-50 ${
+                    tunnelUrl ? 'bg-emerald-500' : 'bg-white/15'
+                  }`}
                 >
-                  {tunnelBusy ? 'Iniciando túnel...' : 'Iniciar / Verificar Túnel Público'}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={tunnelBusy}
-                  onClick={async () => {
-                    setTunnelBusy(true)
-                    try {
-                      await fetch('/api/admin/tunnel/stop', { method: 'POST' })
-                      setTunnelUrl('')
-                      setFeedback('Túnel público encerrado.')
-                    } finally {
-                      setTunnelBusy(false)
-                    }
-                  }}
-                >
-                  Parar Túnel
-                </Button>
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      tunnelUrl ? 'translate-x-7' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 text-xs">
