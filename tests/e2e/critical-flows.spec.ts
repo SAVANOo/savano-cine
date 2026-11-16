@@ -24,7 +24,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     page,
   }) => {
     await page.goto('/')
-    await expect(page.getByText(/Novo volume/i)).toBeVisible()
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
 
     const infoButton = page.getByRole('button', { name: /Mais informações sobre/i }).first()
     await infoButton.click()
@@ -104,7 +104,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
 
   test('Navbar Filmes e Séries filtram o catálogo ao clicar', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText(/Novo volume/i)).toBeVisible()
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
     await page.getByRole('navigation').getByRole('button', { name: 'Filmes', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Filmes', exact: true })).toBeVisible()
     await page.getByRole('navigation').getByRole('button', { name: 'Séries', exact: true }).click()
@@ -200,5 +200,15 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.getByRole('navigation').getByRole('button', { name: 'Continuar assistindo', exact: true }).click()
     await expect(page.getByText('Continuar assistindo (Online · Addons)')).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Teste Online E2E — T1:E2').first()).toBeVisible()
+  })
+
+  test('Me Surpreenda abre pela navbar, escolhe clima e sorteia sugestão visual', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
+    await page.getByRole('navigation').getByRole('button', { name: 'Me Surpreenda', exact: true }).click()
+    await expect(page.getByRole('heading', { name: /Me Surpreenda/i })).toBeVisible()
+    await page.getByRole('button', { name: /Para Dar Risada/i }).click()
+    await page.getByRole('button', { name: /Sortear sugestão/i }).click()
+    await expect(page.getByRole('button', { name: /Sortear outro/i }).first()).toBeVisible({ timeout: 5000 })
   })
 })

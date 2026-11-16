@@ -28,8 +28,8 @@ type SidebarProps = {
   sourcesError: string
   activeProfile: Profile
   profiles: Profile[]
-  activeKind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar'
-  onSelectKind: (kind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar') => void
+  activeKind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir'
+  onSelectKind: (kind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir') => void
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
@@ -269,6 +269,7 @@ export function Sidebar({
           { key: 'Continuar' as const, label: 'Continuar assistindo', icon: PlayCircle },
           { key: 'Local' as const, label: 'Acervo Local', icon: HardDrive },
           { key: 'Online' as const, label: 'Acervo Online', icon: Globe },
+          { key: 'Descobrir' as const, label: 'Me Surpreenda', icon: Sparkles },
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {
