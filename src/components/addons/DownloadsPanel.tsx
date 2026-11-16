@@ -69,6 +69,19 @@ export function DownloadsPanel({ alwaysVisible = false, onRefreshCatalog }: Down
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          {downloads.some((d) => d.status === 'completed' || d.status === 'error' || d.status === 'qbittorrent') ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await fetch('/api/addons/downloads', { method: 'DELETE' }).catch(() => undefined)
+                void loadDownloads()
+              }}
+            >
+              Limpar concluídos
+            </Button>
+          ) : null}
           {onRefreshCatalog && downloads.some((d) => d.status === 'completed') ? (
             <Button type="button" size="sm" variant="secondary" onClick={onRefreshCatalog}>
               <RefreshCw className="h-3.5 w-3.5" />

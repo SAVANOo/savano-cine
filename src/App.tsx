@@ -426,6 +426,22 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [activeAddonItem, adminOpen, profileEditorOpen, selectedMedia, selectedShow, setSelectedShow])
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (selectedMedia || profileGateOpen || profileEditorOpen || pendingUnlockProfile) return
+      if (adminOpen) {
+        setAdminOpen(false)
+      } else if (activeAddonItem) {
+        setActiveAddonItem(null)
+      } else if (selectedShow) {
+        setSelectedShow(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeAddonItem, adminOpen, pendingUnlockProfile, profileEditorOpen, profileGateOpen, selectedMedia, selectedShow, setSelectedShow])
+
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
   const isActiveAdmin = Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')

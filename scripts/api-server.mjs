@@ -12,6 +12,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 import { getAdapterForSource } from './source-adapters.mjs'
+import { handleAdminRoutes, trackClientConnection } from './routes/admin-routes.mjs'
 import {
   deleteStremioAddon,
   ensureStremioAddonsTable,
@@ -193,33 +194,14 @@ function applySecurityHeaders(response) {
   )
 }
 
-const RECENT_CONNECTIONS = new Map()
-let activeTunnelChild = null
-
 const ADDON_CATALOG_CACHE = new Map()
 const ADDON_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
 const SHOW_ARTWORK_CACHE = new Map()
 const SHOW_ARTWORK_CACHE_TTL_MS = 60 * 60 * 1000
 
-function trackClientConnection(request) {
-  const ip = getClientIp(request)
-  const ua = String(request.headers['user-agent'] || '').slice(0, 120)
-  const key = `${ip}::${ua}`
-  RECENT_CONNECTIONS.set(key, {
-    ip,
-    userAgent: ua || 'Desconhecido',
-    lastPath: String(request.url || '/').split('?')[0],
-    lastSeen: new Date().toISOString(),
-  })
-  if (RECENT_CONNECTIONS.size > 30) {
-    const oldest = RECENT_CONNECTIONS.keys().next().value
-    if (oldest) RECENT_CONNECTIONS.delete(oldest)
-  }
-}
-
 createServer(async (request, response) => {
   applySecurityHeaders(response)
-  trackClientConnection(request)
+  trackClientConnection(request, getClientIp)
   try {
     await handleApiRequest(request, response)
   } catch (error) {
@@ -907,57 +889,8 @@ async function handleApiRequest(request, response) {
     return send(response, 200, { stopped, infoHash })
   }
 
-  if (requestUrl.pathname === '/api/admin/connections' && request.method === 'GET') {
-    if (!requireAdmin(request, response)) return
-    return send(response, 200, Array.from(RECENT_CONNECTIONS.values()).reverse())
-  }
-
-  if (requestUrl.pathname === '/api/admin/tunnel/start' && request.method === 'POST') {
-    if (!requireAdmin(request, response)) return
-    const cloudflaredExe = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe'
-    if (!existsSync(cloudflaredExe)) {
-      return send(response, 404, { error: 'cloudflared não instalado neste computador.' })
-    }
-    if (activeTunnelChild && !activeTunnelChild.killed) {
-      const tunnelFile = path.resolve(root, '..', 'data', 'tunnel-url.txt')
-      const existingUrl = existsSync(tunnelFile) ? readFileSync(tunnelFile, 'utf8').trim() : ''
-      return send(response, 200, { running: true, tunnelUrl: existingUrl })
-    }
-    const tunnelFile = path.resolve(root, '..', 'data', 'tunnel-url.txt')
-    const child = spawn(cloudflaredExe, ['tunnel', '--url', `http://127.0.0.1:${port}`], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    activeTunnelChild = child
-    const onChunk = (chunk) => {
-      const text = chunk.toString('utf8')
-      const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
-      if (m) {
-        try {
-          mkdirSync(path.dirname(tunnelFile), { recursive: true })
-          writeFile(tunnelFile, m[0], 'utf8').catch(() => undefined)
-        } catch {
-          // ignore
-        }
-      }
-    }
-    child.stdout?.on('data', onChunk)
-    child.stderr?.on('data', onChunk)
-    child.on('exit', () => {
-      if (activeTunnelChild === child) activeTunnelChild = null
-    })
-    await new Promise((r) => setTimeout(r, 2500))
-    const tunnelUrl = existsSync(tunnelFile) ? readFileSync(tunnelFile, 'utf8').trim() : ''
-    return send(response, 200, { running: true, tunnelUrl })
-  }
-
-  if (requestUrl.pathname === '/api/admin/tunnel/stop' && request.method === 'POST') {
-    if (!requireAdmin(request, response)) return
-    if (activeTunnelChild && !activeTunnelChild.killed) {
-      activeTunnelChild.kill()
-      activeTunnelChild = null
-    }
-    return send(response, 200, { running: false })
+  if (await handleAdminRoutes({ request, response, requestUrl, root, port, send })) {
+    return
   }
 
   if (requestUrl.pathname === '/api/addons/progress') {
@@ -1012,7 +945,18 @@ async function handleApiRequest(request, response) {
     return send(response, 200, Array.from(LOCAL_ADDON_DOWNLOADS.values()))
   }
 
-  if (requestUrl.pathname === '/api/addons/download-local' && request.method === 'POST') {
+  if (requestUrl.pathname === '/api/addons/downloads' && request.method === 'DELETE') {
+    let cleared = 0
+    for (const [id, entry] of LOCAL_ADDON_DOWNLOADS.entries()) {
+      if (entry.status === 'completed' || entry.status === 'error' || entry.status === 'qbittorrent') {
+        LOCAL_ADDON_DOWNLOADS.delete(id)
+        cleared += 1
+      }
+    }
+    return send(response, 200, { cleared })
+  }
+
+  if ((requestUrl.pathname === '/api/addons/download-local' || requestUrl.pathname === '/api/downloads/add') && request.method === 'POST') {
     let body
     try {
       body = await readJson(request)
