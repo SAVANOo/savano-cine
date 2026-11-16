@@ -590,11 +590,16 @@ async function handleApiRequest(request, response) {
         }
       }
     }
+    const tunnelFile = path.resolve(root, '..', 'data', 'tunnel-url.txt')
+    const tunnelUrl =
+      process.env.CINE_PUBLIC_URL?.trim() ||
+      (existsSync(tunnelFile) ? readFileSync(tunnelFile, 'utf8').trim() : '')
     return send(response, 200, {
       apiPort: port,
       host,
       lanIps,
       urls: lanIps.map((ip) => `http://${ip}:${port}`),
+      tunnelUrl,
     })
   }
 

@@ -59,12 +59,14 @@ export function AdminView({
   const [hiddenReviewIds, setHiddenReviewIds] = useState<Set<string>>(() => new Set())
   const [hiddenCandidateIds, setHiddenCandidateIds] = useState<Set<string>>(() => new Set())
   const [networkUrls, setNetworkUrls] = useState<string[]>([])
+  const [tunnelUrl, setTunnelUrl] = useState('')
 
   useEffect(() => {
     fetch('/api/network-info')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (Array.isArray(data?.urls)) setNetworkUrls(data.urls)
+        if (typeof data?.tunnelUrl === 'string') setTunnelUrl(data.tunnelUrl)
       })
       .catch(() => undefined)
   }, [])
@@ -253,15 +255,26 @@ export function AdminView({
         </div>
       )}
 
-      {networkUrls.length > 0 && (
+      {(networkUrls.length > 0 || tunnelUrl) && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-4 py-2.5 text-xs">
-          <span className="text-[var(--sc-text-secondary)]">
-            Acesso pelo celular / APK Android (mesmo Wi-Fi):{' '}
-            <strong className="text-[var(--sc-text-primary)]">{networkUrls[0]}</strong>
-          </span>
+          <div className="flex flex-col gap-0.5">
+            {networkUrls.length > 0 && (
+              <span className="text-[var(--sc-text-secondary)]">
+                Wi-Fi local (celular / APK):{' '}
+                <strong className="text-[var(--sc-text-primary)]">{networkUrls[0]}</strong>
+              </span>
+            )}
+            {tunnelUrl && (
+              <span className="text-[var(--sc-text-secondary)]">
+                Internet pública (4G/externo):{' '}
+                <strong className="text-[var(--sc-accent)]">{tunnelUrl}</strong>
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <a
-              href="/SavanoCine.apk"
+              href="/api/android/apk"
+              download="SavanoCine.apk"
               className="inline-flex h-8 items-center gap-1.5 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs font-medium text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
             >
               Baixar APK Android
@@ -271,8 +284,9 @@ export function AdminView({
               size="sm"
               variant="ghost"
               onClick={() => {
-                void navigator.clipboard?.writeText(networkUrls[0])
-                setFeedback(`Endereço ${networkUrls[0]} copiado!`)
+                const target = tunnelUrl || networkUrls[0]
+                void navigator.clipboard?.writeText(target)
+                setFeedback(`Endereço ${target} copiado!`)
               }}
             >
               <Copy className="h-3.5 w-3.5" />

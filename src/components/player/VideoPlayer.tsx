@@ -344,8 +344,25 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const toggleFullscreen = () => {
     const stage = videoRef.current?.parentElement
     if (!stage) return
-    if (document.fullscreenElement) void document.exitFullscreen()
-    else void stage.requestFullscreen?.()
+    if (document.fullscreenElement) {
+      try {
+        ;(screen.orientation as { unlock?: () => void })?.unlock?.()
+      } catch {
+        // ignore
+      }
+      void document.exitFullscreen()
+    } else {
+      void stage
+        .requestFullscreen?.()
+        ?.then(() => {
+          try {
+            void (screen.orientation as { lock?: (mode: string) => Promise<void> })?.lock?.('landscape')?.catch(() => undefined)
+          } catch {
+            // ignore
+          }
+        })
+        ?.catch(() => undefined)
+    }
   }
 
   useEffect(() => {
@@ -616,8 +633,8 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           </div>
 
           {/* Action Buttons */}
-          <div className="pointer-events-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={togglePlay}
@@ -682,7 +699,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -730,10 +747,12 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   setEpisodesMenuOpen(false)
                   setTrackMenuOpen((value) => !value)
                 }}
-                className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 text-xs font-semibold text-white hover:bg-white/20"
+                title="Idioma e legendas"
+                aria-label="Idioma e legendas"
+                className="flex h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 sm:px-3.5"
               >
                 <Subtitles className="h-4 w-4" />
-                Idioma e legendas
+                <span className="hidden sm:inline">Idioma e legendas</span>
               </button>
               {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                 <button
