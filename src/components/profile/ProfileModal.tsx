@@ -89,7 +89,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Ex.: Savio, Família, Infantil"
                 required
-                className="mt-1.5 h-10 w-full rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none"
+                className="mt-1.5 h-10 w-full rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
               />
             </label>
           </div>
@@ -102,7 +102,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
             />
             Perfil Infantil
           </label>
-          <div className="flex w-full flex-wrap items-end gap-3 border-t border-white/10 pt-3">
+          <div className="flex w-full flex-wrap items-end gap-3 border-t border-[var(--sc-border-subtle)] pt-3">
             <label className="min-w-[200px] flex-1 text-xs font-semibold text-[var(--sc-text-secondary)]">
               {profile?.hasPassword ? 'Nova senha do perfil (opcional)' : 'Senha do perfil (opcional)'}
               <input
@@ -111,7 +111,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
                 disabled={clearPassword}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder={profile?.hasPassword ? 'Deixe vazio para manter a atual' : 'Ex.: 1234'}
-                className="mt-1.5 h-9 w-full rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none disabled:opacity-40"
+                className="mt-1.5 h-9 w-full rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-accent)] focus:outline-none disabled:opacity-40"
               />
             </label>
             {profile?.hasPassword ? (
@@ -134,7 +134,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
         <div className="flex max-h-[52vh] flex-col gap-5 overflow-y-auto pr-1">
           {PROFILE_AVATAR_GROUPS.map((group) => (
             <div key={group.series} className="flex flex-col gap-2.5">
-              <h3 className="m-0 text-sm font-bold text-white">{group.series}</h3>
+              <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">{group.series}</h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {group.options.map((option) => {
                   const selected = avatarKey === option.key
@@ -145,8 +145,8 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
                       onClick={() => setAvatarKey(option.key)}
                       className={`relative flex items-center gap-3 rounded-[var(--sc-radius-md)] border p-2.5 text-left transition cursor-pointer ${
                         selected
-                          ? 'border-white bg-white/12 shadow-md'
-                          : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-white/30'
+                          ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)] shadow-md'
+                          : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-[var(--sc-border-strong)]'
                       }`}
                     >
                       <span
@@ -155,10 +155,10 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
                       >
                         <img src={option.imageUrl} alt={option.label} className="h-full w-full object-cover" />
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--sc-text-primary)]">
                         {option.label}
                       </span>
-                      {selected && <Check className="h-4 w-4 shrink-0 text-white" />}
+                      {selected && <Check className="h-4 w-4 shrink-0 text-[var(--sc-accent)]" />}
                     </button>
                   )
                 })}

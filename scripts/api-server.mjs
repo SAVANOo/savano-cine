@@ -67,7 +67,80 @@ const catalogRefresh = {
   process: null,
 }
 
+const AUTH_FAILURES = new Map()
+const AUTH_WINDOW_MS = 60_000
+const AUTH_MAX_FAILURES = 6
+
+function getClientIp(request) {
+  const forwarded = request.headers['x-forwarded-for']
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim()
+  }
+  return request.socket?.remoteAddress || 'unknown'
+}
+
+function isAuthRateLimited(request) {
+  const ip = getClientIp(request)
+  const entry = AUTH_FAILURES.get(ip)
+  if (!entry) return false
+  if (Date.now() - entry.firstAt > AUTH_WINDOW_MS) {
+    AUTH_FAILURES.delete(ip)
+    return false
+  }
+  return entry.count >= AUTH_MAX_FAILURES
+}
+
+function recordAuthFailure(request) {
+  const ip = getClientIp(request)
+  const now = Date.now()
+  const entry = AUTH_FAILURES.get(ip)
+  if (!entry || now - entry.firstAt > AUTH_WINDOW_MS) {
+    AUTH_FAILURES.set(ip, { count: 1, firstAt: now })
+  } else {
+    entry.count += 1
+  }
+}
+
+function clearAuthFailures(request) {
+  AUTH_FAILURES.delete(getClientIp(request))
+}
+
+function isPrivateHostname(hostname) {
+  const hostLower = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (
+    hostLower === 'localhost' ||
+    hostLower === '0.0.0.0' ||
+    hostLower === '::1' ||
+    hostLower.endsWith('.local')
+  ) {
+    return true
+  }
+  if (/^127\./.test(hostLower) || /^10\./.test(hostLower) || /^192\.168\./.test(hostLower) || /^169\.254\./.test(hostLower)) {
+    return true
+  }
+  const m172 = hostLower.match(/^172\.(\d+)\./)
+  if (m172 && Number(m172[1]) >= 16 && Number(m172[1]) <= 31) {
+    return true
+  }
+  if (/^(fc|fd|fe80)/i.test(hostLower)) {
+    return true
+  }
+  return false
+}
+
+function applySecurityHeaders(response) {
+  response.setHeader('X-Content-Type-Options', 'nosniff')
+  response.setHeader('X-Frame-Options', 'SAMEORIGIN')
+  response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  response.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+  response.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https:; font-src 'self' data:; frame-ancestors 'self'",
+  )
+}
+
 createServer(async (request, response) => {
+  applySecurityHeaders(response)
   try {
     await handleApiRequest(request, response)
   } catch (error) {
@@ -154,6 +227,9 @@ async function handleApiRequest(request, response) {
     }
     if (request.method === 'POST') {
       if (!accessPin) return send(response, 200, { authenticated: true })
+      if (isAuthRateLimited(request)) {
+        return send(response, 429, { error: 'Muitas tentativas incorretas. Aguarde 1 minuto.' })
+      }
       let body
       try {
         body = await readJson(request)
@@ -161,9 +237,13 @@ async function handleApiRequest(request, response) {
         return send(response, 400, { error: 'JSON inválido.' })
       }
       const submitted = typeof body.pin === 'string' ? body.pin.trim() : ''
-      if (!submitted || submitted !== accessPin) {
+      const expectedBuf = Buffer.from(accessPin)
+      const submittedBuf = Buffer.from(submitted)
+      if (!submitted || submittedBuf.length !== expectedBuf.length || !timingSafeEqual(submittedBuf, expectedBuf)) {
+        recordAuthFailure(request)
         return send(response, 401, { error: 'PIN incorreto.' })
       }
+      clearAuthFailures(request)
       response.setHeader(
         'Set-Cookie',
         `sc_pin_ok=${encodeURIComponent(pinToken)}; HttpOnly; SameSite=Lax; Max-Age=86400; Path=/`,
@@ -452,6 +532,9 @@ async function handleApiRequest(request, response) {
 
   const unlockProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)\/unlock$/)
   if (unlockProfileMatch && request.method === 'POST') {
+    if (isAuthRateLimited(request)) {
+      return send(response, 429, { error: 'Muitas tentativas incorretas. Aguarde 1 minuto.' })
+    }
     const profileId = decodeURIComponent(unlockProfileMatch[1])
     let body
     try {
@@ -469,8 +552,10 @@ async function handleApiRequest(request, response) {
       candidate.length !== row.passcode_hash.length ||
       !timingSafeEqual(Buffer.from(candidate), Buffer.from(row.passcode_hash))
     ) {
+      recordAuthFailure(request)
       return send(response, 401, { error: 'Senha do perfil incorreta.' })
     }
+    clearAuthFailures(request)
     return send(response, 200, { unlocked: true })
   }
 
@@ -623,8 +708,8 @@ async function handleApiRequest(request, response) {
     } catch {
       return send(response, 400, { error: 'URL de legenda inválida.' })
     }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return send(response, 400, { error: 'Protocolo inválido para legenda.' })
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isPrivateHostname(parsed.hostname)) {
+      return send(response, 400, { error: 'Host ou protocolo inválido para legenda.' })
     }
     try {
       const upstream = await fetch(parsed.toString(), { signal: AbortSignal.timeout(8000) })

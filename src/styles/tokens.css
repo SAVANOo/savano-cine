@@ -100,11 +100,15 @@
 :root[data-theme="momolada"] main section h1,
 :root[data-theme="momolada"] main section h2,
 :root[data-theme="momolada"] main article h3,
+:root[data-theme="momolada"] [role="dialog"]:not(.bg-black\/95) h2,
+:root[data-theme="momolada"] [role="dialog"]:not(.bg-black\/95) h3,
 :root[data-theme="light"] aside .text-white,
 :root[data-theme="light"] main > header .text-white,
 :root[data-theme="light"] main section h1,
 :root[data-theme="light"] main section h2,
-:root[data-theme="light"] main article h3 {
+:root[data-theme="light"] main article h3,
+:root[data-theme="light"] [role="dialog"]:not(.bg-black\/95) h2,
+:root[data-theme="light"] [role="dialog"]:not(.bg-black\/95) h3 {
   color: var(--sc-text-primary);
 }
 

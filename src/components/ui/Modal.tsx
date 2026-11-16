@@ -41,7 +41,7 @@ export function Modal({
                 {eyebrow}
               </p>
             )}
-            <h2 className="mt-0.5 mb-0 truncate text-lg font-bold text-white">{title}</h2>
+            <h2 className="mt-0.5 mb-0 truncate text-lg font-bold text-[var(--sc-text-primary)]">{title}</h2>
             {subtitle && (
               <p className="mt-1 mb-0 text-xs text-[var(--sc-text-secondary)]">{subtitle}</p>
             )}
@@ -50,7 +50,7 @@ export function Modal({
             type="button"
             aria-label="Fechar"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-white/80 transition hover:bg-white/18 hover:text-white cursor-pointer"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-secondary)] transition hover:bg-[var(--sc-bg-surface-hover)] hover:text-[var(--sc-text-primary)] cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
