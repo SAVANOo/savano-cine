@@ -502,8 +502,24 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           autoPlay
           playsInline
           onClick={() => {
-            if (trackMenuOpen) setTrackMenuOpen(false)
-            else togglePlay()
+            if (trackMenuOpen) {
+              setTrackMenuOpen(false)
+              return
+            }
+            if (episodesMenuOpen) {
+              setEpisodesMenuOpen(false)
+              return
+            }
+            const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+            if (isTouch || !controlsVisible) {
+              setControlsVisible((prev) => {
+                const next = !prev
+                if (next) scheduleHideControls()
+                return next
+              })
+              return
+            }
+            togglePlay()
           }}
           onDoubleClick={toggleFullscreen}
           onPlay={() => {

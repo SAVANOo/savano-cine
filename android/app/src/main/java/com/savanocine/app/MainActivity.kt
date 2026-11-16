@@ -23,13 +23,21 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
+
+    private val executor = Executors.newSingleThreadExecutor()
+    private var lastBackPressedAt = 0L
 
     private lateinit var webView: WebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
@@ -165,11 +173,64 @@ class MainActivity : AppCompatActivity() {
                     webView.goBack()
                     return
                 }
-                finish()
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressedAt < 2000L) {
+                    finish()
+                } else {
+                    lastBackPressedAt = now
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Deslize ou pressione voltar novamente para sair",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         })
 
         webView.loadUrl(serverUrl)
+        checkAppUpdate()
+    }
+
+    private fun checkAppUpdate() {
+        executor.execute {
+            try {
+                val conn = (URL("$serverUrl/api/android/version").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                }
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val json = JSONObject(body)
+                    val remoteCode = json.optInt("versionCode", 0)
+                    val remoteName = json.optString("versionName", "")
+                    val apkPath = json.optString("apkUrl", "/api/android/apk")
+                    if (remoteCode > BuildConfig.VERSION_CODE) {
+                        runOnUiThread {
+                            AlertDialog.Builder(this)
+                                .setTitle("Atualização disponível (v$remoteName)")
+                                .setMessage("Uma nova versão do Savano Cine Android está pronta no seu servidor.")
+                                .setPositiveButton("Baixar APK") { _, _ ->
+                                    val fullUrl = if (apkPath.startsWith("http")) apkPath else "$serverUrl$apkPath"
+                                    val req = DownloadManager.Request(Uri.parse(fullUrl)).apply {
+                                        setMimeType("application/vnd.android.package-archive")
+                                        setTitle("SavanoCine-v$remoteName.apk")
+                                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "SavanoCine-v$remoteName.apk")
+                                    }
+                                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                                    dm.enqueue(req)
+                                    Toast.makeText(this, "Download iniciado em Downloads", Toast.LENGTH_LONG).show()
+                                }
+                                .setNegativeButton("Depois", null)
+                                .show()
+                        }
+                    }
+                }
+                conn.disconnect()
+            } catch (_: Exception) {
+                // ignore update check failures
+            }
+        }
     }
 
     private fun toggleSystemBars(show: Boolean) {

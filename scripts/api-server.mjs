@@ -562,9 +562,18 @@ async function handleApiRequest(request, response) {
     }
   }
 
-  if ((requestUrl.pathname === '/SavanoCine.apk' || requestUrl.pathname === '/api/android/apk') && request.method === 'GET') {
+  if (requestUrl.pathname === '/api/android/version' && request.method === 'GET') {
+    return send(response, 200, {
+      versionCode: 2,
+      versionName: '1.1.0',
+      apkUrl: '/api/android/apk',
+    })
+  }
+
+  if ((requestUrl.pathname === '/SavanoCine.apk' || requestUrl.pathname === '/api/android/apk') && (request.method === 'GET' || request.method === 'HEAD')) {
     const apkCandidates = [
       path.resolve(root, '..', '..', 'SavanoCine.apk'),
+      path.resolve(root, '..', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
       path.resolve(root, '..', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
     ]
     const apkPath = apkCandidates.find((candidate) => existsSync(candidate))
@@ -577,6 +586,7 @@ async function handleApiRequest(request, response) {
       'Content-Length': stat.size,
       'Content-Disposition': 'attachment; filename="SavanoCine.apk"',
     })
+    if (request.method === 'HEAD') return response.end()
     return createReadStream(apkPath).pipe(response)
   }
 

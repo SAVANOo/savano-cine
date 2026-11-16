@@ -380,6 +380,41 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [adminOpen, profileEditorOpen, selectedMedia, selectedShow, setSelectedShow])
 
+  useEffect(() => {
+    if (selectedMedia) document.title = `${selectedMedia.title} · Savano Cine`
+    else if (selectedShow) document.title = `${selectedShow.title} · Savano Cine`
+    else if (adminOpen) document.title = `${adminTab === 'addons' ? 'Addons' : 'Admin'} · Savano Cine`
+    else if (activeKind !== 'Todos') document.title = `${activeKind} · Savano Cine`
+    else document.title = 'Savano Cine'
+  }, [activeKind, adminOpen, adminTab, selectedMedia, selectedShow])
+
+  const layerDepth =
+    (selectedMedia ? 1 : 0) +
+    (activeAddonItem ? 1 : 0) +
+    (profileEditorOpen ? 1 : 0) +
+    (adminOpen ? 1 : 0) +
+    (selectedShow ? 1 : 0)
+  const prevLayerDepthRef = useRef(0)
+
+  useEffect(() => {
+    if (layerDepth > prevLayerDepthRef.current) {
+      window.history.pushState({ scLayer: layerDepth }, '')
+    }
+    prevLayerDepthRef.current = layerDepth
+  }, [layerDepth])
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (selectedMedia) setSelectedMedia(null)
+      else if (activeAddonItem) setActiveAddonItem(null)
+      else if (profileEditorOpen) setProfileEditorOpen(false)
+      else if (adminOpen) setAdminOpen(false)
+      else if (selectedShow) setSelectedShow(null)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [activeAddonItem, adminOpen, profileEditorOpen, selectedMedia, selectedShow, setSelectedShow])
+
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
 
@@ -673,6 +708,13 @@ export function App() {
         profileFading ? 'opacity-25' : 'opacity-100'
       }`}
     >
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-md focus:bg-[var(--sc-accent)] focus:px-3 focus:py-2 focus:text-xs focus:font-bold focus:text-white"
+      >
+        Pular para o conteúdo
+      </a>
+
       <Sidebar
         sources={sources}
         sourcesError={sourcesError}
@@ -720,7 +762,7 @@ export function App() {
         onChangeTheme={setTheme}
       />
 
-      <main className="min-w-0 flex-1 px-4 py-5 sm:px-8 sm:py-7">
+      <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 outline-none sm:px-8 sm:py-7">
         {/* Top Search & Genre Filter Bar */}
         {!adminOpen && (
           <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

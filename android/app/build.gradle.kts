@@ -11,13 +11,33 @@ android {
         applicationId = "com.savanocine.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    signingConfigs {
+        create("release") {
+            val ksFile = file("C:/Android/savano-cine-release.jks")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "savanocine-local-key"
+                keyAlias = "savanocine"
+                keyPassword = "savanocine-local-key"
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            val releaseCfg = signingConfigs.getByName("release")
+            if (releaseCfg.storeFile?.exists() == true) {
+                signingConfig = releaseCfg
+            }
         }
     }
 

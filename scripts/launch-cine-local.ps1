@@ -46,15 +46,41 @@ for ($i = 0; $i -lt 30; $i++) {
   Start-Sleep -Milliseconds 500
 }
 
+$tunnelUrl = ''
 if (Test-Path (Join-Path $projectRoot 'data\cloudflared.log')) {
   for ($j = 0; $j -lt 12; $j++) {
     $rawLog = Get-Content (Join-Path $projectRoot 'data\cloudflared.log') -Raw -ErrorAction SilentlyContinue
     if ($rawLog -match 'https://[a-z0-9-]+\.trycloudflare\.com') {
-      Set-Content -Path (Join-Path $projectRoot 'data\tunnel-url.txt') -Value $matches[0] -Encoding UTF8
+      $tunnelUrl = $matches[0]
+      Set-Content -Path (Join-Path $projectRoot 'data\tunnel-url.txt') -Value $tunnelUrl -Encoding UTF8
       break
     }
     Start-Sleep -Milliseconds 500
   }
 }
 
+$lanIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback' -and $_.IPAddress -notlike '169.254.*' } | Select-Object -First 1).IPAddress
+$pinState = if ($env:CINE_ACCESS_PIN) { 'Ativo (CINE_ACCESS_PIN)' } else { 'Desativado (apenas selecao/senha por perfil)' }
+
+Clear-Host
+Write-Host ''
+Write-Host '  ============================================================' -ForegroundColor Magenta
+Write-Host '                    SAVANO CINE - SERVIDOR ATIVO              ' -ForegroundColor White
+Write-Host '  ============================================================' -ForegroundColor Magenta
+Write-Host ('  PC Local       : http://127.0.0.1:5173') -ForegroundColor Cyan
+if ($lanIp) {
+  Write-Host ("  Wi-Fi / Celular: http://$lanIp:4174") -ForegroundColor Green
+  Write-Host ("  APK (Wi-Fi)    : http://$lanIp:4174/api/android/apk") -ForegroundColor Green
+}
+if ($tunnelUrl) {
+  Write-Host ("  Internet (4G)  : $tunnelUrl") -ForegroundColor Yellow
+  Write-Host ("  APK (Internet) : $tunnelUrl/api/android/apk") -ForegroundColor Yellow
+} else {
+  Write-Host '  Internet (4G)  : Tunel nao iniciado' -ForegroundColor DarkGray
+}
+Write-Host ("  PIN Global     : $pinState") -ForegroundColor Gray
+Write-Host '  ============================================================' -ForegroundColor Magenta
+Write-Host ''
+
 Start-Process 'http://127.0.0.1:5173'
+Read-Host '  Pressione Enter para fechar esta janela (o servidor continua rodando)'
