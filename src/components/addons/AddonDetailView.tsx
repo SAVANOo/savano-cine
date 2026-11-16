@@ -42,6 +42,7 @@ type AddonSubtitleItem = {
 type AddonDetailViewProps = {
   item: AddonMetaSummary
   localCatalog: LibraryItem[]
+  isAdmin?: boolean
   onBack: () => void
   onPlayStream: (media: PlayableMedia) => void
   onPlayLocal: (item: LibraryItem) => void
@@ -51,6 +52,7 @@ type AddonDetailViewProps = {
 export function AddonDetailView({
   item,
   localCatalog,
+  isAdmin = false,
   onBack,
   onPlayStream,
   onPlayLocal,
@@ -504,20 +506,45 @@ export function AddonDetailView({
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      {(stream.isDirectHttp && stream.url) || stream.infoHash ? (
+                      {isAdmin && ((stream.isDirectHttp && stream.url) || stream.infoHash) ? (
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
-                          title="Baixar para o Acervo Local (D:\Filmes\Downloads)"
+                          title="Salvar no Acervo Local do Servidor (Admin)"
                           onClick={(e) => {
                             e.stopPropagation()
                             void queueLocalDownload(stream)
                           }}
                         >
                           <Download className="h-3.5 w-3.5" />
-                          Offline
+                          Acervo
                         </Button>
+                      ) : null}
+                      {canPlayDirect && stream.url ? (
+                        <a
+                          href={stream.url}
+                          download={`${streamTargetLabel || detail.name}.mp4`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Baixar arquivo neste dispositivo"
+                          className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-2.5 py-1.5 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Baixar
+                        </a>
+                      ) : canPlayTorrent && stream.infoHash ? (
+                        <a
+                          href={`/api/addons/torrent-stream?infoHash=${encodeURIComponent(stream.infoHash)}${typeof stream.fileIdx === 'number' ? `&fileIdx=${stream.fileIdx}` : ''}`}
+                          download={`${streamTargetLabel || detail.name}.mp4`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Baixar arquivo neste dispositivo"
+                          className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-2.5 py-1.5 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Baixar
+                        </a>
                       ) : null}
                       {isPlayable ? (
                         <Button

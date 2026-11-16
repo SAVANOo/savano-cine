@@ -957,6 +957,7 @@ async function handleApiRequest(request, response) {
   }
 
   if ((requestUrl.pathname === '/api/addons/download-local' || requestUrl.pathname === '/api/downloads/add') && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
     let body
     try {
       body = await readJson(request)

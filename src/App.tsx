@@ -934,6 +934,7 @@ export function App() {
               key={`${activeAddonItem.type}:${activeAddonItem.id}`}
               item={activeAddonItem}
               localCatalog={catalog}
+              isAdmin={isActiveAdmin}
               onBack={() => setActiveAddonItem(null)}
               onPlayStream={(media) => setSelectedMedia(media)}
               onPlayLocal={(localItem) => playLibraryItem(localItem)}
@@ -1357,6 +1358,7 @@ export function App() {
             key={selectedMedia.url}
             media={selectedMedia}
             profileId={activeProfile.id}
+            isAdmin={isActiveAdmin}
             capabilities={playerCapabilities}
             onPlayNext={(next) => setSelectedMedia(next)}
             onClose={() => {

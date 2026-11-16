@@ -18,6 +18,7 @@ function formatClock(seconds: number): string {
 type VideoPlayerProps = {
   media: PlayableMedia
   profileId: string
+  isAdmin?: boolean
   capabilities: { ffmpeg: boolean; transcoding?: boolean; ffprobe: boolean; vlc: boolean } | null
   onPlayNext?: (next: PlayableMedia) => void
   onClose: () => void
@@ -43,7 +44,7 @@ function shiftTextTrackCues(tracks: TextTrackList, appliedDelta: number) {
 }
 
 /** Netflix-style immersive player with auto-hiding overlays, paused screen, and Idioma | Legendas popover. */
-export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClose }: VideoPlayerProps) {
+export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, onPlayNext, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const lastSavedPosition = useRef(0)
   const pendingPosition = useRef<number | null>(media.startPosition ?? null)
@@ -940,6 +941,19 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
 
           <div className="pointer-events-auto flex items-center gap-2">
             {isOnlineStream && (
+              <a
+                href={media.url}
+                download={`${media.title || 'video'}.mp4`}
+                target={media.url.startsWith('http') ? '_blank' : undefined}
+                rel={media.url.startsWith('http') ? 'noreferrer' : undefined}
+                title="Baixar este vídeo neste dispositivo"
+                className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Baixar</span>
+              </a>
+            )}
+            {isAdmin && isOnlineStream && (
               <button
                 type="button"
                 onClick={async () => {
