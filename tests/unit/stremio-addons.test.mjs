@@ -15,14 +15,20 @@ import {
 } from '../../scripts/stremio-addons.mjs'
 import { getTorrentStatus, isValidInfoHash } from '../../scripts/torrent-stream.mjs'
 
-test('normalizeManifestUrl validates HTTP/HTTPS and appends manifest.json', () => {
+test('normalizeManifestUrl validates HTTP/HTTPS, extracts share links, and blocks private SSRF hosts', () => {
   assert.throws(() => normalizeManifestUrl('file:///etc/passwd'))
   assert.throws(() => normalizeManifestUrl('not-a-url'))
+  assert.throws(() => normalizeManifestUrl('http://169.254.169.254/manifest.json'))
+  assert.throws(() => normalizeManifestUrl('http://192.168.1.10/manifest.json'))
   const normalized = normalizeManifestUrl('https://example.com/addon/')
   assert.equal(normalized.manifestUrl, 'https://example.com/addon/manifest.json')
   assert.equal(normalized.baseUrl, 'https://example.com/addon')
   const stremioProto = normalizeManifestUrl('stremio://v3-cinemeta.strem.io/manifest.json')
   assert.equal(stremioProto.manifestUrl, 'https://v3-cinemeta.strem.io/manifest.json')
+  const shareUrl = normalizeManifestUrl(
+    'https://app.strem.io/shell-v4.4/#/addons/community/all?addon=https%3A%2F%2Fanime-kitsu.strem.fun%2Fmanifest.json',
+  )
+  assert.equal(shareUrl.manifestUrl, 'https://anime-kitsu.strem.fun/manifest.json')
 })
 
 test('isValidInfoHash and getTorrentStatus validate SHA-1/Base32 infoHashes', async () => {

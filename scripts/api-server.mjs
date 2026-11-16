@@ -1,7 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { execFile, spawn, spawnSync } from 'node:child_process'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
@@ -52,6 +54,17 @@ ensureColumn('profiles', 'passcode_hash', 'TEXT')
 ensureArtworkCandidatesTable()
 ensureWatchlistTable()
 ensureStremioAddonsTable(database)
+database.exec(`
+  CREATE TABLE IF NOT EXISTS stremio_progress (
+    profile_id TEXT NOT NULL,
+    media_key TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    position_sec REAL NOT NULL DEFAULT 0,
+    duration_sec REAL NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (profile_id, media_key)
+  )
+`)
 ignorePromotionalAds()
 reconcileMisclassifiedEpisodes()
 sanitizeExistingTitles()
@@ -799,17 +812,6 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/addons/progress') {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS stremio_progress (
-        profile_id TEXT NOT NULL,
-        media_key TEXT NOT NULL,
-        title TEXT NOT NULL DEFAULT '',
-        position_sec REAL NOT NULL DEFAULT 0,
-        duration_sec REAL NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (profile_id, media_key)
-      )
-    `)
     if (request.method === 'GET') {
       const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
       const rows = database
@@ -949,8 +951,7 @@ async function handleApiRequest(request, response) {
         }
         const ext = path.extname(parsedUrl.pathname) || '.mp4'
         const destFile = path.join(targetDir, `${safeFolder}${ext}`)
-        const buf = Buffer.from(await res.arrayBuffer())
-        await writeFile(destFile, buf)
+        await pipeline(Readable.fromWeb(res.body), createWriteStream(destFile))
         record.status = 'completed'
         record.progress = 100
         record.message = `Salvo em ${destFile}`

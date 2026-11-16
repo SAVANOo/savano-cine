@@ -324,7 +324,7 @@ export function ShowDetailView({
               value={draftTitle}
               onChange={(event) => setDraftTitle(event.target.value)}
               required
-              className="h-9 rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none"
+              className="h-9 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] focus:border-[var(--sc-accent)] focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[var(--sc-text-secondary)]">
@@ -332,7 +332,7 @@ export function ShowDetailView({
             <input
               value={draftYear}
               onChange={(event) => setDraftYear(event.target.value)}
-              className="h-9 rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none"
+              className="h-9 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] focus:border-[var(--sc-accent)] focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[var(--sc-text-secondary)] sm:col-span-2">
@@ -340,7 +340,7 @@ export function ShowDetailView({
             <input
               value={draftTags}
               onChange={(event) => setDraftTags(event.target.value)}
-              className="h-9 rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 px-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none"
+              className="h-9 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] focus:border-[var(--sc-accent)] focus:outline-none"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[var(--sc-text-secondary)] sm:col-span-2">
@@ -349,7 +349,7 @@ export function ShowDetailView({
               rows={3}
               value={draftOverview}
               onChange={(event) => setDraftOverview(event.target.value)}
-              className="rounded-[var(--sc-radius-sm)] border border-white/15 bg-black/40 p-3 text-sm text-white focus:border-[var(--sc-accent)] focus:outline-none"
+              className="rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3 text-sm text-[var(--sc-text-primary)] focus:border-[var(--sc-accent)] focus:outline-none"
             />
           </label>
           <div className="flex items-center gap-2 sm:col-span-2">
@@ -372,8 +372,8 @@ export function ShowDetailView({
             onClick={() => setActiveTab('related')}
             className={`border-0 border-b-2 bg-transparent pb-3 text-sm font-semibold transition cursor-pointer ${
               activeTab === 'related'
-                ? 'border-white text-white'
-                : 'border-transparent text-[var(--sc-text-muted)] hover:text-white'
+                ? 'border-[var(--sc-accent)] text-[var(--sc-text-primary)]'
+                : 'border-transparent text-[var(--sc-text-muted)] hover:text-[var(--sc-text-primary)]'
             }`}
           >
             Você também pode gostar
@@ -383,8 +383,8 @@ export function ShowDetailView({
             onClick={() => setActiveTab('details')}
             className={`border-0 border-b-2 bg-transparent pb-3 text-sm font-semibold transition cursor-pointer ${
               activeTab === 'details'
-                ? 'border-white text-white'
-                : 'border-transparent text-[var(--sc-text-muted)] hover:text-white'
+                ? 'border-[var(--sc-accent)] text-[var(--sc-text-primary)]'
+                : 'border-transparent text-[var(--sc-text-muted)] hover:text-[var(--sc-text-primary)]'
             }`}
           >
             {seasons.length > 0 ? 'Episódios e Detalhes' : 'Detalhes e Avaliação'}

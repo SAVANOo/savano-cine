@@ -1,0 +1,21 @@
+{
+  "name": "Savano Cine",
+  "short_name": "Savano Cine",
+  "description": "Seu cinema pessoal com acervo local, acervo online e addons compatíveis com Stremio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08090d",
+  "theme_color": "#e50914",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/og-cover.png",
+      "sizes": "1200x630",
+      "type": "image/png"
+    }
+  ]
+}

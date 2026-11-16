@@ -46,6 +46,15 @@ export function ensureStremioAddonsTable(database) {
   `)
 }
 
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === '0.0.0.0' || h.endsWith('.local')) return true
+  if (/^10\.|^192\.168\.|^169\.254\./.test(h)) return true
+  const m172 = h.match(/^172\.(\d+)\./)
+  if (m172 && Number(m172[1]) >= 16 && Number(m172[1]) <= 31) return true
+  return /^(fc|fd|fe80)/i.test(h)
+}
+
 export function normalizeManifestUrl(rawUrl) {
   let trimmed = String(rawUrl || '').trim()
   if (/^stremio:\/\//i.test(trimmed)) {
@@ -71,6 +80,9 @@ export function normalizeManifestUrl(rawUrl) {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Apenas URLs HTTP ou HTTPS são permitidas para addons Stremio.')
+  }
+  if (isPrivateHost(parsed.hostname)) {
+    throw new Error('Endereços locais ou privados não são permitidos para addons Stremio.')
   }
   const cleanPath = parsed.pathname.replace(/\/+$/, '')
   const manifestPath = cleanPath.endsWith('/manifest.json') ? cleanPath : `${cleanPath}/manifest.json`
