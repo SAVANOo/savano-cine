@@ -62,8 +62,15 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null)
   const [audioStream, setAudioStream] = useState('')
   const [subtitleStream, setSubtitleStream] = useState('')
-  const [selectedSubtitleUrl, setSelectedSubtitleUrl] = useState('')
+  const [selectedSubtitleUrl, setSelectedSubtitleUrl] = useState(() => {
+    const ext = media.externalSubtitles ?? []
+    const pt = ext.find((t) => /\b(pob|por|pt|pt-br|portugu)/i.test(t.label))
+    return pt?.url ?? ''
+  })
   const [subtitleOffsetSec, setSubtitleOffsetSec] = useState(0)
+  const [subtitleSize, setSubtitleSize] = useState<'sm' | 'md' | 'lg'>('md')
+  const [loadingAddonSubs, setLoadingAddonSubs] = useState(false)
+  const [addonSubsNotice, setAddonSubsNotice] = useState('')
   const [torrentStats, setTorrentStats] = useState<{ numPeers: number; downloadSpeed: number; progress: number } | null>(null)
   const [seekToast, setSeekToast] = useState<string>('')
   const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null)
@@ -203,6 +210,50 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
       window.clearInterval(timer)
     }
   }, [playbackUrl])
+
+  const fetchAddonSubtitlesInPlayer = async () => {
+    setLoadingAddonSubs(true)
+    setAddonSubsNotice('')
+    try {
+      const epMatch = media.title.match(/T(\d+):E(\d+)/i)
+      const baseQuery = (media.showTitle || media.title.replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '').replace(/\s*\([^)]*\)\s*$/, '')).trim()
+      const searchRes = await fetch(`/api/addons/search?q=${encodeURIComponent(baseQuery)}`)
+      const searchData = await searchRes.json().catch(() => null)
+      const metas = Array.isArray(searchData?.metas) ? searchData.metas : []
+      const desiredType = epMatch || media.showTitle ? 'series' : 'movie'
+      const match = metas.find((m: { type?: string }) => m.type === desiredType) ?? metas[0]
+      if (!match?.id) {
+        setAddonSubsNotice('Título não encontrado nos addons.')
+        return
+      }
+      const targetId = epMatch ? `${match.id}:${Number(epMatch[1])}:${Number(epMatch[2])}` : match.id
+      const subRes = await fetch(`/api/addons/subtitles?type=${encodeURIComponent(desiredType)}&id=${encodeURIComponent(targetId)}`)
+      const subData = await subRes.json().catch(() => null)
+      const found = Array.isArray(subData?.subtitles) ? subData.subtitles : []
+      if (found.length === 0) {
+        setAddonSubsNotice('Nenhuma legenda encontrada nos addons.')
+        return
+      }
+      const mapped = found.slice(0, 12).map((s: { lang?: string; addonName?: string; url: string }) => ({
+        label: `${String(s.lang || 'SUB').toUpperCase()} (${s.addonName || 'Addon'})`,
+        url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(s.url)}`,
+      }))
+      setSubtitleTracks((prev) => {
+        const existing = new Set(prev.map((p) => p.url))
+        return [...prev, ...mapped.filter((m: { url: string }) => !existing.has(m.url))]
+      })
+      const pt = mapped.find((m: { label: string }) => /\b(pob|por|pt|pt-br|portugu)/i.test(m.label)) ?? mapped[0]
+      if (pt) {
+        setSubtitleStream('')
+        setSelectedSubtitleUrl(pt.url)
+      }
+      setAddonSubsNotice(`${mapped.length} legenda(s) carregada(s)!`)
+    } catch {
+      setAddonSubsNotice('Erro ao buscar legendas nos addons.')
+    } finally {
+      setLoadingAddonSubs(false)
+    }
+  }
 
   const adjustSubtitleOffset = (delta: number) => {
     const nextOffset = delta === 0 ? 0 : Math.round((subtitleOffsetSec + delta) * 10) / 10
@@ -565,7 +616,13 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
       >
         <video
           ref={videoRef}
-          className="h-full w-full object-contain"
+          className={`h-full w-full object-contain ${
+            subtitleSize === 'sm'
+              ? '[&::cue]:text-sm'
+              : subtitleSize === 'lg'
+                ? '[&::cue]:text-2xl'
+                : '[&::cue]:text-lg'
+          }`}
           src={playbackUrl}
           autoPlay
           playsInline
@@ -1244,32 +1301,62 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   </button>
                 )
               })}
-              <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">
-                <span className="text-[10px] text-[var(--sc-text-muted)]">
-                  Sincronia: {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec}s` : `${subtitleOffsetSec}s`}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => adjustSubtitleOffset(-0.5)}
-                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                  >
-                    -0.5s
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => adjustSubtitleOffset(0)}
-                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                  >
-                    0s
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => adjustSubtitleOffset(0.5)}
-                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                  >
-                    +0.5s
-                  </button>
+              <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                <button
+                  type="button"
+                  disabled={loadingAddonSubs}
+                  onClick={() => void fetchAddonSubtitlesInPlayer()}
+                  className="w-full rounded bg-[var(--sc-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[var(--sc-accent-hover)] disabled:opacity-50 cursor-pointer"
+                >
+                  {loadingAddonSubs ? 'Buscando legendas...' : 'Buscar legendas nos Addons'}
+                </button>
+                {addonSubsNotice ? (
+                  <p className="m-0 text-[10px] text-emerald-300">{addonSubsNotice}</p>
+                ) : null}
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] text-[var(--sc-text-muted)]">
+                    Sincronia: {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec}s` : `${subtitleOffsetSec}s`}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => adjustSubtitleOffset(-0.5)}
+                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                    >
+                      -0.5s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustSubtitleOffset(0)}
+                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                    >
+                      0s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustSubtitleOffset(0.5)}
+                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                    >
+                      +0.5s
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] text-[var(--sc-text-muted)]">Tamanho:</span>
+                  <div className="flex items-center gap-1">
+                    {(['sm', 'md', 'lg'] as const).map((sz) => (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => setSubtitleSize(sz)}
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          subtitleSize === sz ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                      >
+                        {sz === 'sm' ? 'P' : sz === 'md' ? 'M' : 'G'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

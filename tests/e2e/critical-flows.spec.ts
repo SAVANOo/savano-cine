@@ -48,7 +48,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.getByRole('button', { name: /Logs de Erro/i }).click()
     await expect(page.getByText(/data\/logs\/api-errors\.log/i)).toBeVisible()
     await page.getByRole('button', { name: /Addons \(Stremio\)/i }).click()
-    await expect(page.getByRole('heading', { name: /Conector de Addons \(Protocolo Stremio\)/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Adicionar & Gerenciar Addons/i })).toBeVisible()
   })
 
   test('Editor de perfil abre grupos de avatares estilo Netflix', async ({ page }) => {
@@ -118,5 +118,14 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     await page.getByRole('button', { name: 'Escuro', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
+
+  test('Acervo Online e Gerenciador de Addons abrem corretamente', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('navigation').getByRole('button', { name: 'Acervo Online', exact: true }).click()
+    await expect(page.getByRole('heading', { name: /Acervo Online/i })).toBeVisible()
+    await page.getByRole('button', { name: /Gerenciar \/ Adicionar Addons/i }).click()
+    await expect(page.getByRole('heading', { name: /Adicionar & Gerenciar Addons/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /QR Code/i })).toBeVisible()
   })
 })

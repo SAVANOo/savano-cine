@@ -56,7 +56,13 @@ ignorePromotionalAds()
 reconcileMisclassifiedEpisodes()
 sanitizeExistingTitles()
 let lastSourceRefreshAt = 0
-refreshSourceStatuses()
+setTimeout(() => {
+  try {
+    refreshSourceStatuses()
+  } catch {
+    // ignore startup source refresh error
+  }
+}, 100)
 const catalogRefresh = {
   state: 'idle',
   startedAt: null,
@@ -341,7 +347,13 @@ async function handleApiRequest(request, response) {
   if (requestUrl.pathname === '/api/sources') {
     setTimeout(() => {
       try {
-        refreshSourceStatuses()
+        setTimeout(() => {
+  try {
+    refreshSourceStatuses()
+  } catch {
+    // ignore startup source refresh error
+  }
+}, 100)
       } catch {
         // ignore background source refresh error
       }
@@ -902,6 +914,11 @@ async function handleApiRequest(request, response) {
               record.progress = 100
               record.message = `Concluído em ${targetDir}`
               client.destroy()
+              spawn(process.execPath, [path.join(root, 'scan-media.mjs'), onlineRoot], {
+                cwd: path.resolve(root, '..'),
+                stdio: 'ignore',
+                detached: true,
+              }).unref()
             })
           })
         } catch {
@@ -937,6 +954,11 @@ async function handleApiRequest(request, response) {
         record.status = 'completed'
         record.progress = 100
         record.message = `Salvo em ${destFile}`
+        spawn(process.execPath, [path.join(root, 'scan-media.mjs'), onlineRoot], {
+          cwd: path.resolve(root, '..'),
+          stdio: 'ignore',
+          detached: true,
+        }).unref()
       } catch {
         record.status = 'error'
         record.message = 'Erro ao baixar arquivo HTTP.'
@@ -1326,7 +1348,7 @@ async function handleApiRequest(request, response) {
 
 function refreshSourceStatuses(force = false) {
   const now = Date.now()
-  if (!force && now - lastSourceRefreshAt < 60_000) {
+  if (!force && now - lastSourceRefreshAt < 600_000) {
     return
   }
   lastSourceRefreshAt = now

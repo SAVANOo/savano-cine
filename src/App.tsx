@@ -877,11 +877,10 @@ export function App() {
               onPlayMedia={(media) => setSelectedMedia(media)}
             />
           </Suspense>
-        ) : catalogLoading ? (
-          <CatalogSkeleton />
         ) : activeKind === 'Online' ? (
           <Suspense fallback={<CatalogSkeleton />}>
             <OnlineCatalogView
+              profileId={activeProfile.id}
               localCatalog={catalog}
               onPlayStream={(media) => setSelectedMedia(media)}
               onPlayLocal={(localItem) => playLibraryItem(localItem)}
@@ -892,6 +891,8 @@ export function App() {
               }}
             />
           </Suspense>
+        ) : catalogLoading ? (
+          <CatalogSkeleton />
         ) : selectedShow ? (
           <Suspense fallback={<CatalogSkeleton />}>
             <ShowDetailView

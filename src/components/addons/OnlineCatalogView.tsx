@@ -19,14 +19,24 @@ type InstalledAddon = {
 }
 
 type OnlineCatalogViewProps = {
+  profileId?: string
   localCatalog: LibraryItem[]
   onPlayStream: (media: PlayableMedia) => void
   onPlayLocal: (item: LibraryItem) => void
   onOpenAddonsManager: () => void
 }
 
+type OnlineProgressEntry = {
+  mediaKey: string
+  title: string
+  positionSec: number
+  durationSec: number
+  updatedAt: string
+}
+
 /** Dedicated Online Archive view for browsing enabled Stremio addon catalogs and searching online streams. */
 export function OnlineCatalogView({
+  profileId = 'profile-savio',
   localCatalog,
   onPlayStream,
   onPlayLocal,
@@ -41,6 +51,16 @@ export function OnlineCatalogView({
   const [activeItem, setActiveItem] = useState<AddonMetaSummary | null>(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [pageSkip, setPageSkip] = useState(0)
+  const [onlineProgress, setOnlineProgress] = useState<OnlineProgressEntry[]>([])
+
+  useEffect(() => {
+    fetch(`/api/addons/progress?profileId=${encodeURIComponent(profileId)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        if (Array.isArray(rows)) setOnlineProgress(rows.slice(0, 6))
+      })
+      .catch(() => undefined)
+  }, [profileId])
 
   useEffect(() => {
     fetch('/api/addons')
@@ -179,6 +199,42 @@ export function OnlineCatalogView({
       {statusMessage ? (
         <p className="text-xs text-[var(--sc-text-secondary)]">{statusMessage}</p>
       ) : null}
+
+      {onlineProgress.length > 0 && (
+        <div className="space-y-2 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-4">
+          <p className="m-0 text-xs font-bold uppercase tracking-wider text-[var(--sc-text-secondary)]">
+            Continuar assistindo (Online)
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {onlineProgress.map((entry) => {
+              const pct = entry.durationSec > 0 ? Math.min(100, Math.round((entry.positionSec / entry.durationSec) * 100)) : 0
+              return (
+                <button
+                  key={entry.mediaKey}
+                  type="button"
+                  onClick={() =>
+                    onPlayStream({
+                      mediaId: '',
+                      title: entry.title || 'Stream Online',
+                      url: entry.mediaKey,
+                      startPosition: entry.positionSec,
+                    })
+                  }
+                  className="flex flex-col gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left transition hover:border-[var(--sc-accent)] cursor-pointer"
+                >
+                  <span className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{entry.title}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/15">
+                      <div className="h-full bg-[var(--sc-accent)]" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[10px] text-[var(--sc-text-muted)]">{pct}%</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-[var(--sc-radius-xl)] border border-dashed border-[var(--sc-border-subtle)] p-10 text-center text-sm text-[var(--sc-text-secondary)]">
