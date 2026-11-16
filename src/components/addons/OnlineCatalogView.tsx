@@ -40,6 +40,7 @@ export function OnlineCatalogView({
   const [searchQuery, setSearchQuery] = useState('')
   const [activeItem, setActiveItem] = useState<AddonMetaSummary | null>(null)
   const [statusMessage, setStatusMessage] = useState('')
+  const [pageSkip, setPageSkip] = useState(0)
 
   useEffect(() => {
     fetch('/api/addons')
@@ -66,6 +67,7 @@ export function OnlineCatalogView({
     let active = true
     const params = new URLSearchParams({ type, catalogId })
     if (searchQuery.trim()) params.set('search', searchQuery.trim())
+    if (pageSkip > 0) params.set('skip', String(pageSkip))
     fetch(`/api/addons/${encodeURIComponent(activeAddon.id)}/catalog?${params.toString()}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -78,7 +80,7 @@ export function OnlineCatalogView({
     return () => {
       active = false
     }
-  }, [activeAddon, searchQuery, selectedCatalogKey])
+  }, [activeAddon, pageSkip, searchQuery, selectedCatalogKey])
 
   async function runOnlineSearch(event: FormEvent) {
     event.preventDefault()
@@ -145,6 +147,7 @@ export function OnlineCatalogView({
               variant={activeAddon?.id === addon.id ? 'light' : 'secondary'}
               onClick={() => {
                 setSelectedAddonId(addon.id)
+                setPageSkip(0)
                 if (addon.catalogs[0]) {
                   setSelectedCatalogKey(`${addon.catalogs[0].type}::${addon.catalogs[0].id}`)
                 }
@@ -156,7 +159,10 @@ export function OnlineCatalogView({
           {activeAddon && activeAddon.catalogs.length > 1 && (
             <select
               value={selectedCatalogKey}
-              onChange={(e) => setSelectedCatalogKey(e.target.value)}
+              onChange={(e) => {
+                setSelectedCatalogKey(e.target.value)
+                setPageSkip(0)
+              }}
               aria-label="Selecionar catálogo online"
               className="h-8 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 text-xs text-[var(--sc-text-primary)]"
             >
@@ -218,6 +224,32 @@ export function OnlineCatalogView({
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {catalogAddons.length > 0 && items.length > 0 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={pageSkip === 0}
+            onClick={() => setPageSkip((prev) => Math.max(0, prev - 20))}
+          >
+            Página anterior
+          </Button>
+          <span className="text-xs text-[var(--sc-text-muted)]">
+            Página {Math.floor(pageSkip / 20) + 1}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={items.length < 20}
+            onClick={() => setPageSkip((prev) => prev + 20)}
+          >
+            Próxima página
+          </Button>
         </div>
       )}
 

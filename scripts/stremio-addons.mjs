@@ -37,6 +37,18 @@ export function normalizeManifestUrl(rawUrl) {
   } catch {
     throw new Error('URL do manifest inválida.')
   }
+  const directAddonParam = parsed.searchParams.get('addon')
+  if (directAddonParam) {
+    return normalizeManifestUrl(decodeURIComponent(directAddonParam))
+  }
+  if (parsed.hash && parsed.hash.includes('addon=')) {
+    const hashQuery = parsed.hash.split('?')[1] || ''
+    const hashParams = new URLSearchParams(hashQuery)
+    const hashAddon = hashParams.get('addon')
+    if (hashAddon) {
+      return normalizeManifestUrl(decodeURIComponent(hashAddon))
+    }
+  }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Apenas URLs HTTP ou HTTPS são permitidas para addons Stremio.')
   }
@@ -96,14 +108,29 @@ export function listStremioAddons(database) {
 export async function installStremioAddon(database, rawUrl) {
   ensureStremioAddonsTable(database)
   const { manifestUrl, baseUrl } = normalizeManifestUrl(rawUrl)
-  const response = await fetch(manifestUrl, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!response.ok) {
-    throw new Error(`Falha ao baixar manifest.json (HTTP ${response.status}).`)
+  let response
+  try {
+    response = await fetch(manifestUrl, {
+      headers: { Accept: 'application/json', 'User-Agent': 'SavanoCine/1.1' },
+      signal: AbortSignal.timeout(9000),
+    })
+  } catch (err) {
+    const code = err?.cause?.code || err?.name || 'NETWORK_ERROR'
+    throw new Error(`Não foi possível alcançar o servidor do addon (${code}). Verifique se o endereço está online.`)
   }
-  const manifest = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(`Servidor do addon respondeu HTTP ${response.status} em ${manifestUrl}.`)
+  }
+  const rawText = await response.text()
+  if (rawText.trimStart().startsWith('<')) {
+    throw new Error('O link retornou uma página HTML em vez de um manifest.json válido do Stremio.')
+  }
+  let manifest = null
+  try {
+    manifest = JSON.parse(rawText)
+  } catch {
+    manifest = null
+  }
   if (!manifest || typeof manifest.id !== 'string' || typeof manifest.name !== 'string') {
     throw new Error('Manifest Stremio inválido: campos id e name são obrigatórios.')
   }
@@ -170,14 +197,17 @@ function assertSafeSegment(value, label) {
   }
 }
 
-export async function fetchAddonCatalog(database, addonId, { type, catalogId, search }) {
+export async function fetchAddonCatalog(database, addonId, { type, catalogId, search, skip }) {
   ensureStremioAddonsTable(database)
   const addon = serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(addonId))
   if (!addon) return null
   assertSafeSegment(type, 'Tipo de catálogo')
   assertSafeSegment(catalogId, 'ID do catálogo')
 
-  const extra = search?.trim() ? `/search=${encodeURIComponent(search.trim())}` : ''
+  const extraParts = []
+  if (search?.trim()) extraParts.push(`search=${encodeURIComponent(search.trim())}`)
+  if (Number.isInteger(skip) && skip > 0) extraParts.push(`skip=${skip}`)
+  const extra = extraParts.length > 0 ? `/${extraParts.join('&')}` : ''
   const targetUrl = `${addon.baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extra}.json`
   const response = await fetch(targetUrl, {
     headers: { Accept: 'application/json' },
@@ -255,6 +285,16 @@ function isSafeHttpUrl(candidate) {
   }
 }
 
+function parseStreamHealth(titleText) {
+  const text = String(titleText || '')
+  const seedMatch = text.match(/(?:👤|👥|seeds?:?|seeders?:?)\s*(\d+)/i)
+  const sizeMatch = text.match(/(\d+(?:[.,]\d+)?\s*(?:GB|MB|GiB|MiB))/i)
+  return {
+    seeders: seedMatch ? Number(seedMatch[1]) : null,
+    sizeLabel: sizeMatch ? sizeMatch[1] : null,
+  }
+}
+
 export async function queryAddonStreams(database, { type, id, addonId }) {
   ensureStremioAddonsTable(database)
   assertSafeSegment(type, 'Tipo')
@@ -276,26 +316,33 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
       if (!response.ok) return []
       const payload = await response.json().catch(() => ({}))
       const streams = Array.isArray(payload?.streams) ? payload.streams : []
-      return streams.map((stream) => ({
-        addonId: addon.id,
-        addonName: addon.name,
-        name: String(stream.name || addon.name),
-        title: String(stream.title || stream.description || stream.name || 'Stream'),
-        url: isSafeHttpUrl(stream.url) ? stream.url : null,
-        isDirectHttp: isSafeHttpUrl(stream.url),
-        ytId:
-          typeof stream.ytId === 'string' && /^[a-zA-Z0-9_-]{6,20}$/.test(stream.ytId)
-            ? stream.ytId
-            : null,
-        infoHash: typeof stream.infoHash === 'string' ? stream.infoHash : null,
-        fileIdx: Number.isInteger(stream.fileIdx) ? stream.fileIdx : null,
-      }))
+      return streams.map((stream) => {
+        const titleStr = String(stream.title || stream.description || stream.name || 'Stream')
+        const health = parseStreamHealth(`${stream.name || ''} ${titleStr}`)
+        return {
+          addonId: addon.id,
+          addonName: addon.name,
+          name: String(stream.name || addon.name),
+          title: titleStr,
+          url: isSafeHttpUrl(stream.url) ? stream.url : null,
+          isDirectHttp: isSafeHttpUrl(stream.url),
+          ytId:
+            typeof stream.ytId === 'string' && /^[a-zA-Z0-9_-]{6,20}$/.test(stream.ytId)
+              ? stream.ytId
+              : null,
+          infoHash: typeof stream.infoHash === 'string' ? stream.infoHash : null,
+          fileIdx: Number.isInteger(stream.fileIdx) ? stream.fileIdx : null,
+          seeders: health.seeders,
+          sizeLabel: health.sizeLabel,
+        }
+      })
     }),
   )
 
   return settled
     .filter((entry) => entry.status === 'fulfilled')
     .flatMap((entry) => entry.value)
+    .sort((a, b) => (b.seeders ?? -1) - (a.seeders ?? -1))
 }
 
 export async function queryAddonSubtitles(database, { type, id }) {

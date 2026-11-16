@@ -68,6 +68,7 @@ const catalogRefresh = {
 }
 
 const AUTH_FAILURES = new Map()
+const LOCAL_ADDON_DOWNLOADS = new Map()
 const AUTH_WINDOW_MS = 60_000
 const AUTH_MAX_FAILURES = 6
 
@@ -779,14 +780,133 @@ async function handleApiRequest(request, response) {
     return send(response, 200, { stopped, infoHash })
   }
 
+  if (requestUrl.pathname === '/api/addons/downloads' && request.method === 'GET') {
+    return send(response, 200, Array.from(LOCAL_ADDON_DOWNLOADS.values()))
+  }
+
+  if (requestUrl.pathname === '/api/addons/download-local' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'Download'
+    const url = typeof body.url === 'string' ? body.url.trim() : ''
+    const infoHash = typeof body.infoHash === 'string' ? body.infoHash.trim() : ''
+    if (!url && !isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'Informe uma URL HTTP ou infoHash válido.' })
+    }
+
+    const sources = database.prepare('SELECT id, name, root_path AS rootPath, status FROM media_sources ORDER BY id ASC').all()
+    const onlineRoot =
+      sources.find((s) => s.status === 'online' && existsSync(s.rootPath))?.rootPath ||
+      sources.find((s) => existsSync(s.rootPath))?.rootPath ||
+      'D:\\Filmes'
+
+    const safeFolder = title.replace(/[<>:"/\\|?*]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Media'
+    const targetDir = path.join(onlineRoot, 'Downloads', safeFolder)
+    mkdirSync(targetDir, { recursive: true })
+
+    const downloadId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const record = {
+      id: downloadId,
+      title,
+      targetDir,
+      mode: infoHash ? 'torrent' : 'http',
+      status: 'starting',
+      progress: 0,
+      message: 'Iniciando download...',
+    }
+    LOCAL_ADDON_DOWNLOADS.set(downloadId, record)
+
+    if (infoHash) {
+      const magnet = `magnet:?xt=urn:btih:${infoHash}&dn=${encodeURIComponent(safeFolder)}`
+      try {
+        const qbForm = new URLSearchParams({ urls: magnet, savepath: targetDir })
+        const qbRes = await fetch('http://127.0.0.1:8080/api/v2/torrents/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: qbForm.toString(),
+          signal: AbortSignal.timeout(1500),
+        })
+        if (qbRes.ok) {
+          record.status = 'qbittorrent'
+          record.message = `Enviado para o qBittorrent em ${targetDir}`
+          return send(response, 202, record)
+        }
+      } catch {
+        // qBittorrent WebUI not active on 8080; fallback to built-in WebTorrent
+      }
+      void (async () => {
+        try {
+          const { default: WebTorrent } = await import('webtorrent')
+          const client = new WebTorrent()
+          record.status = 'downloading'
+          record.message = 'Conectando aos peers...'
+          client.add(magnet, { path: targetDir }, (torrent) => {
+            torrent.on('download', () => {
+              record.progress = Math.round(torrent.progress * 100)
+              record.message = `${record.progress}% · ${torrent.numPeers} peer(s)`
+            })
+            torrent.on('done', () => {
+              record.status = 'completed'
+              record.progress = 100
+              record.message = `Concluído em ${targetDir}`
+              client.destroy()
+            })
+          })
+        } catch {
+          record.status = 'error'
+          record.message = 'Falha ao baixar torrent localmente.'
+        }
+      })()
+      return send(response, 202, record)
+    }
+
+    let parsedUrl
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      return send(response, 400, { error: 'URL inválida.' })
+    }
+    if ((parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') || isPrivateHostname(parsedUrl.hostname)) {
+      return send(response, 400, { error: 'Host ou protocolo inválido.' })
+    }
+    void (async () => {
+      try {
+        record.status = 'downloading'
+        const res = await fetch(parsedUrl.toString(), { signal: AbortSignal.timeout(120000) })
+        if (!res.ok || !res.body) {
+          record.status = 'error'
+          record.message = `HTTP ${res.status}`
+          return
+        }
+        const ext = path.extname(parsedUrl.pathname) || '.mp4'
+        const destFile = path.join(targetDir, `${safeFolder}${ext}`)
+        const buf = Buffer.from(await res.arrayBuffer())
+        await writeFile(destFile, buf)
+        record.status = 'completed'
+        record.progress = 100
+        record.message = `Salvo em ${destFile}`
+      } catch {
+        record.status = 'error'
+        record.message = 'Erro ao baixar arquivo HTTP.'
+      }
+    })()
+    return send(response, 202, record)
+  }
+
   const addonCatalogMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)\/catalog$/)
   if (addonCatalogMatch && request.method === 'GET') {
     const addonId = decodeURIComponent(addonCatalogMatch[1])
     const type = requestUrl.searchParams.get('type') || ''
     const catalogId = requestUrl.searchParams.get('catalogId') || ''
     const search = requestUrl.searchParams.get('search') || ''
+    const skipRaw = Number(requestUrl.searchParams.get('skip') || 0)
+    const skip = Number.isInteger(skipRaw) && skipRaw > 0 ? skipRaw : 0
     try {
-      const result = await fetchAddonCatalog(database, addonId, { type, catalogId, search })
+      const result = await fetchAddonCatalog(database, addonId, { type, catalogId, search, skip })
       if (!result) return send(response, 404, { error: 'Addon não encontrado.' })
       return send(response, 200, result)
     } catch (error) {

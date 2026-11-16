@@ -46,6 +46,8 @@ type AddonStreamItem = {
   ytId: string | null
   infoHash: string | null
   fileIdx?: number | null
+  seeders?: number | null
+  sizeLabel?: string | null
 }
 
 type AddonSubtitleItem = {
@@ -98,7 +100,53 @@ function AddonStreamModalContent({
   const [subtitles, setSubtitles] = useState<AddonSubtitleItem[]>([])
   const [loadingStreams, setLoadingStreams] = useState(item.type !== 'series')
   const [streamTargetLabel, setStreamTargetLabel] = useState(item.type !== 'series' ? item.name : '')
+  const [selectedSeason, setSelectedSeason] = useState<number | 'all'>(1)
+  const [downloadStatus, setDownloadStatus] = useState('')
   const [error, setError] = useState('')
+
+  const seasonOptions = useMemo(() => {
+    const set = new Set<number>()
+    for (const v of detail.videos ?? []) {
+      if (typeof v.season === 'number') set.add(v.season)
+    }
+    return Array.from(set).sort((a, b) => a - b)
+  }, [detail.videos])
+
+  const activeSeason = useMemo(() => {
+    if (seasonOptions.length === 0) return 'all' as const
+    if (selectedSeason !== 'all' && seasonOptions.includes(selectedSeason)) return selectedSeason
+    return seasonOptions[0]
+  }, [seasonOptions, selectedSeason])
+
+  const visibleVideos = useMemo(() => {
+    const list = detail.videos ?? []
+    if (activeSeason === 'all') return list
+    return list.filter((v) => v.season === activeSeason)
+  }, [activeSeason, detail.videos])
+
+  async function queueLocalDownload(stream: AddonStreamItem) {
+    setDownloadStatus('Enviando para download no Acervo Local...')
+    try {
+      const res = await fetch('/api/addons/download-local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: streamTargetLabel || detail.name,
+          url: stream.url || undefined,
+          infoHash: stream.infoHash || undefined,
+          fileIdx: stream.fileIdx,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        setDownloadStatus(payload?.error || 'Não foi possível iniciar o download.')
+        return
+      }
+      setDownloadStatus(payload?.message || `Download iniciado em ${payload?.targetDir || 'Acervo Local'}`)
+    } catch {
+      setDownloadStatus('Erro de rede ao iniciar download local.')
+    }
+  }
 
   const matchedLocalItem = useMemo(() => {
     if (!localCatalog?.length) return null
@@ -235,12 +283,28 @@ function AddonStreamModalContent({
           ) : null}
 
           {detail.videos && detail.videos.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--sc-text-muted)]">
-                Episódios ({detail.videos.length}) — clique para buscar streams
-              </p>
-              <div className="grid max-h-52 gap-2 overflow-y-auto sm:grid-cols-2">
-                {detail.videos.slice(0, 80).map((video) => (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--sc-text-muted)]">
+                  Episódios ({visibleVideos.length} de {detail.videos.length})
+                </p>
+                {seasonOptions.length > 1 ? (
+                  <select
+                    aria-label="Selecionar temporada"
+                    value={activeSeason}
+                    onChange={(e) => setSelectedSeason(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--sc-text-primary)]"
+                  >
+                    {seasonOptions.map((s) => (
+                      <option key={s} value={s}>
+                        Temporada {s}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+              <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {visibleVideos.map((video) => (
                   <button
                     key={video.id}
                     type="button"
@@ -251,9 +315,12 @@ function AddonStreamModalContent({
                         `${detail.name} — T${video.season ?? '?'}:E${video.episode ?? '?'} ${video.title}`,
                       )
                     }
-                    className="flex items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left text-xs text-white hover:border-white/30 cursor-pointer"
+                    className="flex items-center justify-between gap-2.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left text-xs text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)] cursor-pointer"
                   >
-                    <span className="truncate">
+                    {video.thumbnail ? (
+                      <img src={video.thumbnail} alt="" className="h-9 w-14 shrink-0 rounded object-cover" />
+                    ) : null}
+                    <span className="min-w-0 flex-1 truncate">
                       T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
                     </span>
                     <Play className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />
@@ -313,11 +380,44 @@ function AddonStreamModalContent({
                       className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-[var(--sc-text-primary)]">
-                          {stream.addonName} · {stream.name}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="text-xs font-semibold text-[var(--sc-text-primary)]">
+                            {stream.addonName} · {stream.name}
+                          </p>
+                          {typeof stream.seeders === 'number' ? (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                stream.seeders >= 20
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : stream.seeders >= 5
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : 'bg-red-500/20 text-red-400'
+                              }`}
+                            >
+                              {stream.seeders} seeds · {stream.seeders >= 20 ? 'Rápido' : stream.seeders >= 5 ? 'Médio' : 'Lento'}
+                            </span>
+                          ) : null}
+                          {stream.sizeLabel ? (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--sc-text-secondary)]">
+                              {stream.sizeLabel}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="truncate text-xs text-[var(--sc-text-secondary)]">{stream.title}</p>
                       </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                      {(stream.isDirectHttp && stream.url) || stream.infoHash ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          title="Baixar para o Acervo Local (D:\Filmes\Downloads)"
+                          onClick={() => void queueLocalDownload(stream)}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Offline
+                        </Button>
+                      ) : null}
                       {stream.isDirectHttp && stream.url ? (
                         <Button
                           type="button"
@@ -378,10 +478,14 @@ function AddonStreamModalContent({
                       ) : (
                         <span className="text-xs text-amber-300">Sem URL HTTP direta</span>
                       )}
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
+              {downloadStatus ? (
+                <p className="text-xs font-medium text-emerald-400">{downloadStatus}</p>
+              ) : null}
               {subtitles.length > 0 ? (
                 <div className="space-y-1.5 pt-1">
                   <p className="text-[11px] font-semibold text-emerald-500">
