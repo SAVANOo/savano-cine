@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#08090D">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <FrameLayout
+        android:id="@+id/fullscreenContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/offlineOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#EE08090D"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="28dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Servidor desconectado"
+            android:textColor="#F5F5F7"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/offlineDetail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="Abra o Savano Cine no seu PC e toque em Tentar novamente."
+            android:textColor="#B4B8C5"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/retryButton"
+            android:layout_width="220dp"
+            android:layout_height="46dp"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#E50914"
+            android:text="Tentar novamente"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/changeServerButton"
+            android:layout_width="220dp"
+            android:layout_height="44dp"
+            android:layout_marginTop="10dp"
+            android:backgroundTint="#1E212E"
+            android:text="Trocar servidor"
+            android:textAllCaps="false"
+            android:textColor="#F5F5F7" />
+    </LinearLayout>
+
+</FrameLayout>

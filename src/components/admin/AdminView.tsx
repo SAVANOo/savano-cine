@@ -58,6 +58,16 @@ export function AdminView({
   const [gaps, setGaps] = useState<CatalogGaps | null>(null)
   const [hiddenReviewIds, setHiddenReviewIds] = useState<Set<string>>(() => new Set())
   const [hiddenCandidateIds, setHiddenCandidateIds] = useState<Set<string>>(() => new Set())
+  const [networkUrls, setNetworkUrls] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch('/api/network-info')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.urls)) setNetworkUrls(data.urls)
+      })
+      .catch(() => undefined)
+  }, [])
 
   const visibleReviewItems = reviewItems.filter((item) => !hiddenReviewIds.has(item.id))
   const visibleArtworkGroups = artworkGroups
@@ -202,7 +212,7 @@ export function AdminView({
             <p className="m-0 text-[11px] font-bold uppercase tracking-widest text-[var(--sc-accent)]">
               ADMINISTRAÇÃO
             </p>
-            <h1 className="m-0 text-2xl font-extrabold text-white">Painel do Catálogo</h1>
+            <h1 className="m-0 text-2xl font-extrabold text-[var(--sc-text-primary)]">Painel do Catálogo</h1>
           </div>
         </div>
 
@@ -238,8 +248,37 @@ export function AdminView({
       </div>
 
       {feedback && (
-        <div className="rounded-[var(--sc-radius-md)] border border-white/15 bg-[var(--sc-bg-surface)] px-4 py-3 text-xs text-white">
+        <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-4 py-3 text-xs text-[var(--sc-text-primary)]">
           {feedback}
+        </div>
+      )}
+
+      {networkUrls.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-4 py-2.5 text-xs">
+          <span className="text-[var(--sc-text-secondary)]">
+            Acesso pelo celular / APK Android (mesmo Wi-Fi):{' '}
+            <strong className="text-[var(--sc-text-primary)]">{networkUrls[0]}</strong>
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/SavanoCine.apk"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs font-medium text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+            >
+              Baixar APK Android
+            </a>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                void navigator.clipboard?.writeText(networkUrls[0])
+                setFeedback(`Endereço ${networkUrls[0]} copiado!`)
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copiar link
+            </Button>
+          </div>
         </div>
       )}
 

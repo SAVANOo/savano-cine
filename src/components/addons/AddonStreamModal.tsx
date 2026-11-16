@@ -1,9 +1,19 @@
-import { ExternalLink, Play } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { Download, ExternalLink, HardDrive, Play } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { LibraryItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
+
+function normalizeMatchTitle(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
 
 export type AddonMetaSummary = {
   id: string
@@ -48,31 +58,39 @@ type AddonSubtitleItem = {
 
 type AddonStreamModalProps = {
   item: AddonMetaSummary | null
+  localCatalog?: LibraryItem[]
   onClose: () => void
   onPlayStream: (media: PlayableMedia) => void
+  onPlayLocal?: (item: LibraryItem) => void
 }
 
 /** Modal that loads addon metadata/episodes and immediately queries streams & subtitles. */
-export function AddonStreamModal({ item, onClose, onPlayStream }: AddonStreamModalProps) {
+export function AddonStreamModal({ item, localCatalog, onClose, onPlayStream, onPlayLocal }: AddonStreamModalProps) {
   if (!item) return null
   return (
     <AddonStreamModalContent
       key={`${item.type}:${item.id}`}
       item={item}
+      localCatalog={localCatalog}
       onClose={onClose}
       onPlayStream={onPlayStream}
+      onPlayLocal={onPlayLocal}
     />
   )
 }
 
 function AddonStreamModalContent({
   item,
+  localCatalog,
   onClose,
   onPlayStream,
+  onPlayLocal,
 }: {
   item: AddonMetaSummary
+  localCatalog?: LibraryItem[]
   onClose: () => void
   onPlayStream: (media: PlayableMedia) => void
+  onPlayLocal?: (item: LibraryItem) => void
 }) {
   const [detail, setDetail] = useState<AddonMetaSummary>(item)
   const [loadingMeta, setLoadingMeta] = useState(true)
@@ -81,6 +99,18 @@ function AddonStreamModalContent({
   const [loadingStreams, setLoadingStreams] = useState(item.type !== 'series')
   const [streamTargetLabel, setStreamTargetLabel] = useState(item.type !== 'series' ? item.name : '')
   const [error, setError] = useState('')
+
+  const matchedLocalItem = useMemo(() => {
+    if (!localCatalog?.length) return null
+    const targetNorm = normalizeMatchTitle(detail.name || '')
+    if (!targetNorm) return null
+    const desiredKind = detail.type === 'series' ? 'Série' : 'Filme'
+    return (
+      localCatalog.find((entry) => entry.kind === desiredKind && normalizeMatchTitle(entry.title) === targetNorm) ??
+      localCatalog.find((entry) => normalizeMatchTitle(entry.title) === targetNorm) ??
+      null
+    )
+  }, [detail.name, detail.type, localCatalog])
 
   const fetchStreamsFor = useCallback(async (type: string, targetId: string, label: string) => {
     setLoadingStreams(true)
@@ -235,10 +265,39 @@ function AddonStreamModalContent({
 
           {error ? <p className="text-xs text-red-400">{error}</p> : null}
 
+          {matchedLocalItem ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--sc-text-primary)]">
+                  <HardDrive className="h-3.5 w-3.5 text-emerald-500" />
+                  Disponível no seu Acervo Local · {matchedLocalItem.title}
+                </p>
+                <p className="truncate text-[11px] text-[var(--sc-text-secondary)]">
+                  {matchedLocalItem.sourceName || 'Acervo Local'}
+                  {matchedLocalItem.sourceStatus === 'offline' ? ' (HD desconectado no momento)' : ' · Reprodução instantânea'}
+                </p>
+              </div>
+              {onPlayLocal ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    onClose()
+                    onPlayLocal(matchedLocalItem)
+                  }}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Assistir do Acervo Local
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
           {streamTargetLabel ? (
-            <div className="space-y-2 border-t border-white/10 pt-3">
-              <p className="text-xs font-semibold text-white">
-                Streams para: <span className="text-amber-300">{streamTargetLabel}</span>
+            <div className="space-y-2 border-t border-[var(--sc-border-subtle)] pt-3">
+              <p className="text-xs font-semibold text-[var(--sc-text-primary)]">
+                Streams para: <span className="text-[var(--sc-accent)]">{streamTargetLabel}</span>
               </p>
               {loadingStreams ? (
                 <p className="text-xs text-[var(--sc-text-secondary)]">Consultando seus addons ativos...</p>
@@ -254,7 +313,7 @@ function AddonStreamModalContent({
                       className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-white">
+                        <p className="text-xs font-semibold text-[var(--sc-text-primary)]">
                           {stream.addonName} · {stream.name}
                         </p>
                         <p className="truncate text-xs text-[var(--sc-text-secondary)]">{stream.title}</p>
@@ -324,9 +383,23 @@ function AddonStreamModalContent({
                 </div>
               )}
               {subtitles.length > 0 ? (
-                <p className="text-[11px] text-emerald-300">
-                  {subtitles.length} legenda(s) encontrada(s) nos addons e vinculada(s) ao player.
-                </p>
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[11px] font-semibold text-emerald-500">
+                    {subtitles.length} legenda(s) encontrada(s) nos addons e vinculada(s) ao player:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {subtitles.slice(0, 8).map((sub, idx) => (
+                      <a
+                        key={`${sub.addonId}-${sub.id}-${idx}`}
+                        href={`/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}&download=1&filename=${encodeURIComponent(`${detail.name}-${sub.lang}.srt`)}`}
+                        className="inline-flex items-center gap-1 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                      >
+                        <Download className="h-3 w-3 text-[var(--sc-accent)]" />
+                        {sub.lang.toUpperCase()} · {sub.addonName}
+                      </a>
+                    ))}
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : null}

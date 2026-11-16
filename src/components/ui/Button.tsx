@@ -10,11 +10,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-[var(--sc-accent)] hover:bg-[var(--sc-accent-hover)] text-white border-transparent shadow-lg shadow-red-950/40',
-  light: 'bg-white hover:bg-white/90 text-neutral-950 border-transparent font-semibold shadow-lg',
-  secondary: 'bg-white/12 hover:bg-white/20 text-white border-white/15 backdrop-blur-md',
-  ghost: 'bg-transparent hover:bg-white/10 text-[var(--sc-text-secondary)] hover:text-white border-transparent',
-  danger: 'bg-red-500/15 hover:bg-red-500/25 text-red-200 border-red-400/30',
+  primary: 'bg-[var(--sc-accent)] hover:bg-[var(--sc-accent-hover)] text-white border-transparent shadow-lg shadow-pink-950/20',
+  light: 'bg-[var(--sc-text-primary)] hover:opacity-90 text-[var(--sc-bg-canvas)] border-transparent font-semibold shadow-lg',
+  secondary: 'bg-[var(--sc-bg-surface)] hover:bg-[var(--sc-bg-surface-hover)] text-[var(--sc-text-primary)] border-[var(--sc-border-subtle)] backdrop-blur-md',
+  ghost: 'bg-transparent hover:bg-[var(--sc-bg-surface)] text-[var(--sc-text-secondary)] hover:text-[var(--sc-text-primary)] border-transparent',
+  danger: 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-400/30',
 }
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

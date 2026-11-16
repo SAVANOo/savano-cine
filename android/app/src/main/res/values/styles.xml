@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SavanoCine" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:statusBarColor">#08090D</item>
+        <item name="android:navigationBarColor">#08090D</item>
+        <item name="android:windowBackground">#08090D</item>
+        <item name="colorPrimary">#E50914</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+    </style>
+</resources>

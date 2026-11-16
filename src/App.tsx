@@ -1031,8 +1031,10 @@ export function App() {
 
       <AddonStreamModal
         item={activeAddonItem}
+        localCatalog={catalog}
         onClose={() => setActiveAddonItem(null)}
         onPlayStream={(media) => setSelectedMedia(media)}
+        onPlayLocal={(localItem) => playLibraryItem(localItem)}
       />
 
       {pinLocked && (

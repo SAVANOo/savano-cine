@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
+import { networkInterfaces } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
@@ -31,7 +32,7 @@ import {
 import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
-const host = process.env.CINE_HOST?.trim() || '127.0.0.1'
+const host = process.env.CINE_HOST?.trim() || '0.0.0.0'
 const accessPin = process.env.CINE_ACCESS_PIN?.trim() || ''
 const pinToken = accessPin ? createHash('sha256').update(`savano-cine:${accessPin}`).digest('hex') : ''
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -561,8 +562,46 @@ async function handleApiRequest(request, response) {
     }
   }
 
+  if ((requestUrl.pathname === '/SavanoCine.apk' || requestUrl.pathname === '/api/android/apk') && request.method === 'GET') {
+    const apkCandidates = [
+      path.resolve(root, '..', '..', 'SavanoCine.apk'),
+      path.resolve(root, '..', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
+    ]
+    const apkPath = apkCandidates.find((candidate) => existsSync(candidate))
+    if (!apkPath) {
+      return send(response, 404, { error: 'APK ainda não compilado.' })
+    }
+    const stat = statSync(apkPath)
+    response.writeHead(200, {
+      'Content-Type': 'application/vnd.android.package-archive',
+      'Content-Length': stat.size,
+      'Content-Disposition': 'attachment; filename="SavanoCine.apk"',
+    })
+    return createReadStream(apkPath).pipe(response)
+  }
+
+  if (requestUrl.pathname === '/api/network-info' && request.method === 'GET') {
+    const interfaces = networkInterfaces()
+    const lanIps = []
+    for (const entries of Object.values(interfaces)) {
+      for (const entry of entries || []) {
+        if (entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')) {
+          lanIps.push(entry.address)
+        }
+      }
+    }
+    return send(response, 200, {
+      apiPort: port,
+      host,
+      lanIps,
+      urls: lanIps.map((ip) => `http://${ip}:${port}`),
+    })
+  }
+
   if (requestUrl.pathname === '/api/addons/subtitle-proxy' && request.method === 'GET') {
     const target = requestUrl.searchParams.get('url') || ''
+    const isDownload = requestUrl.searchParams.get('download') === '1'
+    const rawFilename = (requestUrl.searchParams.get('filename') || 'legenda.srt').replace(/[^a-zA-Z0-9._-]/g, '_')
     let parsed
     try {
       parsed = new URL(target)
@@ -576,6 +615,15 @@ async function handleApiRequest(request, response) {
       const upstream = await fetch(parsed.toString(), { signal: AbortSignal.timeout(8000) })
       if (!upstream.ok) return send(response, 502, { error: 'Falha ao baixar legenda externa.' })
       const raw = await upstream.text()
+      if (isDownload) {
+        const ext = raw.trimStart().startsWith('WEBVTT') ? 'vtt' : 'srt'
+        const safeName = rawFilename.endsWith('.srt') || rawFilename.endsWith('.vtt') ? rawFilename : `${rawFilename}.${ext}`
+        response.writeHead(200, {
+          'Content-Type': ext === 'vtt' ? 'text/vtt; charset=utf-8' : 'application/x-subrip; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${safeName}"`,
+        })
+        return response.end(raw)
+      }
       const vtt = raw.trimStart().startsWith('WEBVTT')
         ? raw
         : `WEBVTT\n\n${raw.replace(/\r\n/g, '\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`

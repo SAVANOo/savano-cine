@@ -76,6 +76,16 @@ export function Sidebar({
   const [sourcePath, setSourcePath] = useState('')
   const [sourceStatus, setSourceStatus] = useState('')
   const [savingSource, setSavingSource] = useState(false)
+  const [brokenAvatarUrls, setBrokenAvatarUrls] = useState<Set<string>>(() => new Set())
+
+  const markAvatarBroken = (url: string) => {
+    setBrokenAvatarUrls((prev) => {
+      if (prev.has(url)) return prev
+      const next = new Set(prev)
+      next.add(url)
+      return next
+    })
+  }
 
   const activeStyle = getAvatarStyle(activeProfile.avatarKey)
   const onlineCount = sources.filter((source) => source.status === 'online').length
@@ -150,8 +160,13 @@ export function Sidebar({
             className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[var(--sc-radius-sm)] text-sm font-bold text-white"
             style={{ background: activeStyle.background }}
           >
-            {activeStyle.imageUrl ? (
-              <img src={activeStyle.imageUrl} alt={activeProfile.name} className="h-full w-full object-cover" />
+            {activeStyle.imageUrl && !brokenAvatarUrls.has(activeStyle.imageUrl) ? (
+              <img
+                src={activeStyle.imageUrl}
+                alt={activeProfile.name}
+                className="h-full w-full object-cover"
+                onError={() => markAvatarBroken(activeStyle.imageUrl!)}
+              />
             ) : (
               activeStyle.badge
             )}
@@ -193,8 +208,13 @@ export function Sidebar({
                       className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-bold text-white"
                       style={{ background: style.background }}
                     >
-                      {style.imageUrl ? (
-                        <img src={style.imageUrl} alt={profile.name} className="h-full w-full object-cover" />
+                      {style.imageUrl && !brokenAvatarUrls.has(style.imageUrl) ? (
+                        <img
+                          src={style.imageUrl}
+                          alt={profile.name}
+                          className="h-full w-full object-cover"
+                          onError={() => markAvatarBroken(style.imageUrl!)}
+                        />
                       ) : (
                         style.badge
                       )}

@@ -204,12 +204,12 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold text-white">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--sc-text-primary)]">
               <Puzzle className="h-5 w-5 text-[var(--sc-accent)]" />
               Conector de Addons (Protocolo Stremio)
             </h2>
             <p className="mt-1 text-sm text-[var(--sc-text-secondary)]">
-              Cole a URL <code className="text-white/90">manifest.json</code> (ou link <code className="text-white/90">stremio://</code>) de qualquer addon compatível com Stremio para explorar catálogos, metadados, legendas e streams.
+              Cole a URL <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">manifest.json</code> (ou link <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">stremio://</code>) de qualquer addon compatível com Stremio para explorar catálogos, metadados, legendas e streams.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -240,10 +240,10 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
             value={manifestUrl}
             onChange={(e) => setManifestUrl(e.target.value)}
             placeholder="https://exemplo.com/manifest.json ou stremio://..."
-            className="min-w-[260px] flex-1 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-white outline-none focus:border-white/40"
+            className="min-w-[260px] flex-1 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-[var(--sc-text-primary)] placeholder:text-[var(--sc-text-muted)] outline-none focus:border-[var(--sc-border-strong)]"
             required
           />
-          <Button type="submit" disabled={installing}>
+          <Button type="submit" variant="primary" disabled={installing}>
             <Plus className="h-4 w-4" />
             {installing ? 'Instalando...' : 'Instalar addon'}
           </Button>
@@ -257,7 +257,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {addons.length === 0 ? (
           <div className="col-span-full rounded-[var(--sc-radius-lg)] border border-dashed border-[var(--sc-border-subtle)] p-8 text-center text-sm text-[var(--sc-text-secondary)]">
-            Nenhum addon Stremio instalado ainda. Cole um <code className="text-white/80">manifest.json</code> acima para começar.
+            Nenhum addon Stremio instalado ainda. Cole um <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">manifest.json</code> acima para começar.
           </div>
         ) : (
           addons.map((addon) => (
@@ -275,12 +275,12 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                     {addon.logo ? (
                       <img src={addon.logo} alt={addon.name} className="h-10 w-10 rounded-md bg-black/40 object-contain p-1" />
                     ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10 text-white">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--sc-bg-elevated)] text-[var(--sc-text-primary)]">
                         <Puzzle className="h-5 w-5" />
                       </div>
                     )}
                     <div>
-                      <h3 className="font-semibold text-white">{addon.name}</h3>
+                      <h3 className="font-semibold text-[var(--sc-text-primary)]">{addon.name}</h3>
                       <p className="text-xs text-[var(--sc-text-muted)]">v{addon.version} · {addon.id}</p>
                     </div>
                   </div>
@@ -328,13 +328,13 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       {selectedAddon && selectedAddon.catalogs.length > 0 ? (
         <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-base font-bold text-white">Catálogo · {selectedAddon.name}</h3>
+            <h3 className="text-base font-bold text-[var(--sc-text-primary)]">Catálogo · {selectedAddon.name}</h3>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedCatalogKey}
                 onChange={(e) => setSelectedCatalogKey(e.target.value)}
                 aria-label="Selecionar catálogo do addon"
-                className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-white"
+                className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-[var(--sc-text-primary)]"
               >
                 {selectedAddon.catalogs.map((cat) => (
                   <option key={`${cat.type}::${cat.id}`} value={`${cat.type}::${cat.id}`}>
@@ -385,7 +385,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                     )}
                   </div>
                   <div className="p-2">
-                    <p className="truncate text-xs font-semibold text-white">{item.name}</p>
+                    <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
                     <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
                   </div>
                 </button>
@@ -434,7 +434,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                     )}
                   </div>
                   <div className="p-2">
-                    <p className="truncate text-xs font-semibold text-white">{item.name}</p>
+                    <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
                     <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
                   </div>
                 </button>

@@ -1,9 +1,10 @@
-import { ArrowLeft, Archive, Check, Download, Image, Pencil, Play, Plus, RotateCcw, Subtitles } from 'lucide-react'
+import { ArrowLeft, Archive, Check, Download, Image, Pencil, Play, Plus, Puzzle, RotateCcw, Subtitles } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Episode, LibraryItem, Season } from '../../domain/catalog'
 import { findNextEpisode, getRelatedItems, resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import type { PlayableMedia } from '../../domain/uiHelpers'
+import { AddonStreamModal, type AddonMetaSummary } from '../addons/AddonStreamModal'
 import { MediaCarousel } from '../home/MediaCarousel'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -54,6 +55,38 @@ export function ShowDetailView({
   const [subResults, setSubResults] = useState<Array<{ fileId: number; language: string; release: string }>>([])
   const [subMessage, setSubMessage] = useState('')
   const [searchingSubs, setSearchingSubs] = useState(false)
+  const [addonModalItem, setAddonModalItem] = useState<AddonMetaSummary | null>(null)
+  const [searchingAddons, setSearchingAddons] = useState(false)
+
+  async function openAddonLookup() {
+    setSearchingAddons(true)
+    setStatus('')
+    try {
+      const desiredType = show.kind === 'Série' ? 'series' : 'movie'
+      const res = await fetch(`/api/addons/search?q=${encodeURIComponent(show.title)}`)
+      const data = await res.json().catch(() => null)
+      const metas = Array.isArray(data?.metas) ? data.metas : []
+      const match =
+        metas.find((m: { type?: string }) => m.type === desiredType) ??
+        metas[0]
+      if (!match) {
+        setStatus('Nenhum título correspondente encontrado nos catálogos/IMDb para consultar addons.')
+        return
+      }
+      setAddonModalItem({
+        id: match.id,
+        type: match.type || desiredType,
+        name: match.name || show.title,
+        poster: match.poster || show.artwork.posterUrl || null,
+        description: match.description || show.overview || '',
+        releaseInfo: match.releaseInfo || (show.year ? String(show.year) : null),
+      })
+    } catch {
+      setStatus('Falha ao consultar addons para este título.')
+    } finally {
+      setSearchingAddons(false)
+    }
+  }
 
   async function searchSubtitles() {
     if (!show.mediaId) return
@@ -231,6 +264,10 @@ export function ShowDetailView({
                   Buscar arte/metadados
                 </Button>
               )}
+              <Button variant="secondary" size="md" disabled={searchingAddons} onClick={() => void openAddonLookup()}>
+                <Puzzle className="h-4 w-4" />
+                {searchingAddons ? 'Buscando addons...' : 'Streams & Legendas (Addons)'}
+              </Button>
               <Button variant="secondary" size="md" onClick={() => setEditing((value) => !value)}>
                 <Pencil className="h-4 w-4" />
                 Editar
@@ -554,6 +591,14 @@ export function ShowDetailView({
           </div>
         )}
       </div>
+
+      <AddonStreamModal
+        item={addonModalItem}
+        localCatalog={library}
+        onClose={() => setAddonModalItem(null)}
+        onPlayStream={onPlayMedia}
+        onPlayLocal={onPlayItem}
+      />
     </div>
   )
 }
