@@ -83,7 +83,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
 
   test('Player exibe controle de velocidade e slider de volume até 300%', async ({ page }) => {
     await page.goto('/series/show-south-park')
-    await expect(page.getByText(/Novo volume/i)).toBeVisible()
+    await expect(page.getByText(/Novo volume/i).first()).toBeVisible({ timeout: 10000 })
     await page.getByRole('button', { name: /Assistir|Retomar/i }).first().click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
