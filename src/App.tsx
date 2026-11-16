@@ -1,23 +1,32 @@
 import { Search } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddonStreamModal, type AddonMetaSummary } from './components/addons/AddonStreamModal'
-import { OnlineCatalogView } from './components/addons/OnlineCatalogView'
-import { AdminView } from './components/admin/AdminView'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
 import { Sidebar } from './components/layout/Sidebar'
 import { MediaCard } from './components/media/MediaCard'
-import { ShowDetailView } from './components/media/ShowDetailView'
 import type {
   ArtworkCandidateGroup,
   CatalogHistory,
   CatalogRefreshStatus,
 } from './components/modals/CatalogModals'
-import { VideoPlayer } from './components/player/VideoPlayer'
 import { PinGate } from './components/profile/PinGate'
 import { ProfileGate } from './components/profile/ProfileGate'
 import { ProfileModal } from './components/profile/ProfileModal'
 import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
+
+const OnlineCatalogView = lazy(() =>
+  import('./components/addons/OnlineCatalogView').then((m) => ({ default: m.OnlineCatalogView })),
+)
+const AdminView = lazy(() =>
+  import('./components/admin/AdminView').then((m) => ({ default: m.AdminView })),
+)
+const ShowDetailView = lazy(() =>
+  import('./components/media/ShowDetailView').then((m) => ({ default: m.ShowDetailView })),
+)
+const VideoPlayer = lazy(() =>
+  import('./components/player/VideoPlayer').then((m) => ({ default: m.VideoPlayer })),
+)
 import {
   library as mockLibrary,
   mediaSources as mockSources,
@@ -854,48 +863,54 @@ export function App() {
         )}
 
         {adminOpen ? (
-          <AdminView
-            key={adminTab}
-            initialTab={adminTab}
-            reviewItems={reviewItems}
-            reviewError={reviewError}
-            artworkGroups={artworkCandidates}
-            artworkError={artworkCandidatesError}
-            history={catalogHistory}
-            onBack={() => setAdminOpen(false)}
-            onRefreshAll={refreshCatalogAndSources}
-            onPlayMedia={(media) => setSelectedMedia(media)}
-          />
+          <Suspense fallback={<CatalogSkeleton />}>
+            <AdminView
+              key={adminTab}
+              initialTab={adminTab}
+              reviewItems={reviewItems}
+              reviewError={reviewError}
+              artworkGroups={artworkCandidates}
+              artworkError={artworkCandidatesError}
+              history={catalogHistory}
+              onBack={() => setAdminOpen(false)}
+              onRefreshAll={refreshCatalogAndSources}
+              onPlayMedia={(media) => setSelectedMedia(media)}
+            />
+          </Suspense>
         ) : catalogLoading ? (
           <CatalogSkeleton />
         ) : activeKind === 'Online' ? (
-          <OnlineCatalogView
-            localCatalog={catalog}
-            onPlayStream={(media) => setSelectedMedia(media)}
-            onPlayLocal={(localItem) => playLibraryItem(localItem)}
-            onOpenAddonsManager={() => {
-              setSelectedShow(null)
-              setAdminTab('addons')
-              setAdminOpen(true)
-            }}
-          />
+          <Suspense fallback={<CatalogSkeleton />}>
+            <OnlineCatalogView
+              localCatalog={catalog}
+              onPlayStream={(media) => setSelectedMedia(media)}
+              onPlayLocal={(localItem) => playLibraryItem(localItem)}
+              onOpenAddonsManager={() => {
+                setSelectedShow(null)
+                setAdminTab('addons')
+                setAdminOpen(true)
+              }}
+            />
+          </Suspense>
         ) : selectedShow ? (
-          <ShowDetailView
-            show={selectedShow}
-            library={catalog}
-            profileId={activeProfile.id}
-            onBack={() => setSelectedShow(null)}
-            onPlayMedia={(media) => setSelectedMedia(media)}
-            onPlayItem={playLibraryItem}
-            onOpenDetails={(item) => setSelectedShow(item)}
-            onToggleWatchlist={(item) => void toggleWatchlist(item)}
-            onSearchArtwork={(item) => void triggerArtworkSearch(item)}
-            onCatalogUpdated={refreshCatalogAndSources}
-            onArchived={() => {
-              setSelectedShow(null)
-              refreshCatalogAndSources()
-            }}
-          />
+          <Suspense fallback={<CatalogSkeleton />}>
+            <ShowDetailView
+              show={selectedShow}
+              library={catalog}
+              profileId={activeProfile.id}
+              onBack={() => setSelectedShow(null)}
+              onPlayMedia={(media) => setSelectedMedia(media)}
+              onPlayItem={playLibraryItem}
+              onOpenDetails={(item) => setSelectedShow(item)}
+              onToggleWatchlist={(item) => void toggleWatchlist(item)}
+              onSearchArtwork={(item) => void triggerArtworkSearch(item)}
+              onCatalogUpdated={refreshCatalogAndSources}
+              onArchived={() => {
+                setSelectedShow(null)
+                refreshCatalogAndSources()
+              }}
+            />
+          </Suspense>
         ) : isFilteredView ? (
           <section className="flex flex-col gap-5">
             <div className="flex items-baseline justify-between gap-4">
@@ -1070,17 +1085,19 @@ export function App() {
       </main>
 
       {selectedMedia && (
-        <VideoPlayer
-          key={selectedMedia.url}
-          media={selectedMedia}
-          profileId={activeProfile.id}
-          capabilities={playerCapabilities}
-          onPlayNext={(next) => setSelectedMedia(next)}
-          onClose={() => {
-            setSelectedMedia(null)
-            window.setTimeout(() => refreshCatalogAndSources(), 250)
-          }}
-        />
+        <Suspense fallback={null}>
+          <VideoPlayer
+            key={selectedMedia.url}
+            media={selectedMedia}
+            profileId={activeProfile.id}
+            capabilities={playerCapabilities}
+            onPlayNext={(next) => setSelectedMedia(next)}
+            onClose={() => {
+              setSelectedMedia(null)
+              window.setTimeout(() => refreshCatalogAndSources(), 250)
+            }}
+          />
+        </Suspense>
       )}
 
       <AddonStreamModal

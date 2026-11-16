@@ -27,6 +27,19 @@ type StreamInfo = {
   subtitles: Array<{ index: number; language: string; title: string }>
 }
 
+function shiftTextTrackCues(tracks: TextTrackList, appliedDelta: number) {
+  for (let i = 0; i < tracks.length; i += 1) {
+    const cues = tracks[i]?.cues
+    if (!cues) continue
+    for (let j = 0; j < cues.length; j += 1) {
+      const cue = cues[j] as VTTCue
+      const nextStart = Math.max(0, cue.startTime + appliedDelta)
+      const nextEnd = Math.max(nextStart + 0.2, cue.endTime + appliedDelta)
+      Object.assign(cue, { startTime: nextStart, endTime: nextEnd })
+    }
+  }
+}
+
 /** Netflix-style immersive player with auto-hiding overlays, paused screen, and Idioma | Legendas popover. */
 export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -50,6 +63,10 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   const [audioStream, setAudioStream] = useState('')
   const [subtitleStream, setSubtitleStream] = useState('')
   const [selectedSubtitleUrl, setSelectedSubtitleUrl] = useState('')
+  const [subtitleOffsetSec, setSubtitleOffsetSec] = useState(0)
+  const [torrentStats, setTorrentStats] = useState<{ numPeers: number; downloadSpeed: number; progress: number } | null>(null)
+  const [seekToast, setSeekToast] = useState<string>('')
+  const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [trackMenuOpen, setTrackMenuOpen] = useState(false)
   const [episodesMenuOpen, setEpisodesMenuOpen] = useState(false)
@@ -161,6 +178,42 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   }, [])
 
   useEffect(() => {
+    const match = playbackUrl.match(/[?&]infoHash=([a-fA-F0-9]{40}|[A-Z2-7]{32})/i)
+    if (!match) return
+    const infoHash = match[1]
+    let active = true
+    const poll = () => {
+      fetch(`/api/addons/torrent-status?infoHash=${encodeURIComponent(infoHash)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (active && data && typeof data.numPeers === 'number') {
+            setTorrentStats({
+              numPeers: data.numPeers,
+              downloadSpeed: Number(data.downloadSpeed || 0),
+              progress: Number(data.progress || 0),
+            })
+          }
+        })
+        .catch(() => undefined)
+    }
+    poll()
+    const timer = window.setInterval(poll, 2500)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [playbackUrl])
+
+  const adjustSubtitleOffset = (delta: number) => {
+    const nextOffset = delta === 0 ? 0 : Math.round((subtitleOffsetSec + delta) * 10) / 10
+    const appliedDelta = delta === 0 ? -subtitleOffsetSec : delta
+    setSubtitleOffsetSec(nextOffset)
+    const video = videoRef.current
+    if (!video || appliedDelta === 0) return
+    shiftTextTrackCues(video.textTracks, appliedDelta)
+  }
+
+  useEffect(() => {
     if (nextCountdown === null || !media.nextEpisode || !onPlayNext) return
     if (nextCountdown <= 0) {
       onPlayNext(media.nextEpisode)
@@ -188,12 +241,27 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
 
   const saveProgress = useCallback((force = false) => {
     const video = videoRef.current
-    if (!video || !media.mediaId) return
+    if (!video) return
     const effectivePos = transcodeOffsetRef.current + video.currentTime
     const effectiveDur = totalDurationRef.current || (Number.isFinite(video.duration) ? video.duration : 0)
     if (!effectiveDur || Number.isNaN(effectiveDur)) return
     if (!force && Math.abs(effectivePos - lastSavedPosition.current) < 5 && effectivePos < effectiveDur - 2) return
     lastSavedPosition.current = effectivePos
+    if (!media.mediaId) {
+      void fetch('/api/addons/progress', {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId,
+          mediaKey: media.url.slice(0, 240),
+          title: media.title,
+          positionSec: effectivePos,
+          durationSec: effectiveDur,
+        }),
+      }).catch(() => undefined)
+      return
+    }
     void fetch('/api/progress', {
       method: 'POST',
       keepalive: true,
@@ -206,7 +274,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         watched: effectivePos >= effectiveDur * 0.9,
       }),
     })
-  }, [media.mediaId, profileId])
+  }, [media.mediaId, media.title, media.url, profileId])
 
   useEffect(() => () => saveProgress(true), [saveProgress])
 
@@ -522,6 +590,28 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             togglePlay()
           }}
           onDoubleClick={toggleFullscreen}
+          onTouchEnd={(event) => {
+            const touch = event.changedTouches[0]
+            if (!touch) return
+            const now = Date.now()
+            const prev = lastTouchTapRef.current
+            if (prev && now - prev.at < 300 && Math.abs(touch.clientX - prev.x) < 80) {
+              const width = event.currentTarget.clientWidth || window.innerWidth
+              const ratio = touch.clientX / width
+              if (ratio < 0.35) {
+                seekBy(-10)
+                setSeekToast('« 10s')
+                window.setTimeout(() => setSeekToast(''), 700)
+              } else if (ratio > 0.65) {
+                seekBy(10)
+                setSeekToast('10s »')
+                window.setTimeout(() => setSeekToast(''), 700)
+              }
+              lastTouchTapRef.current = null
+            } else {
+              lastTouchTapRef.current = { at: now, x: touch.clientX }
+            }
+          }}
           onPlay={() => {
             setIsPaused(false)
             setShowPausedInfo(false)
@@ -586,6 +676,12 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           )}
         </video>
 
+        {seekToast && (
+          <div className="pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/75 px-5 py-2 text-sm font-bold text-white backdrop-blur-md">
+            {seekToast}
+          </div>
+        )}
+
         {playbackError && (
           <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-black/85 p-6 text-center">
             <div className="max-w-md rounded-[var(--sc-radius-lg)] border border-red-500/40 bg-[#14151e] p-6 shadow-2xl">
@@ -622,6 +718,11 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                 Reproduzindo
               </p>
               <h2 className="m-0 text-base font-bold text-white sm:text-lg">{media.title}</h2>
+              {torrentStats && (
+                <p className="mt-0.5 mb-0 text-[11px] font-medium text-emerald-300">
+                  Torrent · {torrentStats.numPeers} peer(s) · {Math.round(torrentStats.downloadSpeed / 1024)} KB/s · {Math.round(torrentStats.progress * 100)}%
+                </p>
+              )}
             </div>
           </div>
 
@@ -1143,6 +1244,34 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   </button>
                 )
               })}
+              <div className="mt-2 flex items-center justify-between gap-1 border-t border-white/10 pt-2">
+                <span className="text-[10px] text-[var(--sc-text-muted)]">
+                  Sincronia: {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec}s` : `${subtitleOffsetSec}s`}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => adjustSubtitleOffset(-0.5)}
+                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                  >
+                    -0.5s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustSubtitleOffset(0)}
+                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                  >
+                    0s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustSubtitleOffset(0.5)}
+                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
+                  >
+                    +0.5s
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

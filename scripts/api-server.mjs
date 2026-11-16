@@ -339,7 +339,13 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/sources') {
-    refreshSourceStatuses()
+    setTimeout(() => {
+      try {
+        refreshSourceStatuses()
+      } catch {
+        // ignore background source refresh error
+      }
+    }, 0)
     const sources = database.prepare(`
       SELECT id, name, root_path AS path, status, removable, volume_label AS volumeLabel,
         volume_id AS volumeId,
@@ -778,6 +784,48 @@ async function handleApiRequest(request, response) {
     }
     const stopped = await stopTorrentStream(infoHash)
     return send(response, 200, { stopped, infoHash })
+  }
+
+  if (requestUrl.pathname === '/api/addons/progress') {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS stremio_progress (
+        profile_id TEXT NOT NULL,
+        media_key TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        position_sec REAL NOT NULL DEFAULT 0,
+        duration_sec REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (profile_id, media_key)
+      )
+    `)
+    if (request.method === 'GET') {
+      const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+      const rows = database
+        .prepare('SELECT media_key AS mediaKey, title, position_sec AS positionSec, duration_sec AS durationSec, updated_at AS updatedAt FROM stremio_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT 30')
+        .all(profileId)
+      return send(response, 200, rows)
+    }
+    if (request.method === 'POST') {
+      let body
+      try {
+        body = await readJson(request)
+      } catch {
+        return send(response, 400, { error: 'JSON inválido.' })
+      }
+      const profileId = typeof body.profileId === 'string' && body.profileId.trim() ? body.profileId.trim() : 'profile-savio'
+      const mediaKey = typeof body.mediaKey === 'string' ? body.mediaKey.trim() : ''
+      if (!mediaKey) return send(response, 400, { error: 'mediaKey obrigatório.' })
+      database.prepare(`
+        INSERT INTO stremio_progress (profile_id, media_key, title, position_sec, duration_sec, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(profile_id, media_key) DO UPDATE SET
+          title = excluded.title,
+          position_sec = excluded.position_sec,
+          duration_sec = excluded.duration_sec,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(profileId, mediaKey, String(body.title || ''), Number(body.positionSec) || 0, Number(body.durationSec) || 0)
+      return send(response, 200, { saved: true })
+    }
   }
 
   if (requestUrl.pathname === '/api/addons/downloads' && request.method === 'GET') {

@@ -1,4 +1,5 @@
-import { ArrowLeft, AlertTriangle, Copy, Flag, History, Image, Puzzle, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Copy, Download, Flag, History, Image, Puzzle, QrCode, RefreshCw, Sparkles } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
@@ -60,15 +61,43 @@ export function AdminView({
   const [hiddenCandidateIds, setHiddenCandidateIds] = useState<Set<string>>(() => new Set())
   const [networkUrls, setNetworkUrls] = useState<string[]>([])
   const [tunnelUrl, setTunnelUrl] = useState('')
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [showQr, setShowQr] = useState(false)
+  const [downloads, setDownloads] = useState<Array<{ id: string; title: string; status: string; progress: number; message: string }>>([])
 
   useEffect(() => {
     fetch('/api/network-info')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (Array.isArray(data?.urls)) setNetworkUrls(data.urls)
-        if (typeof data?.tunnelUrl === 'string') setTunnelUrl(data.tunnelUrl)
+      .then(async (data) => {
+        const urls = Array.isArray(data?.urls) ? data.urls : []
+        const pub = typeof data?.tunnelUrl === 'string' ? data.tunnelUrl : ''
+        setNetworkUrls(urls)
+        setTunnelUrl(pub)
+        const target = pub || urls[0]
+        if (target) {
+          const qr = await QRCode.toDataURL(target, { width: 140, margin: 1 }).catch(() => '')
+          setQrDataUrl(qr)
+        }
       })
       .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const poll = () => {
+      fetch('/api/addons/downloads')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((rows) => {
+          if (active && Array.isArray(rows)) setDownloads(rows)
+        })
+        .catch(() => undefined)
+    }
+    poll()
+    const timer = window.setInterval(poll, 4000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   const visibleReviewItems = reviewItems.filter((item) => !hiddenReviewIds.has(item.id))
@@ -272,6 +301,17 @@ export function AdminView({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {qrDataUrl && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowQr((v) => !v)}
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {showQr ? 'Ocultar QR' : 'QR Code'}
+              </Button>
+            )}
             <a
               href="/api/android/apk"
               download="SavanoCine.apk"
@@ -293,6 +333,35 @@ export function AdminView({
               Copiar link
             </Button>
           </div>
+          {showQr && qrDataUrl && (
+            <div className="mt-2 flex w-full items-center gap-4 border-t border-[var(--sc-border-subtle)] pt-3">
+              <img src={qrDataUrl} alt="QR Code de acesso" className="h-28 w-28 rounded-lg bg-white p-1" />
+              <div className="text-xs text-[var(--sc-text-secondary)]">
+                <p className="m-0 font-semibold text-[var(--sc-text-primary)]">Escaneie com a câmera do celular</p>
+                <p className="mt-1 mb-0">Abre o Savano Cine direto no navegador ou para baixar o APK.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {downloads.length > 0 && (
+        <div className="space-y-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-4 py-3 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 font-semibold text-[var(--sc-text-primary)]">
+              <Download className="h-3.5 w-3.5 text-[var(--sc-accent)]" />
+              Downloads Offline ({downloads.length})
+            </span>
+            <Button type="button" size="sm" variant="ghost" onClick={onRefreshAll}>
+              Atualizar Acervo Local
+            </Button>
+          </div>
+          {downloads.map((d) => (
+            <div key={d.id} className="flex items-center justify-between gap-3 text-[11px] text-[var(--sc-text-secondary)]">
+              <span className="truncate font-medium text-[var(--sc-text-primary)]">{d.title}</span>
+              <span>{d.message}</span>
+            </div>
+          ))}
         </div>
       )}
 

@@ -5,6 +5,26 @@
  */
 
 const SAFE_SEGMENT_RE = /^[a-zA-Z0-9._:-]+$/
+const ADDON_RESPONSE_CACHE = new Map()
+const ADDON_CACHE_TTL_MS = 5 * 60_000
+
+function getCachedAddonResponse(key) {
+  const entry = ADDON_RESPONSE_CACHE.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.at > ADDON_CACHE_TTL_MS) {
+    ADDON_RESPONSE_CACHE.delete(key)
+    return null
+  }
+  return entry.value
+}
+
+function setCachedAddonResponse(key, value) {
+  if (ADDON_RESPONSE_CACHE.size > 150) {
+    const oldestKey = ADDON_RESPONSE_CACHE.keys().next().value
+    if (oldestKey) ADDON_RESPONSE_CACHE.delete(oldestKey)
+  }
+  ADDON_RESPONSE_CACHE.set(key, { at: Date.now(), value })
+}
 
 export function ensureStremioAddonsTable(database) {
   database.exec(`
@@ -209,6 +229,8 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   if (Number.isInteger(skip) && skip > 0) extraParts.push(`skip=${skip}`)
   const extra = extraParts.length > 0 ? `/${extraParts.join('&')}` : ''
   const targetUrl = `${addon.baseUrl}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extra}.json`
+  const cached = getCachedAddonResponse(`cat:${targetUrl}`)
+  if (cached) return cached
   const response = await fetch(targetUrl, {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(8000),
@@ -218,7 +240,7 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   }
   const payload = await response.json().catch(() => ({}))
   const metas = Array.isArray(payload?.metas) ? payload.metas : []
-  return {
+  const result = {
     addonId: addon.id,
     addonName: addon.name,
     type,
@@ -234,6 +256,8 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
       genres: Array.isArray(meta.genres) ? meta.genres.filter((g) => typeof g === 'string') : [],
     })),
   }
+  setCachedAddonResponse(`cat:${targetUrl}`, result)
+  return result
 }
 
 export async function fetchAddonMeta(database, addonId, { type, metaId }) {
