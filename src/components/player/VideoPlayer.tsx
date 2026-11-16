@@ -366,6 +366,65 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   }
 
   useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: media.title,
+        artist: media.showTitle || 'Savano Cine',
+      })
+      navigator.mediaSession.setActionHandler('play', () => {
+        void videoRef.current?.play().catch(() => undefined)
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        videoRef.current?.pause()
+      })
+      navigator.mediaSession.setActionHandler('seekbackward', () => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10)
+        }
+      })
+      navigator.mediaSession.setActionHandler('seekforward', () => {
+        if (videoRef.current) {
+          videoRef.current.currentTime += 10
+        }
+      })
+      if (media.nextEpisode && onPlayNext) {
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          onPlayNext(media.nextEpisode!)
+        })
+      }
+    } catch {
+      // ignore unsupported MediaSession handlers
+    }
+    return () => {
+      try {
+        navigator.mediaSession.setActionHandler('play', null)
+        navigator.mediaSession.setActionHandler('pause', null)
+        navigator.mediaSession.setActionHandler('seekbackward', null)
+        navigator.mediaSession.setActionHandler('seekforward', null)
+        navigator.mediaSession.setActionHandler('nexttrack', null)
+      } catch {
+        // ignore
+      }
+    }
+  }, [media.nextEpisode, media.showTitle, media.title, onPlayNext])
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+    if (typeof navigator.mediaSession.setPositionState !== 'function') return
+    if (!duration || duration <= 0 || !Number.isFinite(duration)) return
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate,
+        position: Math.max(0, Math.min(currentTime, duration)),
+      })
+    } catch {
+      // ignore invalid position state
+    }
+  }, [currentTime, duration, playbackRate])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) {
         return
@@ -552,8 +611,19 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
 
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Fechar player"
+            onClick={() => {
+              if (episodesMenuOpen) {
+                setEpisodesMenuOpen(false)
+              } else if (trackMenuOpen) {
+                setTrackMenuOpen(false)
+              } else if (showPausedInfo) {
+                setShowPausedInfo(false)
+              } else {
+                setControlsVisible(false)
+              }
+            }}
+            aria-label="Ocultar informações do player"
+            title="Ocultar informações do player"
             className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20"
           >
             <X className="h-4 w-4" />
