@@ -20,9 +20,11 @@ type InstalledAddon = {
 
 type OnlineCatalogViewProps = {
   profileId?: string
+  isAdmin?: boolean
   localCatalog: LibraryItem[]
   onPlayStream: (media: PlayableMedia) => void
   onPlayLocal: (item: LibraryItem) => void
+  onOpenItem?: (item: AddonMetaSummary) => void
   onOpenAddonsManager: () => void
 }
 
@@ -37,9 +39,11 @@ type OnlineProgressEntry = {
 /** Dedicated Online Archive view for browsing enabled Stremio addon catalogs and searching online streams. */
 export function OnlineCatalogView({
   profileId = 'profile-savio',
+  isAdmin = false,
   localCatalog,
   onPlayStream,
   onPlayLocal,
+  onOpenItem,
   onOpenAddonsManager,
 }: OnlineCatalogViewProps) {
   const [addons, setAddons] = useState<InstalledAddon[]>([])
@@ -135,10 +139,12 @@ export function OnlineCatalogView({
             Explore catálogos e streams dos seus addons Stremio conectados ({addons.length} ativo(s))
           </p>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={onOpenAddonsManager}>
-          <Puzzle className="h-4 w-4" />
-          Gerenciar / Adicionar Addons
-        </Button>
+        {isAdmin && (
+          <Button type="button" variant="secondary" size="sm" onClick={onOpenAddonsManager}>
+            <Puzzle className="h-4 w-4" />
+            Gerenciar / Adicionar Addons
+          </Button>
+        )}
       </div>
 
       <form onSubmit={runOnlineSearch} className="flex flex-wrap gap-2">
@@ -243,7 +249,7 @@ export function OnlineCatalogView({
               ? 'Nenhum addon ativo ainda. Adicione um addon (como Cinemeta, Public Domain ou Brazuca Torrents) na aba Addons.'
               : 'Digite o nome de um filme ou série acima para buscar streams e legendas nos seus addons online.'}
           </p>
-          {addons.length === 0 && (
+          {addons.length === 0 && isAdmin && (
             <Button type="button" variant="primary" size="sm" onClick={onOpenAddonsManager}>
               <Puzzle className="h-4 w-4" />
               Adicionar primeiro addon
@@ -256,7 +262,10 @@ export function OnlineCatalogView({
             <button
               key={`${item.type}-${item.id}`}
               type="button"
-              onClick={() => setActiveItem(item)}
+              onClick={() => {
+                if (onOpenItem) onOpenItem(item)
+                else setActiveItem(item)
+              }}
               className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)] cursor-pointer"
             >
               <div className="aspect-[2/3] w-full bg-black/40">

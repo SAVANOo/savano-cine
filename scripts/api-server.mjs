@@ -51,6 +51,17 @@ const database = new DatabaseSync(databasePath)
 const execFileAsync = promisify(execFile)
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
 ensureColumn('profiles', 'passcode_hash', 'TEXT')
+ensureColumn('profiles', 'is_admin', 'INTEGER NOT NULL DEFAULT 0')
+{
+  const hasAdmin = database.prepare('SELECT 1 FROM profiles WHERE is_admin = 1 LIMIT 1').get()
+  if (!hasAdmin) {
+    const adminId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-savio'
+    const res = database.prepare('UPDATE profiles SET is_admin = 1 WHERE id = ?').run(adminId)
+    if (res.changes === 0) {
+      database.prepare('UPDATE profiles SET is_admin = 1 WHERE id = (SELECT id FROM profiles ORDER BY created_at LIMIT 1)').run()
+    }
+  }
+}
 ensureArtworkCandidatesTable()
 ensureWatchlistTable()
 ensureStremioAddonsTable(database)
@@ -146,6 +157,27 @@ function isPrivateHostname(hostname) {
     return true
   }
   return false
+}
+
+function getSessionProfileId(request) {
+  const cookieHeader = String(request.headers.cookie || '')
+  const match = cookieHeader.match(/(?:^|;\s*)sc_profile_session=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
+function isNonAdminSession(request) {
+  const sessionId = getSessionProfileId(request)
+  if (!sessionId) return false
+  const row = database.prepare('SELECT is_admin FROM profiles WHERE id = ?').get(sessionId)
+  return Boolean(row && !row.is_admin)
+}
+
+function requireAdmin(request, response) {
+  if (isNonAdminSession(request)) {
+    send(response, 403, { error: 'Acesso restrito ao perfil administrador.' })
+    return false
+  }
+  return true
 }
 
 function applySecurityHeaders(response) {
@@ -281,6 +313,7 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/logs/errors' && request.method === 'GET') {
+    if (!requireAdmin(request, response)) return
     return send(response, 200, readRecentErrorLogs())
   }
 
@@ -304,6 +337,7 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/sources' && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
     let body
     try {
       body = await readJson(request)
@@ -391,6 +425,7 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/catalog/refresh' && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
     if (catalogRefresh.state === 'running') {
       return send(response, 409, { error: 'Uma atualização do catálogo já está em andamento.', ...refreshStatus() })
     }
@@ -549,7 +584,7 @@ async function handleApiRequest(request, response) {
       }
 
       const saved = database.prepare(`
-        SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids,
+        SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids, p.is_admin AS isAdmin,
           (p.passcode_hash IS NOT NULL AND p.passcode_hash != '') AS hasPassword,
           (SELECT COUNT(*) FROM watch_progress wp WHERE wp.profile_id = p.id AND wp.watched = 1) AS watchedCount
         FROM profiles p
@@ -557,7 +592,7 @@ async function handleApiRequest(request, response) {
       `).get(id)
       return send(response, 200, {
         ...saved,
-        isAdmin: saved?.id === 'profile-savio',
+        isAdmin: Boolean(saved?.isAdmin),
         isKids: Boolean(saved?.isKids),
         hasPassword: Boolean(saved?.hasPassword),
         watchedCount: Number(saved?.watchedCount || 0),
@@ -565,14 +600,14 @@ async function handleApiRequest(request, response) {
     }
 
     const profiles = database.prepare(`
-      SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids,
+      SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids, p.is_admin AS isAdmin,
         (p.passcode_hash IS NOT NULL AND p.passcode_hash != '') AS hasPassword,
         (SELECT COUNT(*) FROM watch_progress wp WHERE wp.profile_id = p.id AND wp.watched = 1) AS watchedCount
       FROM profiles p
       ORDER BY p.created_at
     `).all().map((row) => ({
       ...row,
-      isAdmin: row.id === 'profile-savio',
+      isAdmin: Boolean(row.isAdmin),
       isKids: Boolean(row.isKids),
       hasPassword: Boolean(row.hasPassword),
       watchedCount: Number(row.watchedCount || 0),
@@ -634,6 +669,7 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/addons' && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
     let body
     try {
       body = await readJson(request)
@@ -1023,6 +1059,7 @@ async function handleApiRequest(request, response) {
 
   const addonIdMatch = requestUrl.pathname.match(/^\/api\/addons\/([^/]+)$/)
   if (addonIdMatch && request.method === 'PATCH') {
+    if (!requireAdmin(request, response)) return
     const addonId = decodeURIComponent(addonIdMatch[1])
     let body
     try {
@@ -1036,6 +1073,7 @@ async function handleApiRequest(request, response) {
   }
 
   if (addonIdMatch && request.method === 'DELETE') {
+    if (!requireAdmin(request, response)) return
     const addonId = decodeURIComponent(addonIdMatch[1])
     const deleted = deleteStremioAddon(database, addonId)
     if (!deleted) return send(response, 404, { error: 'Addon não encontrado.' })

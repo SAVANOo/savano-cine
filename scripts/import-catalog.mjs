@@ -22,6 +22,7 @@ ensureProfileProgressTable()
 ensureColumn('media_items', 'tags_json', `TEXT NOT NULL DEFAULT '[]'`)
 ensureColumn('media_items', 'deleted_at', 'TEXT')
 ensureColumn('media_sources', 'root_relative_path', 'TEXT')
+ensureColumn('profiles', 'is_admin', 'INTEGER NOT NULL DEFAULT 0')
 database.exec(`
   CREATE TABLE IF NOT EXISTS media_item_title_history (
     id TEXT PRIMARY KEY,
@@ -32,11 +33,12 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `)
+const adminProfileId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-savio'
 database.prepare(`
-  INSERT INTO profiles (id, name, avatar_key)
-  VALUES (?, ?, ?)
-  ON CONFLICT(id) DO NOTHING
-`).run('profile-savio', 'Savio', 'cartman')
+  INSERT INTO profiles (id, name, avatar_key, is_admin)
+  VALUES (?, ?, ?, 1)
+  ON CONFLICT(id) DO UPDATE SET is_admin = 1
+`).run(adminProfileId, adminProfileId === 'profile-savio' ? 'Savio' : adminProfileId.replace(/^profile-/, ''), 'cartman')
 ensureProfileRatingsTable()
 
 const volumeInfo = getVolumeInfoForPath(sourcePath)

@@ -18,6 +18,7 @@ type ShowDetailViewProps = {
   onPlayMedia: (media: PlayableMedia) => void
   onPlayItem: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
+  onOpenAddonItem?: (item: AddonMetaSummary) => void
   onToggleWatchlist?: (item: LibraryItem) => void
   onSearchArtwork?: (show: LibraryItem) => void
   onCatalogUpdated: () => void
@@ -33,6 +34,7 @@ export function ShowDetailView({
   onPlayMedia,
   onPlayItem,
   onOpenDetails,
+  onOpenAddonItem,
   onToggleWatchlist,
   onSearchArtwork,
   onCatalogUpdated,
@@ -73,14 +75,19 @@ export function ShowDetailView({
         setStatus('Nenhum título correspondente encontrado nos catálogos/IMDb para consultar addons.')
         return
       }
-      setAddonModalItem({
+      const payload: AddonMetaSummary = {
         id: match.id,
         type: match.type || desiredType,
         name: match.name || show.title,
         poster: match.poster || show.artwork.posterUrl || null,
         description: match.description || show.overview || '',
         releaseInfo: match.releaseInfo || (show.year ? String(show.year) : null),
-      })
+      }
+      if (onOpenAddonItem) {
+        onOpenAddonItem(payload)
+      } else {
+        setAddonModalItem(payload)
+      }
     } catch {
       setStatus('Falha ao consultar addons para este título.')
     } finally {

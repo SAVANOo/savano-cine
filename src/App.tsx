@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AddonStreamModal, type AddonMetaSummary } from './components/addons/AddonStreamModal'
+import type { AddonMetaSummary } from './components/addons/AddonStreamModal'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
 import { Sidebar } from './components/layout/Sidebar'
@@ -14,6 +14,10 @@ import { PinGate } from './components/profile/PinGate'
 import { ProfileGate } from './components/profile/ProfileGate'
 import { ProfileModal } from './components/profile/ProfileModal'
 import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
+
+const AddonDetailView = lazy(() =>
+  import('./components/addons/AddonDetailView').then((m) => ({ default: m.AddonDetailView })),
+)
 
 const OnlineCatalogView = lazy(() =>
   import('./components/addons/OnlineCatalogView').then((m) => ({ default: m.OnlineCatalogView })),
@@ -163,9 +167,13 @@ export function App() {
         setCatalogLoading(true)
       }
       setActiveProfileId(nextId)
+      const nextTarget = profiles.find((p) => p.id === nextId)
+      if (nextTarget && !(nextTarget.isAdmin ?? nextTarget.id === 'profile-savio')) {
+        setAdminOpen(false)
+      }
       window.setTimeout(() => setProfileFading(false), 240)
     },
-    [activeProfileId],
+    [activeProfileId, profiles],
   )
 
   const handleProfileChange = useCallback(
@@ -732,6 +740,7 @@ export function App() {
         profiles={profiles}
         activeKind={activeKind}
         onSelectKind={(nextKind) => {
+          setActiveAddonItem(null)
           setActiveKind(nextKind)
           goHome()
         }}
@@ -741,15 +750,18 @@ export function App() {
           setProfileEditorOpen(true)
         }}
         onGoHome={() => {
+          setActiveAddonItem(null)
           setActiveKind('Todos')
           goHome()
         }}
         onOpenAdmin={() => {
+          setActiveAddonItem(null)
           setSelectedShow(null)
           setAdminTab('review')
           setAdminOpen(true)
         }}
         onOpenAddons={() => {
+          setActiveAddonItem(null)
           setSelectedShow(null)
           setAdminTab('addons')
           setAdminOpen(true)
@@ -877,13 +889,26 @@ export function App() {
               onPlayMedia={(media) => setSelectedMedia(media)}
             />
           </Suspense>
+        ) : activeAddonItem ? (
+          <Suspense fallback={<CatalogSkeleton />}>
+            <AddonDetailView
+              key={`${activeAddonItem.type}:${activeAddonItem.id}`}
+              item={activeAddonItem}
+              localCatalog={catalog}
+              onBack={() => setActiveAddonItem(null)}
+              onPlayStream={(media) => setSelectedMedia(media)}
+              onPlayLocal={(localItem) => playLibraryItem(localItem)}
+            />
+          </Suspense>
         ) : activeKind === 'Online' ? (
           <Suspense fallback={<CatalogSkeleton />}>
             <OnlineCatalogView
               profileId={activeProfile.id}
+              isAdmin={Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')}
               localCatalog={catalog}
               onPlayStream={(media) => setSelectedMedia(media)}
               onPlayLocal={(localItem) => playLibraryItem(localItem)}
+              onOpenItem={(item) => setActiveAddonItem(item)}
               onOpenAddonsManager={() => {
                 setSelectedShow(null)
                 setAdminTab('addons')
@@ -903,6 +928,7 @@ export function App() {
               onPlayMedia={(media) => setSelectedMedia(media)}
               onPlayItem={playLibraryItem}
               onOpenDetails={(item) => setSelectedShow(item)}
+              onOpenAddonItem={(item) => setActiveAddonItem(item)}
               onToggleWatchlist={(item) => void toggleWatchlist(item)}
               onSearchArtwork={(item) => void triggerArtworkSearch(item)}
               onCatalogUpdated={refreshCatalogAndSources}
@@ -1100,14 +1126,6 @@ export function App() {
           />
         </Suspense>
       )}
-
-      <AddonStreamModal
-        item={activeAddonItem}
-        localCatalog={catalog}
-        onClose={() => setActiveAddonItem(null)}
-        onPlayStream={(media) => setSelectedMedia(media)}
-        onPlayLocal={(localItem) => playLibraryItem(localItem)}
-      />
 
       {pinLocked && (
         <PinGate
