@@ -1,6 +1,8 @@
-import { ArrowLeft, Check, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
+import { PlayerEpisodesDrawer } from './PlayerEpisodesDrawer'
+import { PlayerTrackMenu } from './PlayerTrackMenu'
 
 function formatClock(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -1109,128 +1111,16 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         </div>
 
         {/* Netflix-style Episode Selector Drawer */}
-        {episodesMenuOpen && media.showSeasons && media.showSeasons.length > 0 && (
-          <div className="pointer-events-auto absolute right-6 bottom-24 z-30 flex max-h-[65vh] w-[min(92vw,440px)] flex-col overflow-hidden rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14151e]/96 shadow-2xl backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <strong className="truncate text-sm font-bold text-white">
-                {media.showTitle || 'Episódios'}
-              </strong>
-              {media.showSeasons.length > 1 && (
-                <select
-                  aria-label="Selecionar temporada"
-                  value={selectedEpisodeSeason}
-                  onChange={(event) => setSelectedEpisodeSeason(Number(event.target.value))}
-                  className="rounded border border-white/15 bg-black/50 px-2.5 py-1 text-xs font-semibold text-white focus:outline-none"
-                >
-                  {media.showSeasons.map((s) => (
-                    <option key={s.number} value={s.number}>
-                      {s.label || `Temporada ${s.number}`}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="flex flex-col divide-y divide-white/5 overflow-y-auto">
-              {(media.showSeasons.find((s) => s.number === selectedEpisodeSeason) ?? media.showSeasons[0]).episodes.map(
-                (ep) => {
-                  const isCurrent = ep.mediaId === media.mediaId
-                  const isExpanded = isCurrent || hoveredEpisodeId === ep.id
-                  const epProgress = Math.max(0, Math.min(100, ep.progress ?? 0))
-                  const flatEpisodes = (media.showSeasons ?? []).flatMap((s) =>
-                    s.episodes.filter((item) => Boolean(item.mediaUrl)),
-                  )
-                  const epIdx = flatEpisodes.findIndex((item) => item.mediaId === ep.mediaId)
-                  const nextAfterEp =
-                    epIdx >= 0 && epIdx + 1 < flatEpisodes.length ? flatEpisodes[epIdx + 1] : undefined
-                  return (
-                    <button
-                      key={ep.id}
-                      type="button"
-                      onMouseEnter={() => setHoveredEpisodeId(ep.id)}
-                      onMouseLeave={() => setHoveredEpisodeId(null)}
-                      onClick={() => {
-                        if (!ep.mediaUrl || !onPlayNext) return
-                        setEpisodesMenuOpen(false)
-                        onPlayNext({
-                          title: `${media.showTitle || 'Série'} — T${ep.season}:E${ep.number} ${ep.title}`,
-                          url: ep.mediaUrl,
-                          subtitleUrl: ep.subtitleUrl,
-                          mediaId: ep.mediaId,
-                          needsTranscode: ep.needsTranscode,
-                          overview: media.overview,
-                          year: media.year,
-                          startPosition: 0,
-                          showTitle: media.showTitle,
-                          showSeasons: media.showSeasons,
-                          nextEpisode: nextAfterEp?.mediaUrl
-                            ? {
-                                title: `${media.showTitle || 'Série'} — T${nextAfterEp.season}:E${nextAfterEp.number} ${nextAfterEp.title}`,
-                                url: nextAfterEp.mediaUrl,
-                                subtitleUrl: nextAfterEp.subtitleUrl,
-                                mediaId: nextAfterEp.mediaId,
-                                needsTranscode: nextAfterEp.needsTranscode,
-                                overview: media.overview,
-                                year: media.year,
-                                startPosition: 0,
-                                showTitle: media.showTitle,
-                                showSeasons: media.showSeasons,
-                              }
-                            : undefined,
-                        })
-                      }}
-                      className={`flex flex-col gap-2.5 border-0 px-4 py-3 text-left transition cursor-pointer ${
-                        isCurrent ? 'bg-white/10' : 'bg-transparent hover:bg-white/[0.06]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="w-6 shrink-0 text-xs font-bold tabular-nums text-white/60">
-                            {ep.number}
-                          </span>
-                          <span className="truncate text-sm font-semibold text-white">
-                            {ep.title}
-                          </span>
-                        </div>
-                        <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-white/15">
-                          <div
-                            className="h-full bg-[var(--sc-accent)]"
-                            style={{ width: `${isCurrent ? Math.max(epProgress, 15) : epProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                      {isExpanded && (
-                        <div className="flex items-center gap-3 pl-9">
-                          <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded bg-black/70">
-                            {ep.thumbnailUrl && (
-                              <img
-                                src={ep.thumbnailUrl}
-                                alt={ep.title}
-                                loading="lazy"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = 'none'
-                                }}
-                                className="h-full w-full object-cover"
-                              />
-                            )}
-                            {isCurrent && (
-                              <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-bold text-white">
-                                Assistindo
-                              </span>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 text-[11px] text-[var(--sc-text-secondary)]">
-                            {epProgress >= 90
-                              ? 'Assistido'
-                              : ep.position || (isCurrent ? 'Reproduzindo agora' : ep.duration || 'Não assistido')}
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  )
-                },
-              )}
-            </div>
-          </div>
+        {episodesMenuOpen && (
+          <PlayerEpisodesDrawer
+            media={media}
+            selectedSeason={selectedEpisodeSeason}
+            hoveredEpisodeId={hoveredEpisodeId}
+            onSelectSeason={setSelectedEpisodeSeason}
+            onHoverEpisode={setHoveredEpisodeId}
+            onClose={() => setEpisodesMenuOpen(false)}
+            onPlayNext={onPlayNext}
+          />
         )}
 
         {/* Netflix-style Paused Overlay */}
@@ -1289,204 +1179,24 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
 
         {/* Netflix-style Two-Column Idioma | Legendas Popover */}
         {trackMenuOpen && (
-          <div className="absolute right-6 bottom-24 z-30 grid w-[min(92vw,440px)] grid-cols-2 gap-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
-            <div className="flex flex-col gap-1.5 border-r border-white/10 pr-3">
-              <h4 className="m-0 mb-1 text-xs font-bold uppercase tracking-wider text-white">
-                Idioma
-              </h4>
-              <button
-                type="button"
-                onClick={() => changeAudioStream('')}
-                className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                  !audioStream ? 'bg-white/15 font-semibold text-white' : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                }`}
-              >
-                <span>Original</span>
-                {!audioStream && <Check className="h-3.5 w-3.5" />}
-              </button>
-              {streamInfo?.audio.map((track) => {
-                const key = String(track.index)
-                const active = audioStream === key
-                return (
-                  <button
-                    key={track.index}
-                    type="button"
-                    onClick={() => changeAudioStream(key)}
-                    className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                      active ? 'bg-white/15 font-semibold text-white' : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                    }`}
-                  >
-                    <span className="truncate">{track.title || track.language || `Faixa ${track.index}`}</span>
-                    {active && <Check className="h-3.5 w-3.5 shrink-0" />}
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <h4 className="m-0 mb-1 text-xs font-bold uppercase tracking-wider text-white">
-                Legendas
-              </h4>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSubtitleUrl('')
-                  changeSubtitleStream('')
-                }}
-                className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                  !selectedSubtitleUrl && !subtitleStream
-                    ? 'bg-white/15 font-semibold text-white'
-                    : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                }`}
-              >
-                <span>Desligadas</span>
-                {!selectedSubtitleUrl && !subtitleStream && <Check className="h-3.5 w-3.5" />}
-              </button>
-              {(() => {
-                const groups = new Map<string, Array<{ label: string; url: string }>>()
-                for (const track of subtitleTracks) {
-                  const rawCode = track.label.split(' ')[0]?.toUpperCase() || track.label
-                  const friendly =
-                    rawCode === 'POB' || rawCode === 'PT-BR'
-                      ? 'Português (BR)'
-                      : rawCode === 'POR' || rawCode === 'PT'
-                        ? 'Português'
-                        : rawCode === 'ENG' || rawCode === 'EN'
-                          ? 'English'
-                          : rawCode === 'SPA' || rawCode === 'ES'
-                            ? 'Español'
-                            : track.label
-                  const arr = groups.get(friendly) ?? []
-                  arr.push(track)
-                  groups.set(friendly, arr)
-                }
-                return Array.from(groups.entries()).map(([langLabel, variants]) => {
-                  const activeIdx = variants.findIndex((v) => v.url === selectedSubtitleUrl)
-                  const isGroupActive = activeIdx >= 0
-                  return (
-                    <div key={langLabel} className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSubtitleStream('')
-                          setSelectedSubtitleUrl(variants[0].url)
-                        }}
-                        className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                          isGroupActive
-                            ? 'bg-white/15 font-semibold text-white'
-                            : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                        }`}
-                      >
-                        <span className="truncate">{langLabel}</span>
-                        {isGroupActive && <Check className="h-3.5 w-3.5 shrink-0" />}
-                      </button>
-                      {variants.length > 1 && (isGroupActive || langLabel.startsWith('Português')) && (
-                        <div className="flex flex-wrap gap-1 pl-2.5 pb-1">
-                          {variants.slice(0, 8).map((variant, vIdx) => {
-                            const active = variant.url === selectedSubtitleUrl
-                            return (
-                              <button
-                                key={variant.url}
-                                type="button"
-                                onClick={() => {
-                                  setSubtitleStream('')
-                                  setSelectedSubtitleUrl(variant.url)
-                                }}
-                                className={`h-6 min-w-6 rounded px-1.5 text-[11px] font-bold cursor-pointer ${
-                                  active
-                                    ? 'bg-[var(--sc-accent)] text-white'
-                                    : 'bg-white/10 text-white/75 hover:bg-white/20'
-                                }`}
-                              >
-                                {vIdx + 1}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              })()}
-              {streamInfo?.subtitles.map((track) => {
-                const key = String(track.index)
-                const active = subtitleStream === key
-                return (
-                  <button
-                    key={track.index}
-                    type="button"
-                    onClick={() => changeSubtitleStream(key)}
-                    className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                      active ? 'bg-white/15 font-semibold text-white' : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                    }`}
-                  >
-                    <span className="truncate">
-                      {track.title || track.language || `Embutida ${track.index}`}
-                    </span>
-                    {active && <Check className="h-3.5 w-3.5 shrink-0" />}
-                  </button>
-                )
-              })}
-              <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                <button
-                  type="button"
-                  disabled={loadingAddonSubs}
-                  onClick={() => void fetchAddonSubtitlesInPlayer()}
-                  className="w-full rounded bg-[var(--sc-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[var(--sc-accent-hover)] disabled:opacity-50 cursor-pointer"
-                >
-                  {loadingAddonSubs ? 'Buscando legendas...' : 'Buscar legendas nos Addons'}
-                </button>
-                {addonSubsNotice ? (
-                  <p className="m-0 text-[10px] text-emerald-300">{addonSubsNotice}</p>
-                ) : null}
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] text-[var(--sc-text-muted)]">
-                    Sincronia: {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec}s` : `${subtitleOffsetSec}s`}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => adjustSubtitleOffset(-0.5)}
-                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                    >
-                      -0.5s
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustSubtitleOffset(0)}
-                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                    >
-                      0s
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustSubtitleOffset(0.5)}
-                      className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-white/20"
-                    >
-                      +0.5s
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] text-[var(--sc-text-muted)]">Tamanho:</span>
-                  <div className="flex items-center gap-1">
-                    {(['sm', 'md', 'lg'] as const).map((sz) => (
-                      <button
-                        key={sz}
-                        type="button"
-                        onClick={() => setSubtitleSize(sz)}
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          subtitleSize === sz ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
-                      >
-                        {sz === 'sm' ? 'P' : sz === 'md' ? 'M' : 'G'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <PlayerTrackMenu
+            audioTracks={streamInfo?.audio ?? []}
+            embeddedSubtitles={streamInfo?.subtitles ?? []}
+            subtitleTracks={subtitleTracks}
+            audioStream={audioStream}
+            subtitleStream={subtitleStream}
+            selectedSubtitleUrl={selectedSubtitleUrl}
+            loadingAddonSubs={loadingAddonSubs}
+            addonSubsNotice={addonSubsNotice}
+            subtitleOffsetSec={subtitleOffsetSec}
+            subtitleSize={subtitleSize}
+            onChangeAudio={changeAudioStream}
+            onChangeEmbeddedSubtitle={changeSubtitleStream}
+            onSelectExternalSubtitle={setSelectedSubtitleUrl}
+            onFetchAddonSubtitles={() => void fetchAddonSubtitlesInPlayer()}
+            onAdjustSubtitleOffset={adjustSubtitleOffset}
+            onChangeSubtitleSize={setSubtitleSize}
+          />
         )}
       </div>
     </div>

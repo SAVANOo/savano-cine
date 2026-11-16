@@ -67,6 +67,7 @@ export function AdminView({
   const [downloads, setDownloads] = useState<Array<{ id: string; title: string; status: string; progress: number; message: string }>>([])
   const [connections, setConnections] = useState<Array<{ ip: string; userAgent: string; lastPath: string; lastSeen: string }>>([])
   const [tunnelBusy, setTunnelBusy] = useState(false)
+  const [pinRequired, setPinRequired] = useState<boolean | null>(null)
 
   useEffect(() => {
     fetch('/api/network-info')
@@ -125,6 +126,12 @@ export function AdminView({
         .then((res) => (res.ok ? res.json() : []))
         .then((rows) => setConnections(Array.isArray(rows) ? rows : []))
         .catch(() => setConnections([]))
+      fetch('/api/health')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && typeof data.pinRequired === 'boolean') setPinRequired(data.pinRequired)
+        })
+        .catch(() => undefined)
     }
     if (tab !== 'logs') return
     fetch('/api/logs/errors')
@@ -390,6 +397,11 @@ export function AdminView({
                 </h2>
                 <p className="mt-1 mb-0 text-xs text-[var(--sc-text-secondary)]">
                   Gerencie o acesso externo (4G/internet), links de download do APK e conexões recentes.
+                  {pinRequired !== null && (
+                    <span className="ml-2 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-[var(--sc-text-primary)]">
+                      PIN Global: {pinRequired ? 'Ativo (CINE_ACCESS_PIN)' : 'Desativado'}
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
