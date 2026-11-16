@@ -664,6 +664,21 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [applyVolume, media.nextEpisode, onPlayNext, scheduleHideControls, volume])
 
+  const syncMeasuredDuration = (video: HTMLVideoElement) => {
+    if (playbackUrl.includes('/transcode')) return
+    let measured = Number.isFinite(video.duration) && video.duration > 2 ? video.duration : 0
+    if (!measured && video.seekable && video.seekable.length > 0) {
+      const end = video.seekable.end(video.seekable.length - 1)
+      if (Number.isFinite(end) && end > 2) measured = end
+    }
+    if (measured > Math.max(2, totalDurationRef.current || 0)) {
+      totalDurationRef.current = measured
+      setDuration(measured)
+    }
+  }
+
+  const effectiveDuration = duration > 2 && duration >= currentTime - 1 ? duration : 0
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/95"
@@ -752,15 +767,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               if (volume !== 1 || muted) {
                 applyVolume(volume, muted)
               }
-            }
-            if (
-              videoRef.current &&
-              !playbackUrl.includes('/transcode') &&
-              Number.isFinite(videoRef.current.duration) &&
-              videoRef.current.duration > Math.max(2, totalDurationRef.current || 0)
-            ) {
-              totalDurationRef.current = videoRef.current.duration
-              setDuration(videoRef.current.duration)
+              syncMeasuredDuration(videoRef.current)
             }
             if (pendingPosition.current !== null && videoRef.current) {
               if (!playbackUrl.includes('/transcode')) {
@@ -771,27 +778,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             }
           }}
           onDurationChange={() => {
-            if (
-              videoRef.current &&
-              !playbackUrl.includes('/transcode') &&
-              Number.isFinite(videoRef.current.duration) &&
-              videoRef.current.duration > (totalDurationRef.current || 0)
-            ) {
-              totalDurationRef.current = videoRef.current.duration
-              setDuration(videoRef.current.duration)
+            if (videoRef.current) {
+              syncMeasuredDuration(videoRef.current)
             }
           }}
           onTimeUpdate={() => {
             if (videoRef.current) {
               setCurrentTime(transcodeOffsetRef.current + videoRef.current.currentTime)
-              if (
-                !playbackUrl.includes('/transcode') &&
-                Number.isFinite(videoRef.current.duration) &&
-                videoRef.current.duration > (totalDurationRef.current || 0)
-              ) {
-                totalDurationRef.current = videoRef.current.duration
-                setDuration(videoRef.current.duration)
-              }
+              syncMeasuredDuration(videoRef.current)
             }
             saveProgress()
           }}
@@ -1078,9 +1072,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 type="range"
                 aria-label="Progresso do vídeo"
                 min={0}
-                max={duration || 100}
+                max={effectiveDuration || Math.max(currentTime + 60, 100)}
                 step={1}
-                value={Math.min(currentTime, duration || 100)}
+                value={Math.min(currentTime, effectiveDuration || Math.max(currentTime + 60, 100))}
                 onChange={(event) => {
                   seekTo(Number(event.target.value))
                 }}
@@ -1088,7 +1082,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               />
             </div>
             <span className="w-12 text-xs font-medium tabular-nums text-white/65">
-              {formatClock(duration)}
+              {effectiveDuration > 0 ? formatClock(effectiveDuration) : '--:--'}
             </span>
           </div>
 
