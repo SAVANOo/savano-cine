@@ -70,12 +70,14 @@ database.exec(`
     profile_id TEXT NOT NULL,
     media_key TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
+    poster TEXT,
     position_sec REAL NOT NULL DEFAULT 0,
     duration_sec REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (profile_id, media_key)
   )
 `)
+ensureColumn('stremio_progress', 'poster', 'TEXT')
 ignorePromotionalAds()
 reconcileMisclassifiedEpisodes()
 sanitizeExistingTitles()
@@ -191,8 +193,28 @@ function applySecurityHeaders(response) {
   )
 }
 
+const RECENT_CONNECTIONS = new Map()
+let activeTunnelChild = null
+
+function trackClientConnection(request) {
+  const ip = getClientIp(request)
+  const ua = String(request.headers['user-agent'] || '').slice(0, 120)
+  const key = `${ip}::${ua}`
+  RECENT_CONNECTIONS.set(key, {
+    ip,
+    userAgent: ua || 'Desconhecido',
+    lastPath: String(request.url || '/').split('?')[0],
+    lastSeen: new Date().toISOString(),
+  })
+  if (RECENT_CONNECTIONS.size > 30) {
+    const oldest = RECENT_CONNECTIONS.keys().next().value
+    if (oldest) RECENT_CONNECTIONS.delete(oldest)
+  }
+}
+
 createServer(async (request, response) => {
   applySecurityHeaders(response)
+  trackClientConnection(request)
   try {
     await handleApiRequest(request, response)
   } catch (error) {
@@ -869,11 +891,64 @@ async function handleApiRequest(request, response) {
     return send(response, 200, { stopped, infoHash })
   }
 
+  if (requestUrl.pathname === '/api/admin/connections' && request.method === 'GET') {
+    if (!requireAdmin(request, response)) return
+    return send(response, 200, Array.from(RECENT_CONNECTIONS.values()).reverse())
+  }
+
+  if (requestUrl.pathname === '/api/admin/tunnel/start' && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
+    const cloudflaredExe = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe'
+    if (!existsSync(cloudflaredExe)) {
+      return send(response, 404, { error: 'cloudflared não instalado neste computador.' })
+    }
+    if (activeTunnelChild && !activeTunnelChild.killed) {
+      const tunnelFile = path.resolve(root, '..', 'data', 'tunnel-url.txt')
+      const existingUrl = existsSync(tunnelFile) ? readFileSync(tunnelFile, 'utf8').trim() : ''
+      return send(response, 200, { running: true, tunnelUrl: existingUrl })
+    }
+    const tunnelFile = path.resolve(root, '..', 'data', 'tunnel-url.txt')
+    const child = spawn(cloudflaredExe, ['tunnel', '--url', `http://127.0.0.1:${port}`], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    activeTunnelChild = child
+    const onChunk = (chunk) => {
+      const text = chunk.toString('utf8')
+      const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
+      if (m) {
+        try {
+          mkdirSync(path.dirname(tunnelFile), { recursive: true })
+          writeFile(tunnelFile, m[0], 'utf8').catch(() => undefined)
+        } catch {
+          // ignore
+        }
+      }
+    }
+    child.stdout?.on('data', onChunk)
+    child.stderr?.on('data', onChunk)
+    child.on('exit', () => {
+      if (activeTunnelChild === child) activeTunnelChild = null
+    })
+    await new Promise((r) => setTimeout(r, 2500))
+    const tunnelUrl = existsSync(tunnelFile) ? readFileSync(tunnelFile, 'utf8').trim() : ''
+    return send(response, 200, { running: true, tunnelUrl })
+  }
+
+  if (requestUrl.pathname === '/api/admin/tunnel/stop' && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
+    if (activeTunnelChild && !activeTunnelChild.killed) {
+      activeTunnelChild.kill()
+      activeTunnelChild = null
+    }
+    return send(response, 200, { running: false })
+  }
+
   if (requestUrl.pathname === '/api/addons/progress') {
     if (request.method === 'GET') {
       const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
       const rows = database
-        .prepare('SELECT media_key AS mediaKey, title, position_sec AS positionSec, duration_sec AS durationSec, updated_at AS updatedAt FROM stremio_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT 30')
+        .prepare('SELECT media_key AS mediaKey, title, poster, position_sec AS positionSec, duration_sec AS durationSec, updated_at AS updatedAt FROM stremio_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT 30')
         .all(profileId)
       return send(response, 200, rows)
     }
@@ -887,15 +962,17 @@ async function handleApiRequest(request, response) {
       const profileId = typeof body.profileId === 'string' && body.profileId.trim() ? body.profileId.trim() : 'profile-savio'
       const mediaKey = typeof body.mediaKey === 'string' ? body.mediaKey.trim() : ''
       if (!mediaKey) return send(response, 400, { error: 'mediaKey obrigatório.' })
+      const poster = typeof body.poster === 'string' ? body.poster.trim() : null
       database.prepare(`
-        INSERT INTO stremio_progress (profile_id, media_key, title, position_sec, duration_sec, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO stremio_progress (profile_id, media_key, title, poster, position_sec, duration_sec, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(profile_id, media_key) DO UPDATE SET
           title = excluded.title,
+          poster = COALESCE(excluded.poster, stremio_progress.poster),
           position_sec = excluded.position_sec,
           duration_sec = excluded.duration_sec,
           updated_at = CURRENT_TIMESTAMP
-      `).run(profileId, mediaKey, String(body.title || ''), Number(body.positionSec) || 0, Number(body.durationSec) || 0)
+      `).run(profileId, mediaKey, String(body.title || ''), poster, Number(body.positionSec) || 0, Number(body.durationSec) || 0)
       return send(response, 200, { saved: true })
     }
   }

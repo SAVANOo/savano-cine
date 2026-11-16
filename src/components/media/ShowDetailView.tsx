@@ -205,7 +205,10 @@ export function ShowDetailView({
       </div>
 
       {/* HBO Max / Netflix Hero */}
-      <section className="relative overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] shadow-[var(--sc-shadow-card)]">
+      <section
+        data-dark-surface="true"
+        className="relative overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] shadow-[var(--sc-shadow-card)]"
+      >
         <div className="relative min-h-[340px] sm:min-h-[420px]">
           {backdrop ? (
             <img
@@ -247,6 +250,11 @@ export function ShowDetailView({
                   variant="light"
                   size="lg"
                   disabled={show.sourceStatus === 'offline'}
+                  title={
+                    show.sourceStatus === 'offline'
+                      ? 'HD desconectado — clique em Buscar Online (Addons) para assistir via streaming'
+                      : undefined
+                  }
                   onClick={() => onPlayMedia(playable)}
                 >
                   <Play className="h-4 w-4 fill-current" />
@@ -271,9 +279,15 @@ export function ShowDetailView({
                   Buscar arte/metadados
                 </Button>
               )}
-              <Button variant="secondary" size="md" disabled={searchingAddons} onClick={() => void openAddonLookup()}>
+              <Button
+                variant={show.sourceStatus === 'offline' ? 'primary' : 'secondary'}
+                size="md"
+                disabled={searchingAddons}
+                title="Buscar este título nos addons Stremio (streams e legendas online)"
+                onClick={() => void openAddonLookup()}
+              >
                 <Puzzle className="h-4 w-4" />
-                {searchingAddons ? 'Buscando addons...' : 'Streams & Legendas (Addons)'}
+                {searchingAddons ? 'Buscando online...' : 'Buscar Online (Addons)'}
               </Button>
               <Button variant="secondary" size="md" onClick={() => setEditing((value) => !value)}>
                 <Pencil className="h-4 w-4" />

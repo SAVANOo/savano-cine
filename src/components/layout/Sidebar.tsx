@@ -120,7 +120,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-5 border-b border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-4 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-5">
+    <aside className="flex w-full shrink-0 flex-col gap-3.5 border-b border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-4">
       {/* Clickable Brand */}
       <div className="flex items-center justify-between gap-3">
         <button

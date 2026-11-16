@@ -4,6 +4,7 @@ import type { LibraryItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { SavanoLoader } from '../ui/SavanoLoader'
 import type { AddonMetaSummary } from './AddonStreamModal'
 
 function normalizeMatchTitle(value: string): string {
@@ -60,6 +61,8 @@ export function AddonDetailView({
   const [loadingStreams, setLoadingStreams] = useState(item.type !== 'series')
   const [streamTargetLabel, setStreamTargetLabel] = useState(item.type !== 'series' ? item.name : '')
   const [selectedSeason, setSelectedSeason] = useState<number>(1)
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>('')
+  const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(() => new Set())
   const [downloadStatus, setDownloadStatus] = useState('')
   const [error, setError] = useState('')
 
@@ -202,7 +205,10 @@ export function AddonDetailView({
       </div>
 
       {/* Hero Banner */}
-      <section className="relative overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)]">
+      <section
+        data-dark-surface="true"
+        className="relative overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)]"
+      >
         {backdrop ? (
           <img
             src={backdrop}
@@ -289,35 +295,59 @@ export function AddonDetailView({
                 <p className="text-xs text-[var(--sc-text-secondary)]">Nenhum episódio listado nos metadados deste addon.</p>
               ) : (
                 <div className="grid max-h-[520px] gap-2 overflow-y-auto pr-1">
-                  {visibleVideos.map((video) => (
-                    <button
-                      key={video.id}
-                      type="button"
-                      onClick={() =>
-                        void fetchStreamsFor(
-                          'series',
-                          video.id,
-                          `${detail.name} — T${video.season ?? '?'}:E${video.episode ?? '?'} ${video.title}`,
-                        )
-                      }
-                      className="flex items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-2.5 text-left text-xs text-[var(--sc-text-primary)] transition hover:border-[var(--sc-accent)] cursor-pointer"
-                    >
-                      {video.thumbnail ? (
-                        <img src={video.thumbnail} alt="" className="h-12 w-20 shrink-0 rounded object-cover" />
-                      ) : null}
-                      <div className="min-w-0 flex-1">
-                        <p className="m-0 truncate font-semibold">
-                          T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
-                        </p>
-                        {video.overview ? (
-                          <p className="mt-0.5 mb-0 line-clamp-2 text-[11px] text-[var(--sc-text-secondary)]">
-                            {video.overview}
+                  {visibleVideos.map((video) => {
+                    const isSelected = selectedEpisodeId === video.id
+                    const hasThumb = Boolean(video.thumbnail) && !brokenThumbs.has(video.thumbnail!)
+                    return (
+                      <button
+                        key={video.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedEpisodeId(video.id)
+                          void fetchStreamsFor(
+                            'series',
+                            video.id,
+                            `${detail.name} — T${video.season ?? '?'}:E${video.episode ?? '?'} ${video.title}`,
+                          )
+                        }}
+                        className={`flex items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border p-2.5 text-left text-xs text-[var(--sc-text-primary)] transition cursor-pointer ${
+                          isSelected
+                            ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)] ring-1 ring-[var(--sc-accent)]'
+                            : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] hover:border-[var(--sc-accent)]'
+                        }`}
+                      >
+                        {hasThumb ? (
+                          <img
+                            src={video.thumbnail!}
+                            alt=""
+                            onError={() =>
+                              setBrokenThumbs((prev) => {
+                                const next = new Set(prev)
+                                next.add(video.thumbnail!)
+                                return next
+                              })
+                            }
+                            className="h-12 w-20 shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-12 w-20 shrink-0 items-center justify-center rounded bg-black/30 text-[var(--sc-text-muted)]">
+                            <Tv className="h-4 w-4" />
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 truncate font-semibold">
+                            T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
                           </p>
-                        ) : null}
-                      </div>
-                      <Play className="h-4 w-4 shrink-0 text-[var(--sc-accent)]" />
-                    </button>
-                  ))}
+                          {video.overview ? (
+                            <p className="mt-0.5 mb-0 line-clamp-2 text-[11px] text-[var(--sc-text-secondary)]">
+                              {video.overview}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Play className="h-4 w-4 shrink-0 text-[var(--sc-accent)]" />
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -371,7 +401,7 @@ export function AddonDetailView({
               Selecione um episódio ao lado para carregar os streams e legendas dos addons.
             </p>
           ) : loadingStreams ? (
-            <p className="text-xs text-[var(--sc-text-secondary)]">Consultando seus addons ativos...</p>
+            <SavanoLoader label="Buscando streams nos addons..." />
           ) : streams.length === 0 ? (
             <p className="text-xs text-[var(--sc-text-secondary)]">
               Nenhum stream retornado pelos addons ativos para este título.
@@ -432,6 +462,7 @@ export function AddonDetailView({
                             mediaId: '',
                             title: `${streamTargetLabel} (${stream.addonName})`,
                             url: stream.url!,
+                            poster: detail.poster || undefined,
                             overview: detail.description,
                             externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                               label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
@@ -467,6 +498,7 @@ export function AddonDetailView({
                             mediaId: '',
                             title: `${streamTargetLabel} (${stream.addonName})`,
                             url: `/api/addons/torrent-stream?${params.toString()}`,
+                            poster: detail.poster || undefined,
                             overview: detail.description,
                             externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                               label: `${sub.lang.toUpperCase()} (${sub.addonName})`,

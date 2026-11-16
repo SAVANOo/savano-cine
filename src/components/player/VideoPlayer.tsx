@@ -307,6 +307,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
           profileId,
           mediaKey: media.url.slice(0, 240),
           title: media.title,
+          poster: media.poster || undefined,
           positionSec: effectivePos,
           durationSec: effectiveDur,
         }),
@@ -325,7 +326,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         watched: effectivePos >= effectiveDur * 0.9,
       }),
     })
-  }, [media.mediaId, media.title, media.url, profileId])
+  }, [media.mediaId, media.poster, media.title, media.url, profileId])
 
   useEffect(() => () => saveProgress(true), [saveProgress])
 

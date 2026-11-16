@@ -82,5 +82,5 @@ Write-Host ("  PIN Global     : $pinState") -ForegroundColor Gray
 Write-Host '  ============================================================' -ForegroundColor Magenta
 Write-Host ''
 
-Start-Process 'http://127.0.0.1:5173'
+Start-Process 'http://127.0.0.1:5173/?tab=server'
 Read-Host '  Pressione Enter para fechar esta janela (o servidor continua rodando)'

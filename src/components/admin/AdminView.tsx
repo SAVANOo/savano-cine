@@ -1,4 +1,4 @@
-import { ArrowLeft, AlertTriangle, Copy, Download, Flag, History, Image, Puzzle, QrCode, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Copy, Download, Flag, Globe, History, Image, Puzzle, QrCode, RefreshCw, Server, Sparkles } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
@@ -8,7 +8,7 @@ import type { ArtworkCandidateGroup, CatalogHistory } from '../modals/CatalogMod
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
-type AdminTab = 'review' | 'artwork' | 'history' | 'logs' | 'addons'
+type AdminTab = 'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'
 
 type ErrorLogEntry = {
   timestamp?: string
@@ -64,6 +64,8 @@ export function AdminView({
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [showQr, setShowQr] = useState(false)
   const [downloads, setDownloads] = useState<Array<{ id: string; title: string; status: string; progress: number; message: string }>>([])
+  const [connections, setConnections] = useState<Array<{ ip: string; userAgent: string; lastPath: string; lastSeen: string }>>([])
+  const [tunnelBusy, setTunnelBusy] = useState(false)
 
   useEffect(() => {
     fetch('/api/network-info')
@@ -116,6 +118,12 @@ export function AdminView({
           if (data && typeof data.totalMovies === 'number') setGaps(data)
         })
         .catch(() => undefined)
+    }
+    if (tab === 'server') {
+      fetch('/api/admin/connections')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((rows) => setConnections(Array.isArray(rows) ? rows : []))
+        .catch(() => setConnections([]))
     }
     if (tab !== 'logs') return
     fetch('/api/logs/errors')
@@ -265,6 +273,7 @@ export function AdminView({
           },
           { key: 'logs' as const, label: 'Logs de Erro', icon: AlertTriangle },
           { key: 'addons' as const, label: 'Addons (Stremio)', icon: Puzzle },
+          { key: 'server' as const, label: 'Servidor & Conexões', icon: Server },
         ].map(({ key, label, icon: Icon }) => (
           <Button
             key={key}
@@ -367,6 +376,126 @@ export function AdminView({
 
       {tab === 'addons' && (
         <StremioAddonsPanel onPlayStream={(media) => onPlayMedia?.(media)} />
+      )}
+
+      {tab === 'server' && (
+        <div className="space-y-4">
+          <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="m-0 flex items-center gap-2 text-lg font-bold text-[var(--sc-text-primary)]">
+                  <Globe className="h-5 w-5 text-[var(--sc-accent)]" />
+                  Controle do Servidor &amp; Túnel Público
+                </h2>
+                <p className="mt-1 mb-0 text-xs text-[var(--sc-text-secondary)]">
+                  Gerencie o acesso externo (4G/internet), links de download do APK e conexões recentes.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  disabled={tunnelBusy}
+                  onClick={async () => {
+                    setTunnelBusy(true)
+                    try {
+                      const res = await fetch('/api/admin/tunnel/start', { method: 'POST' })
+                      const data = await res.json().catch(() => null)
+                      if (data?.tunnelUrl) {
+                        setTunnelUrl(data.tunnelUrl)
+                        const qr = await QRCode.toDataURL(data.tunnelUrl, { width: 140, margin: 1 }).catch(() => '')
+                        if (qr) setQrDataUrl(qr)
+                        setFeedback(`Túnel público ativo: ${data.tunnelUrl}`)
+                      } else if (data?.error) {
+                        setFeedback(data.error)
+                      }
+                    } finally {
+                      setTunnelBusy(false)
+                    }
+                  }}
+                >
+                  {tunnelBusy ? 'Iniciando túnel...' : 'Iniciar / Verificar Túnel Público'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={tunnelBusy}
+                  onClick={async () => {
+                    setTunnelBusy(true)
+                    try {
+                      await fetch('/api/admin/tunnel/stop', { method: 'POST' })
+                      setTunnelUrl('')
+                      setFeedback('Túnel público encerrado.')
+                    } finally {
+                      setTunnelBusy(false)
+                    }
+                  }}
+                >
+                  Parar Túnel
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 text-xs">
+              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
+                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">PC Local</p>
+                <p className="mt-1 mb-0 font-bold text-[var(--sc-text-primary)]">http://127.0.0.1:4174</p>
+              </div>
+              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
+                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">Wi-Fi Local</p>
+                <p className="mt-1 mb-0 font-bold text-[var(--sc-text-primary)]">{networkUrls[0] || 'Indisponível'}</p>
+              </div>
+              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
+                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">Internet Pública</p>
+                <p className="mt-1 mb-0 truncate font-bold text-[var(--sc-accent)]">{tunnelUrl || 'Desligado'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
+                Conexões Recentes ({connections.length})
+              </h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  fetch('/api/admin/connections')
+                    .then((res) => (res.ok ? res.json() : []))
+                    .then((rows) => setConnections(Array.isArray(rows) ? rows : []))
+                    .catch(() => undefined)
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Atualizar
+              </Button>
+            </div>
+            {connections.length === 0 ? (
+              <p className="text-xs text-[var(--sc-text-secondary)]">Nenhuma conexão registrada ainda.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {connections.map((conn, idx) => (
+                  <div
+                    key={`${conn.ip}-${idx}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="font-bold text-[var(--sc-text-primary)]">{conn.ip}</span>
+                      <span className="ml-2 text-[var(--sc-text-muted)]">{conn.lastPath}</span>
+                      <p className="mt-0.5 mb-0 truncate text-[11px] text-[var(--sc-text-secondary)]">{conn.userAgent}</p>
+                    </div>
+                    <span className="text-[11px] text-[var(--sc-text-muted)]">
+                      {new Date(conn.lastSeen).toLocaleTimeString('pt-BR')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {tab === 'review' && (

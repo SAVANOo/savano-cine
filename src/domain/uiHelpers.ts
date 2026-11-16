@@ -133,6 +133,7 @@ export type PlayableMedia = {
   overview?: string
   year?: number
   startPosition?: number
+  poster?: string
   nextEpisode?: PlayableMedia
   showTitle?: string
   showSeasons?: Season[]

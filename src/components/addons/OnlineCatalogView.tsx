@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Button } from '../ui/Button'
+import { SavanoLoader } from '../ui/SavanoLoader'
 import { AddonStreamModal, type AddonMetaSummary } from './AddonStreamModal'
 
 type AddonCatalogRef = {
@@ -31,6 +32,7 @@ type OnlineCatalogViewProps = {
 type OnlineProgressEntry = {
   mediaKey: string
   title: string
+  poster?: string | null
   positionSec: number
   durationSec: number
   updatedAt: string
@@ -207,11 +209,11 @@ export function OnlineCatalogView({
       ) : null}
 
       {onlineProgress.length > 0 && (
-        <div className="space-y-2 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-4">
+        <div className="space-y-2.5">
           <p className="m-0 text-xs font-bold uppercase tracking-wider text-[var(--sc-text-secondary)]">
             Continuar assistindo (Online)
           </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
             {onlineProgress.map((entry) => {
               const pct = entry.durationSec > 0 ? Math.min(100, Math.round((entry.positionSec / entry.durationSec) * 100)) : 0
               return (
@@ -223,17 +225,27 @@ export function OnlineCatalogView({
                       mediaId: '',
                       title: entry.title || 'Stream Online',
                       url: entry.mediaKey,
+                      poster: entry.poster || undefined,
                       startPosition: entry.positionSec,
                     })
                   }
-                  className="flex flex-col gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-left transition hover:border-[var(--sc-accent)] cursor-pointer"
+                  className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)] cursor-pointer"
                 >
-                  <span className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{entry.title}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/15">
+                  <div className="relative aspect-[2/3] w-full bg-black/45">
+                    {entry.poster ? (
+                      <img src={entry.poster} alt={entry.title} className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
+                        <Film className="h-8 w-8" />
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 h-1 bg-black/60">
                       <div className="h-full bg-[var(--sc-accent)]" style={{ width: `${pct}%` }} />
                     </div>
-                    <span className="text-[10px] text-[var(--sc-text-muted)]">{pct}%</span>
+                  </div>
+                  <div className="p-2">
+                    <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{entry.title}</p>
+                    <p className="text-[10px] text-[var(--sc-text-muted)]">{pct}% assistido</p>
                   </div>
                 </button>
               )
@@ -242,7 +254,9 @@ export function OnlineCatalogView({
         </div>
       )}
 
-      {items.length === 0 ? (
+      {loading ? (
+        <SavanoLoader label="Buscando no acervo online..." />
+      ) : items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-[var(--sc-radius-xl)] border border-dashed border-[var(--sc-border-subtle)] p-10 text-center text-sm text-[var(--sc-text-secondary)]">
           <p className="m-0 max-w-md">
             {addons.length === 0

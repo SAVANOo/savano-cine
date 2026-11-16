@@ -37,6 +37,7 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
 
   return (
     <section
+      data-dark-surface="true"
       className="relative overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] shadow-[var(--sc-shadow-card)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
