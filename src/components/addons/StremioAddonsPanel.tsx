@@ -1,31 +1,21 @@
-import { Film, Globe, Plus, Power, Puzzle, Search, Trash2, Tv } from 'lucide-react'
+import { Globe, Plus, Power, Puzzle, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { StremioAddonDescriptor } from '../../domain/sourceAdapter'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { AddonStreamModal, type AddonMetaSummary } from './AddonStreamModal'
 
 type StremioAddonsPanelProps = {
-  onPlayStream: (media: PlayableMedia) => void
+  onPlayStream?: (media: PlayableMedia) => void
 }
 
-/** Stremio-compatible Addon manager, catalog explorer, and instant stream modal launcher. */
-export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
+/** Stremio-compatible Addon manager focused on installing, toggling, and removing addons. */
+export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddonsPanelProps) {
   const [addons, setAddons] = useState<StremioAddonDescriptor[]>([])
   const [manifestUrl, setManifestUrl] = useState('')
   const [installing, setInstalling] = useState(false)
   const [feedback, setFeedback] = useState('')
-  const [selectedAddonId, setSelectedAddonId] = useState('')
-  const [selectedCatalogKey, setSelectedCatalogKey] = useState('')
-  const [catalogSearch, setCatalogSearch] = useState('')
-  const [catalogItems, setCatalogItems] = useState<AddonMetaSummary[]>([])
-  const [loadingCatalog, setLoadingCatalog] = useState(false)
-  const [activeItem, setActiveItem] = useState<AddonMetaSummary | null>(null)
-  const [streamSearchQuery, setStreamSearchQuery] = useState('')
-  const [streamSearchResults, setStreamSearchResults] = useState<AddonMetaSummary[]>([])
-  const [searchingStreamTitles, setSearchingStreamTitles] = useState(false)
 
   const loadAddons = useCallback(async () => {
     try {
@@ -33,90 +23,23 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
       if (!response.ok) return
       const data: StremioAddonDescriptor[] = await response.json()
       setAddons(data)
-      if (!selectedAddonId && data.length > 0) {
-        const firstWithCatalog = data.find((a) => a.catalogs.length > 0) || data[0]
-        setSelectedAddonId(firstWithCatalog.id)
-        if (firstWithCatalog.catalogs.length > 0) {
-          setSelectedCatalogKey(`${firstWithCatalog.catalogs[0].type}::${firstWithCatalog.catalogs[0].id}`)
-        }
-      }
     } catch {
-      // ignore initial load failure
+      // ignore network error when API offline
     }
-  }, [selectedAddonId])
+  }, [])
 
   useEffect(() => {
     let active = true
     fetch('/api/addons')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: StremioAddonDescriptor[] | null) => {
-        if (!active || !data) return
-        setAddons(data)
-        if (data.length > 0) {
-          const firstWithCatalog = data.find((a) => a.catalogs.length > 0) || data[0]
-          setSelectedAddonId(firstWithCatalog.id)
-          if (firstWithCatalog.catalogs.length > 0) {
-            setSelectedCatalogKey(`${firstWithCatalog.catalogs[0].type}::${firstWithCatalog.catalogs[0].id}`)
-          }
-        }
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: StremioAddonDescriptor[]) => {
+        if (active) setAddons(data)
       })
       .catch(() => undefined)
     return () => {
       active = false
     }
   }, [])
-
-  const selectedAddon = addons.find((a) => a.id === selectedAddonId) || null
-
-  const loadCatalog = useCallback(async (addonId: string, catalogKey: string, query: string) => {
-    if (!addonId || !catalogKey) return
-    const [type, catalogId] = catalogKey.split('::')
-    if (!type || !catalogId) return
-    setLoadingCatalog(true)
-    setFeedback('')
-    try {
-      const params = new URLSearchParams({ type, catalogId })
-      if (query.trim()) params.set('search', query.trim())
-      const response = await fetch(`/api/addons/${encodeURIComponent(addonId)}/catalog?${params.toString()}`)
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        setFeedback(payload?.error || 'Não foi possível carregar o catálogo do addon.')
-        setCatalogItems([])
-        return
-      }
-      setCatalogItems(Array.isArray(payload?.metas) ? payload.metas : [])
-    } catch {
-      setFeedback('Erro ao consultar o catálogo do addon.')
-      setCatalogItems([])
-    } finally {
-      setLoadingCatalog(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!selectedAddonId || !selectedCatalogKey) return
-    const [type, catalogId] = selectedCatalogKey.split('::')
-    if (!type || !catalogId) return
-    let active = true
-    const params = new URLSearchParams({ type, catalogId })
-    fetch(`/api/addons/${encodeURIComponent(selectedAddonId)}/catalog?${params.toString()}`)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null)
-        if (!active) return
-        if (!response.ok) {
-          setFeedback(payload?.error || 'Não foi possível carregar o catálogo do addon.')
-          setCatalogItems([])
-          return
-        }
-        setCatalogItems(Array.isArray(payload?.metas) ? payload.metas : [])
-      })
-      .catch(() => {
-        if (active) setCatalogItems([])
-      })
-    return () => {
-      active = false
-    }
-  }, [selectedAddonId, selectedCatalogKey])
 
   async function handleInstall(event: FormEvent) {
     event.preventDefault()
@@ -135,12 +58,8 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
         return
       }
       setManifestUrl('')
-      setFeedback(`Addon "${payload.name}" instalado com sucesso.`)
+      setFeedback(`Addon "${payload.name}" instalado com sucesso. Explore os títulos em Acervo Online.`)
       await loadAddons()
-      setSelectedAddonId(payload.id)
-      if (payload.catalogs?.length > 0) {
-        setSelectedCatalogKey(`${payload.catalogs[0].type}::${payload.catalogs[0].id}`)
-      }
     } catch {
       setFeedback('Falha de rede ao instalar o addon.')
     } finally {
@@ -164,38 +83,9 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
   async function removeAddon(addonId: string) {
     try {
       const response = await fetch(`/api/addons/${encodeURIComponent(addonId)}`, { method: 'DELETE' })
-      if (!response.ok) return
-      if (selectedAddonId === addonId) {
-        setSelectedAddonId('')
-        setSelectedCatalogKey('')
-        setCatalogItems([])
-        setActiveItem(null)
-      }
-      await loadAddons()
+      if (response.ok) await loadAddons()
     } catch {
       // ignore
-    }
-  }
-
-  async function runFallbackSearch(event: FormEvent) {
-    event.preventDefault()
-    if (!streamSearchQuery.trim()) return
-    setSearchingStreamTitles(true)
-    setFeedback('')
-    try {
-      const response = await fetch(`/api/addons/search?q=${encodeURIComponent(streamSearchQuery.trim())}`)
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        setFeedback(payload?.error || 'Não foi possível buscar títulos.')
-        setStreamSearchResults([])
-        return
-      }
-      setStreamSearchResults(Array.isArray(payload?.metas) ? payload.metas : [])
-    } catch {
-      setFeedback('Erro ao buscar títulos para consulta nos addons.')
-      setStreamSearchResults([])
-    } finally {
-      setSearchingStreamTitles(false)
     }
   }
 
@@ -206,10 +96,10 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--sc-text-primary)]">
               <Puzzle className="h-5 w-5 text-[var(--sc-accent)]" />
-              Conector de Addons (Protocolo Stremio)
+              Adicionar &amp; Gerenciar Addons (Stremio)
             </h2>
             <p className="mt-1 text-sm text-[var(--sc-text-secondary)]">
-              Cole a URL <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">manifest.json</code> (ou link <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">stremio://</code>) de qualquer addon compatível com Stremio para explorar catálogos, metadados, legendas e streams.
+              Cole a URL <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">manifest.json</code> (ou link <code className="rounded bg-[var(--sc-bg-surface)] px-1.5 py-0.5 text-[var(--sc-text-primary)]">stremio://</code>) para conectar novos addons. Para navegar e assistir, use a aba <strong>Acervo Online</strong> na barra lateral.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -250,7 +140,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
         </form>
 
         {feedback ? (
-          <p className="mt-3 text-sm text-amber-300">{feedback}</p>
+          <p className="mt-3 text-sm font-medium text-[var(--sc-accent)]">{feedback}</p>
         ) : null}
       </div>
 
@@ -263,11 +153,7 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
           addons.map((addon) => (
             <div
               key={addon.id}
-              className={`flex flex-col justify-between rounded-[var(--sc-radius-lg)] border p-4 transition ${
-                selectedAddonId === addon.id
-                  ? 'border-[var(--sc-accent)] bg-[var(--sc-bg-elevated)]'
-                  : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)]'
-              }`}
+              className="flex flex-col justify-between rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-4 transition"
             >
               <div>
                 <div className="flex items-start justify-between gap-3">
@@ -298,157 +184,23 @@ export function StremioAddonsPanel({ onPlayStream }: StremioAddonsPanelProps) {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--sc-border-subtle)] pt-3">
-                {addon.catalogs.length > 0 ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={selectedAddonId === addon.id ? 'primary' : 'secondary'}
-                    onClick={() => {
-                      setSelectedAddonId(addon.id)
-                      setSelectedCatalogKey(`${addon.catalogs[0].type}::${addon.catalogs[0].id}`)
-                      setActiveItem(null)
-                    }}
-                  >
-                    Explorar ({addon.catalogs.length})
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sc-border-subtle)] pt-3">
+                <span className="text-[11px] text-[var(--sc-text-muted)]">
+                  {addon.catalogs.length > 0 ? `${addon.catalogs.length} catálogo(s)` : 'Addon de stream / legenda'}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" size="sm" variant="ghost" onClick={() => void toggleAddon(addon)} title="Ativar/Pausar">
+                    <Power className="h-3.5 w-3.5" />
                   </Button>
-                ) : null}
-                <Button type="button" size="sm" variant="ghost" onClick={() => void toggleAddon(addon)} title="Ativar/Pausar">
-                  <Power className="h-3.5 w-3.5" />
-                </Button>
-                <Button type="button" size="sm" variant="danger" onClick={() => void removeAddon(addon.id)} title="Remover addon">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                  <Button type="button" size="sm" variant="danger" onClick={() => void removeAddon(addon.id)} title="Remover addon">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))
         )}
       </div>
-
-      {selectedAddon && selectedAddon.catalogs.length > 0 ? (
-        <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-base font-bold text-[var(--sc-text-primary)]">Catálogo · {selectedAddon.name}</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedCatalogKey}
-                onChange={(e) => setSelectedCatalogKey(e.target.value)}
-                aria-label="Selecionar catálogo do addon"
-                className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-[var(--sc-text-primary)]"
-              >
-                {selectedAddon.catalogs.map((cat) => (
-                  <option key={`${cat.type}::${cat.id}`} value={`${cat.type}::${cat.id}`}>
-                    {cat.name} ({cat.type})
-                  </option>
-                ))}
-              </select>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  void loadCatalog(selectedAddon.id, selectedCatalogKey, catalogSearch)
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="search"
-                  value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
-                  placeholder="Buscar no catálogo..."
-                  className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-sm text-white outline-none focus:border-white/40"
-                />
-                <Button type="submit" size="sm" variant="secondary">
-                  <Search className="h-3.5 w-3.5" />
-                  Buscar
-                </Button>
-              </form>
-            </div>
-          </div>
-
-          {loadingCatalog ? (
-            <p className="text-sm text-[var(--sc-text-secondary)]">Carregando itens do catálogo...</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
-              {catalogItems.map((item) => (
-                <button
-                  key={`${item.type}-${item.id}`}
-                  type="button"
-                  onClick={() => setActiveItem({ ...item, addonId: selectedAddon.id, addonName: selectedAddon.name })}
-                  className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
-                >
-                  <div className="aspect-[2/3] w-full bg-black/50">
-                    {item.poster ? (
-                      <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
-                        {item.type === 'series' ? <Tv className="h-8 w-8" /> : <Film className="h-8 w-8" />}
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-2">
-                    <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
-                    <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : addons.length > 0 ? (
-        <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
-          <div>
-            <h3 className="text-base font-bold text-white">Buscar título ou ID IMDb para consultar streams</h3>
-            <p className="mt-1 text-xs text-[var(--sc-text-secondary)]">
-              Addons apenas de <code className="text-white/90">stream</code> não trazem catálogo próprio. Pesquise um filme, série ou ID IMDb (ex.: <code className="text-white/90">Matrix</code> ou <code className="text-white/90">tt0133093</code>) e clique no card para abrir os streams direto.
-            </p>
-          </div>
-          <form onSubmit={runFallbackSearch} className="flex flex-wrap gap-2">
-            <input
-              type="search"
-              value={streamSearchQuery}
-              onChange={(e) => setStreamSearchQuery(e.target.value)}
-              placeholder="Digite o nome do filme/série ou tt..."
-              className="min-w-[240px] flex-1 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3.5 py-2 text-sm text-white outline-none focus:border-white/40"
-            />
-            <Button type="submit" disabled={searchingStreamTitles}>
-              <Search className="h-4 w-4" />
-              {searchingStreamTitles ? 'Buscando...' : 'Buscar título'}
-            </Button>
-          </form>
-
-          {streamSearchResults.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
-              {streamSearchResults.map((item) => (
-                <button
-                  key={`fb-${item.type}-${item.id}`}
-                  type="button"
-                  onClick={() => setActiveItem(item)}
-                  className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
-                >
-                  <div className="aspect-[2/3] w-full bg-black/50">
-                    {item.poster ? (
-                      <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
-                        {item.type === 'series' ? <Tv className="h-8 w-8" /> : <Film className="h-8 w-8" />}
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-2">
-                    <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
-                    <p className="text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo || item.type}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <AddonStreamModal
-        item={activeItem}
-        onClose={() => setActiveItem(null)}
-        onPlayStream={onPlayStream}
-      />
     </div>
   )
 }

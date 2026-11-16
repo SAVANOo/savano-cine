@@ -4,6 +4,7 @@ import {
   Film,
   FolderPlus,
   Gamepad2,
+  Globe,
   HardDrive,
   Home,
   Lock,
@@ -27,8 +28,8 @@ type SidebarProps = {
   sourcesError: string
   activeProfile: Profile
   profiles: Profile[]
-  activeKind: 'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar'
-  onSelectKind: (kind: 'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar') => void
+  activeKind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar'
+  onSelectKind: (kind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar') => void
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
@@ -265,6 +266,7 @@ export function Sidebar({
           { key: 'Todos' as const, label: 'Início', icon: Home },
           { key: 'Continuar' as const, label: 'Continuar assistindo', icon: PlayCircle },
           { key: 'Local' as const, label: 'Acervo Local', icon: HardDrive },
+          { key: 'Online' as const, label: 'Acervo Online', icon: Globe },
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {

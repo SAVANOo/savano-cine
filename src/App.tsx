@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddonStreamModal, type AddonMetaSummary } from './components/addons/AddonStreamModal'
+import { OnlineCatalogView } from './components/addons/OnlineCatalogView'
 import { AdminView } from './components/admin/AdminView'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
@@ -49,7 +50,7 @@ function getInitialDeepLinkId(): string | null {
 }
 
 export function App() {
-  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Filme' | 'Série' | 'Continuar'>('Todos')
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
@@ -764,7 +765,7 @@ export function App() {
 
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 outline-none sm:px-8 sm:py-7">
         {/* Top Search & Genre Filter Bar */}
-        {!adminOpen && (
+        {!adminOpen && activeKind !== 'Online' && (
           <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1 max-w-md">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
@@ -867,6 +868,17 @@ export function App() {
           />
         ) : catalogLoading ? (
           <CatalogSkeleton />
+        ) : activeKind === 'Online' ? (
+          <OnlineCatalogView
+            localCatalog={catalog}
+            onPlayStream={(media) => setSelectedMedia(media)}
+            onPlayLocal={(localItem) => playLibraryItem(localItem)}
+            onOpenAddonsManager={() => {
+              setSelectedShow(null)
+              setAdminTab('addons')
+              setAdminOpen(true)
+            }}
+          />
         ) : selectedShow ? (
           <ShowDetailView
             show={selectedShow}
