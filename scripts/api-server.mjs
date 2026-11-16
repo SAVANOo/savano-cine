@@ -288,6 +288,10 @@ async function handleApiRequest(request, response) {
   response.setHeader('Access-Control-Allow-Origin', '*')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
 
+  if (requestUrl.pathname.startsWith('/api/admin/')) {
+    if (!requireAdmin(request, response)) return
+  }
+
   if (requestUrl.pathname === '/api/health') {
     return send(response, 200, { status: 'ok', pinRequired: Boolean(accessPin) })
   }

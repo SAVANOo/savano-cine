@@ -16,6 +16,31 @@ function normalizeMatchTitle(value: string): string {
     .trim()
 }
 
+function extractStreamLanguages(text: string): string[] {
+  const badges: string[] = []
+  const upper = text.toUpperCase()
+  const flagMap: Array<[RegExp, string]> = [
+    [/🇧🇷|PT-BR|PTBR|BRAZIL|BRASIL/i, '🇧🇷 PT-BR'],
+    [/DUBLADO|\bDUB\b/i, '🇧🇷 Dublado'],
+    [/DUAL[\s_-]?AUDIO|\bDUAL\b/i, '🔊 Dual Áudio'],
+    [/LEGENDADO|\bLEG\b/i, '💬 Legendado'],
+    [/🇵🇹|PT-PT/i, '🇵🇹 PT-PT'],
+    [/🇺🇸|🇬🇧|\bENG\b|\bENGLISH\b/i, '🇺🇸 ENG'],
+    [/🇪🇸|\bSPA\b|\bESP\b|LATINO/i, '🇪🇸 ESP'],
+    [/🇷🇺|\bRUS\b|RUTRACKER/i, '🇷🇺 RUS'],
+    [/🇫🇷|\bFRE\b|\bFRA\b/i, '🇫🇷 FRA'],
+    [/🇯🇵|\bJPN\b|\bJAP\b/i, '🇯🇵 JPN'],
+    [/🇮🇹|\bITA\b/i, '🇮🇹 ITA'],
+    [/🇩🇪|\bGER\b|\bDEU\b/i, '🇩🇪 GER'],
+  ]
+  for (const [pattern, label] of flagMap) {
+    if (pattern.test(upper) && !badges.includes(label)) {
+      badges.push(label)
+    }
+  }
+  return badges.slice(0, 3)
+}
+
 type AddonStreamItem = {
   addonId: string
   addonName: string
@@ -196,7 +221,7 @@ export function AddonDetailView({
   const backdrop = detail.background || detail.poster
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 w-full flex-col gap-6 overflow-x-hidden">
       <div>
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
@@ -264,9 +289,9 @@ export function AddonDetailView({
       ) : null}
 
       {/* Main Two-Column Content */}
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* Left Column: Episodes (Series) or Subtitles/Info (Movie) */}
-        <div className="space-y-4 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+        <div className="min-w-0 space-y-4 overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
           {detail.type === 'series' ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -391,8 +416,8 @@ export function AddonDetailView({
         </div>
 
         {/* Right Column: Streams */}
-        <div className="space-y-3 rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
-          <h2 className="m-0 text-base font-bold text-[var(--sc-text-primary)]">
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+          <h2 className="m-0 truncate text-base font-bold text-[var(--sc-text-primary)]">
             Fontes de Reprodução {streamTargetLabel ? `· ${streamTargetLabel}` : ''}
           </h2>
           {error ? <p className="text-xs text-red-400">{error}</p> : null}
@@ -407,115 +432,148 @@ export function AddonDetailView({
               Nenhum stream retornado pelos addons ativos para este título.
             </p>
           ) : (
-            <div className="max-h-[520px] space-y-2.5 overflow-y-auto pr-1">
-              {streams.map((stream, index) => (
-                <div
-                  key={`${stream.addonId}-${index}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="m-0 text-xs font-semibold text-[var(--sc-text-primary)]">
-                        {stream.addonName} · {stream.name}
+            <div className="max-h-[520px] space-y-2.5 overflow-x-hidden overflow-y-auto pr-1">
+              {streams.map((stream, index) => {
+                const langBadges = extractStreamLanguages(`${stream.name} ${stream.title}`)
+                const canPlayDirect = Boolean(stream.isDirectHttp && stream.url)
+                const canPlayTorrent = Boolean(stream.infoHash)
+                const isPlayable = canPlayDirect || canPlayTorrent
+                const startPlay = () => {
+                  if (canPlayDirect) {
+                    onPlayStream({
+                      mediaId: '',
+                      title: `${streamTargetLabel} (${stream.addonName})`,
+                      url: stream.url!,
+                      poster: detail.poster || undefined,
+                      overview: detail.description,
+                      externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
+                        label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                        url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                      })),
+                    })
+                  } else if (canPlayTorrent) {
+                    const params = new URLSearchParams({ infoHash: stream.infoHash! })
+                    if (typeof stream.fileIdx === 'number') {
+                      params.set('fileIdx', String(stream.fileIdx))
+                    }
+                    onPlayStream({
+                      mediaId: '',
+                      title: `${streamTargetLabel} (${stream.addonName})`,
+                      url: `/api/addons/torrent-stream?${params.toString()}`,
+                      poster: detail.poster || undefined,
+                      overview: detail.description,
+                      externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
+                        label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                        url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                      })),
+                    })
+                  }
+                }
+                return (
+                  <div
+                    key={`${stream.addonId}-${index}`}
+                    role={isPlayable ? 'button' : undefined}
+                    tabIndex={isPlayable ? 0 : undefined}
+                    onClick={() => {
+                      if (isPlayable) startPlay()
+                    }}
+                    onKeyDown={(e) => {
+                      if (isPlayable && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault()
+                        startPlay()
+                      }
+                    }}
+                    className={`flex min-w-0 flex-col gap-2.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3 transition sm:flex-row sm:items-center sm:justify-between ${
+                      isPlayable ? 'hover:border-[var(--sc-accent)] hover:bg-[var(--sc-bg-surface)]/80 cursor-pointer' : ''
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="m-0 truncate text-xs font-semibold text-[var(--sc-text-primary)]">
+                          {stream.addonName} · {stream.name}
+                        </p>
+                        {langBadges.map((badge) => (
+                          <span
+                            key={badge}
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              badge.includes('🇧🇷') || badge.includes('Dual')
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-white/10 text-[var(--sc-text-primary)]'
+                            }`}
+                          >
+                            {badge}
+                          </span>
+                        ))}
+                        {typeof stream.seeders === 'number' ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              stream.seeders >= 20
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : stream.seeders >= 5
+                                  ? 'bg-amber-500/20 text-amber-300'
+                                  : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {stream.seeders} seeds · {stream.seeders >= 20 ? 'Rápido' : stream.seeders >= 5 ? 'Médio' : 'Lento'}
+                          </span>
+                        ) : null}
+                        {stream.sizeLabel ? (
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--sc-text-secondary)]">
+                            {stream.sizeLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 mb-0 break-words line-clamp-2 text-xs text-[var(--sc-text-secondary)]">
+                        {stream.title}
                       </p>
-                      {typeof stream.seeders === 'number' ? (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            stream.seeders >= 20
-                              ? 'bg-emerald-500/20 text-emerald-400'
-                              : stream.seeders >= 5
-                                ? 'bg-amber-500/20 text-amber-300'
-                                : 'bg-red-500/20 text-red-400'
-                          }`}
-                        >
-                          {stream.seeders} seeds · {stream.seeders >= 20 ? 'Rápido' : stream.seeders >= 5 ? 'Médio' : 'Lento'}
-                        </span>
-                      ) : null}
-                      {stream.sizeLabel ? (
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--sc-text-secondary)]">
-                          {stream.sizeLabel}
-                        </span>
-                      ) : null}
                     </div>
-                    <p className="mt-1 mb-0 truncate text-xs text-[var(--sc-text-secondary)]">{stream.title}</p>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {(stream.isDirectHttp && stream.url) || stream.infoHash ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          title="Baixar para o Acervo Local (D:\Filmes\Downloads)"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void queueLocalDownload(stream)
+                          }}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Offline
+                        </Button>
+                      ) : null}
+                      {isPlayable ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="primary"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startPlay()
+                          }}
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          {canPlayTorrent ? 'Reproduzir Torrent' : 'Reproduzir'}
+                        </Button>
+                      ) : stream.ytId ? (
+                        <a
+                          href={`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          YouTube
+                        </a>
+                      ) : (
+                        <span className="text-xs text-amber-300">Sem URL direta</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(stream.isDirectHttp && stream.url) || stream.infoHash ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        title="Baixar para o Acervo Local (D:\Filmes\Downloads)"
-                        onClick={() => void queueLocalDownload(stream)}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Offline
-                      </Button>
-                    ) : null}
-                    {stream.isDirectHttp && stream.url ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="primary"
-                        onClick={() =>
-                          onPlayStream({
-                            mediaId: '',
-                            title: `${streamTargetLabel} (${stream.addonName})`,
-                            url: stream.url!,
-                            poster: detail.poster || undefined,
-                            overview: detail.description,
-                            externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
-                              label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                              url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                            })),
-                          })
-                        }
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                        Reproduzir
-                      </Button>
-                    ) : stream.ytId ? (
-                      <a
-                        href={`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        YouTube
-                      </a>
-                    ) : stream.infoHash ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="primary"
-                        onClick={() => {
-                          const params = new URLSearchParams({ infoHash: stream.infoHash! })
-                          if (typeof stream.fileIdx === 'number') {
-                            params.set('fileIdx', String(stream.fileIdx))
-                          }
-                          onPlayStream({
-                            mediaId: '',
-                            title: `${streamTargetLabel} (${stream.addonName})`,
-                            url: `/api/addons/torrent-stream?${params.toString()}`,
-                            poster: detail.poster || undefined,
-                            overview: detail.description,
-                            externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
-                              label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                              url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                            })),
-                          })
-                        }}
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                        Reproduzir Torrent
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-amber-300">Sem URL direta</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           {downloadStatus ? (

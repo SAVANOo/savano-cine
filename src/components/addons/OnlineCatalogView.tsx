@@ -49,6 +49,7 @@ export function OnlineCatalogView({
   onOpenAddonsManager,
 }: OnlineCatalogViewProps) {
   const [addons, setAddons] = useState<InstalledAddon[]>([])
+  const [categoryTab, setCategoryTab] = useState<'all' | 'movie' | 'series' | 'anime' | 'tv'>('movie')
   const [selectedAddonId, setSelectedAddonId] = useState('')
   const [selectedCatalogKey, setSelectedCatalogKey] = useState('')
   const [items, setItems] = useState<AddonMetaSummary[]>([])
@@ -74,16 +75,33 @@ export function OnlineCatalogView({
       .then((rows: InstalledAddon[]) => {
         const enabled = (Array.isArray(rows) ? rows : []).filter((a) => a.enabled)
         setAddons(enabled)
-        const withCatalog = enabled.find((a) => a.catalogs?.length > 0)
-        if (withCatalog) {
-          setSelectedAddonId(withCatalog.id)
-          setSelectedCatalogKey(`${withCatalog.catalogs[0].type}::${withCatalog.catalogs[0].id}`)
+        const withMovieCatalog =
+          enabled.find((a) => a.catalogs?.some((c) => c.type === 'movie')) ??
+          enabled.find((a) => a.catalogs?.some((c) => c.type === 'series')) ??
+          enabled.find((a) => a.catalogs?.length > 0)
+        if (withMovieCatalog) {
+          const preferredCat =
+            withMovieCatalog.catalogs.find((c) => c.type === 'movie') ??
+            withMovieCatalog.catalogs.find((c) => c.type === 'series') ??
+            withMovieCatalog.catalogs[0]
+          setSelectedAddonId(withMovieCatalog.id)
+          if (preferredCat) {
+            const catType = preferredCat.type
+            if (catType === 'movie' || catType === 'series' || catType === 'anime' || catType === 'tv') {
+              setCategoryTab(catType)
+            } else {
+              setCategoryTab('all')
+            }
+            setSelectedCatalogKey(`${preferredCat.type}::${preferredCat.id}`)
+          }
         }
       })
       .catch(() => setAddons([]))
   }, [])
 
-  const catalogAddons = addons.filter((a) => a.catalogs?.length > 0)
+  const catalogAddons = addons.filter((a) =>
+    a.catalogs?.some((c) => categoryTab === 'all' || c.type === categoryTab),
+  )
   const activeAddon = catalogAddons.find((a) => a.id === selectedAddonId) ?? catalogAddons[0] ?? null
 
   useEffect(() => {
@@ -165,6 +183,45 @@ export function OnlineCatalogView({
         </Button>
       </form>
 
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(
+          [
+            { key: 'movie', label: 'Filmes' },
+            { key: 'series', label: 'Séries & Novelas' },
+            { key: 'anime', label: 'Animes' },
+            { key: 'tv', label: 'TV / Ao Vivo' },
+            { key: 'all', label: 'Todos' },
+          ] as const
+        ).map((tab) => (
+          <Button
+            key={tab.key}
+            type="button"
+            size="sm"
+            variant={categoryTab === tab.key ? 'primary' : 'ghost'}
+            onClick={() => {
+              setCategoryTab(tab.key)
+              setPageSkip(0)
+              const matchingAddons = addons.filter((a) =>
+                a.catalogs?.some((c) => tab.key === 'all' || c.type === tab.key),
+              )
+              const nextAddon =
+                matchingAddons.find((a) => a.id === selectedAddonId) ?? matchingAddons[0]
+              if (nextAddon) {
+                setSelectedAddonId(nextAddon.id)
+                const nextCat =
+                  nextAddon.catalogs.find((c) => tab.key === 'all' || c.type === tab.key) ??
+                  nextAddon.catalogs[0]
+                if (nextCat) {
+                  setSelectedCatalogKey(`${nextCat.type}::${nextCat.id}`)
+                }
+              }
+            }}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
       {catalogAddons.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {catalogAddons.map((addon) => (
@@ -176,8 +233,11 @@ export function OnlineCatalogView({
               onClick={() => {
                 setSelectedAddonId(addon.id)
                 setPageSkip(0)
-                if (addon.catalogs[0]) {
-                  setSelectedCatalogKey(`${addon.catalogs[0].type}::${addon.catalogs[0].id}`)
+                const matchingCat =
+                  addon.catalogs.find((c) => categoryTab === 'all' || c.type === categoryTab) ??
+                  addon.catalogs[0]
+                if (matchingCat) {
+                  setSelectedCatalogKey(`${matchingCat.type}::${matchingCat.id}`)
                 }
               }}
             >

@@ -3,7 +3,7 @@ import type { Profile } from '../domain/catalog'
 
 export const profiles: Profile[] = [
   { id: 'profile-savio', name: 'Savio', avatarKey: 'cartman' },
-  { id: 'profile-family', name: 'Família', avatarKey: 'south-park' },
+  { id: 'profile-family', name: 'Mari', avatarKey: 'mabel' },
 ]
 
 export const mediaSources: MediaSource[] = [

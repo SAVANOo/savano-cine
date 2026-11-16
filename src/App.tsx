@@ -92,14 +92,21 @@ export function App() {
   >([])
   const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(null)
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
-  const [adminOpen, setAdminOpen] = useState(() =>
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'server',
-  )
-  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'>(() =>
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'server'
-      ? 'server'
-      : 'review',
-  )
+  const [adminOpen, setAdminOpen] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    return Boolean(
+      tab && ['review', 'artwork', 'history', 'logs', 'addons', 'server'].includes(tab),
+    )
+  })
+  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'>(() => {
+    if (typeof window === 'undefined') return 'review'
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    if (tab && ['review', 'artwork', 'history', 'logs', 'addons', 'server'].includes(tab)) {
+      return tab as 'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'
+    }
+    return 'review'
+  })
 
   const getProfileSessionCookie = () => {
     if (typeof document === 'undefined') return ''
@@ -132,7 +139,18 @@ export function App() {
   )
   const [sources, setSources] = useState<MediaSource[]>(mockSources)
   const [sourcesError, setSourcesError] = useState('')
-  const [profiles, setProfiles] = useState<Profile[]>(mockProfiles)
+  const [profiles, setProfiles] = useState<Profile[]>(() => {
+    try {
+      const raw = sessionStorage.getItem('sc_profiles_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Profile[]
+      }
+    } catch {
+      // ignore
+    }
+    return mockProfiles
+  })
   const [profileFading, setProfileFading] = useState(false)
 
   const [selectedMedia, setSelectedMedia] = useState<PlayableMedia | null>(null)
@@ -237,14 +255,14 @@ export function App() {
             return
           }
           const catalogAddons = enabledAddons.filter((a) => a.catalogs?.length > 0)
-          const lookups = catalogAddons.slice(0, 3).flatMap((addon) =>
+          const lookups = catalogAddons.slice(0, 5).flatMap((addon) =>
             addon.catalogs.slice(0, 2).map((cat) =>
               fetch(
                 `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
               )
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) =>
-                  (data?.metas || []).slice(0, 4).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
+                  (data?.metas || []).slice(0, 6).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
                     ...meta,
                     addonName: addon.name,
                   })),
@@ -265,7 +283,7 @@ export function App() {
             const fallbackRes = await fetch(`/api/addons/search?q=${encodeURIComponent(trimmed)}`).catch(() => null)
             const fallbackData = fallbackRes && fallbackRes.ok ? await fallbackRes.json().catch(() => null) : null
             if (!active) return
-            merged = (fallbackData?.metas || []).slice(0, 12).map(
+            merged = (fallbackData?.metas || []).slice(0, 24).map(
               (meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
                 ...meta,
                 addonName: enabledAddons[0]?.name || 'Addons',
@@ -273,7 +291,7 @@ export function App() {
             )
           }
           if (active) {
-            setAddonSearchResults(merged.slice(0, 12))
+            setAddonSearchResults(merged.slice(0, 24))
             setAddonSearching(false)
           }
         })
@@ -352,7 +370,14 @@ export function App() {
     fetch('/api/profiles')
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((items: Profile[]) => {
-        if (items.length > 0) setProfiles(items)
+        if (items.length > 0) {
+          setProfiles(items)
+          try {
+            sessionStorage.setItem('sc_profiles_cache', JSON.stringify(items))
+          } catch {
+            // ignore
+          }
+        }
       })
       .catch(() => undefined)
   }, [])
@@ -396,31 +421,57 @@ export function App() {
       .then(async (addons: Array<{ id: string; name: string; enabled: boolean; catalogs: Array<{ type: string; id: string }> }>) => {
         const catalogAddons = (addons || []).filter((a) => a.enabled && a.catalogs?.length > 0)
         if (catalogAddons.length === 0) return
-        const lookups = catalogAddons.slice(0, 2).map((addon) => {
-          const cat = addon.catalogs[0]
-          return fetch(
-            `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}`,
-          )
-            .then((r) => (r.ok ? r.json() : null))
-            .then((data) =>
-              (data?.metas || []).slice(0, 8).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
-                ...meta,
-                addonName: addon.name,
-              })),
+        const orderedAddons = [...catalogAddons].sort((a, b) => {
+          const aHasVideo = a.catalogs.some((c) => c.type === 'movie' || c.type === 'series') ? 0 : 1
+          const bHasVideo = b.catalogs.some((c) => c.type === 'movie' || c.type === 'series') ? 0 : 1
+          return aHasVideo - bHasVideo
+        })
+        const lookups = orderedAddons.slice(0, 5).flatMap((addon) => {
+          const picks = [
+            addon.catalogs.find((c) => c.type === 'movie'),
+            addon.catalogs.find((c) => c.type === 'series'),
+          ].filter((c): c is { type: string; id: string } => Boolean(c))
+          const targets = picks.length > 0 ? picks : addon.catalogs.slice(0, 1)
+          return targets.map((cat) =>
+            fetch(
+              `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}`,
             )
-            .catch(() => [])
+              .then((r) => (r.ok ? r.json() : null))
+              .then((data) =>
+                (data?.metas || []).slice(0, 6).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
+                  ...meta,
+                  addonName: addon.name,
+                })),
+              )
+              .catch(() => []),
+          )
         })
         const chunks = await Promise.all(lookups)
         if (!active) return
+        const interleaved: Array<{
+          id: string
+          type: string
+          name: string
+          poster: string | null
+          releaseInfo: string | null
+          description?: string
+          addonName: string
+        }> = []
+        const maxLen = Math.max(0, ...chunks.map((c) => c.length))
+        for (let i = 0; i < maxLen; i += 1) {
+          for (const chunk of chunks) {
+            if (chunk[i]) interleaved.push(chunk[i])
+          }
+        }
         const seen = new Set<string>()
-        const merged = chunks.flat().filter((item) => {
+        const merged = interleaved.filter((item) => {
           if (!item.poster) return false
           const key = `${item.type}:${item.id}`
           if (seen.has(key)) return false
           seen.add(key)
           return true
         })
-        setHomeTrendingOnline(merged.slice(0, 12))
+        setHomeTrendingOnline(merged.slice(0, 24))
       })
       .catch(() => undefined)
     return () => {
@@ -517,6 +568,15 @@ export function App() {
 
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? mockProfiles[0]
+  const isActiveAdmin = Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isActiveAdmin) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('tab')) {
+      window.history.replaceState(null, '', window.location.pathname || '/')
+    }
+  }, [isActiveAdmin])
 
   const connectedGamepad = useGamepadNavigation(Boolean(selectedMedia))
 
@@ -837,19 +897,21 @@ export function App() {
           goHome()
         }}
         onOpenAdmin={() => {
+          if (!isActiveAdmin) return
           setActiveAddonItem(null)
           setSelectedShow(null)
           setAdminTab('review')
           setAdminOpen(true)
         }}
         onOpenAddons={() => {
+          if (!isActiveAdmin) return
           setActiveAddonItem(null)
           setSelectedShow(null)
           setAdminTab('addons')
           setAdminOpen(true)
         }}
-        adminActive={adminOpen}
-        addonsActive={adminOpen && adminTab === 'addons'}
+        adminActive={adminOpen && isActiveAdmin}
+        addonsActive={adminOpen && isActiveAdmin && adminTab === 'addons'}
         onRefreshCatalog={() => void fetch('/api/catalog/refresh', { method: 'POST' })}
         onSourceAdded={refreshCatalogAndSources}
         refreshing={catalogRefresh.state === 'running'}
@@ -868,7 +930,7 @@ export function App() {
 
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 outline-none sm:px-8 sm:py-7">
         {/* Top Search & Genre Filter Bar */}
-        {!adminOpen && activeKind !== 'Online' && (
+        {!(adminOpen && isActiveAdmin) && activeKind !== 'Online' && (
           <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1 max-w-md">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
@@ -956,7 +1018,7 @@ export function App() {
           </div>
         )}
 
-        {adminOpen ? (
+        {adminOpen && isActiveAdmin ? (
           <Suspense fallback={<CatalogSkeleton />}>
             <AdminView
               key={adminTab}
@@ -966,7 +1028,12 @@ export function App() {
               artworkGroups={artworkCandidates}
               artworkError={artworkCandidatesError}
               history={catalogHistory}
-              onBack={() => setAdminOpen(false)}
+              onBack={() => {
+                setAdminOpen(false)
+                if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tab')) {
+                  window.history.replaceState(null, '', window.location.pathname || '/')
+                }
+              }}
               onRefreshAll={refreshCatalogAndSources}
               onPlayMedia={(media) => setSelectedMedia(media)}
             />
@@ -1162,7 +1229,7 @@ export function App() {
               </div>
             )}
             {query.trim().length >= 2 && !addonSearching && addonSearchResults.length > 0 && (
-              <div className="mt-4 space-y-3 border-t border-[var(--sc-border-subtle)] pt-5">
+              <div className="mt-4 space-y-5 border-t border-[var(--sc-border-subtle)] pt-5">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="m-0 text-base font-bold text-[var(--sc-text-primary)]">
                     Resultados nos Addons (Stremio)
@@ -1175,41 +1242,68 @@ export function App() {
                     Abrir Acervo Online →
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
-                  {addonSearchResults.map((item) => (
-                    <button
-                      key={`addon-${item.type}-${item.id}`}
-                      type="button"
-                      onClick={() =>
-                        setActiveAddonItem({
-                          id: item.id,
-                          type: item.type,
-                          name: item.name,
-                          poster: item.poster,
-                          description: item.description || '',
-                          releaseInfo: item.releaseInfo,
-                        })
-                      }
-                      className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
-                    >
-                      <div className="aspect-[2/3] w-full bg-black/50">
-                        {item.poster ? (
-                          <img src={item.poster} alt={item.name} className="h-full w-full object-cover transition group-hover:scale-105" />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-xs text-[var(--sc-text-muted)]">
-                            Sem capa
-                          </div>
-                        )}
+                {[
+                  {
+                    key: 'movie',
+                    label: 'Filmes Online (Addons)',
+                    items: addonSearchResults.filter((item) => item.type === 'movie'),
+                  },
+                  {
+                    key: 'series',
+                    label: 'Séries e Novelas Online (Addons)',
+                    items: addonSearchResults.filter((item) => item.type !== 'movie'),
+                  },
+                ].map((group) =>
+                  group.items.length === 0 ? null : (
+                    <div key={group.key} className="space-y-3">
+                      <h3 className="m-0 text-xs font-bold uppercase tracking-wider text-[var(--sc-text-secondary)]">
+                        {group.label} ({group.items.length})
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                        {group.items.map((item) => (
+                          <button
+                            key={`addon-${item.type}-${item.id}`}
+                            type="button"
+                            onClick={() =>
+                              setActiveAddonItem({
+                                id: item.id,
+                                type: item.type,
+                                name: item.name,
+                                poster: item.poster,
+                                description: item.description || '',
+                                releaseInfo: item.releaseInfo,
+                              })
+                            }
+                            className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-white/30 cursor-pointer"
+                          >
+                            <div className="relative aspect-[2/3] w-full bg-black/50">
+                              {item.poster ? (
+                                <img
+                                  src={item.poster}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover transition group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-xs text-[var(--sc-text-muted)]">
+                                  Sem capa
+                                </div>
+                              )}
+                              <span className="absolute top-2 left-2 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
+                                {item.type === 'movie' ? 'Filme' : item.type === 'anime' ? 'Anime' : 'Série'}
+                              </span>
+                            </div>
+                            <div className="p-2.5">
+                              <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
+                              <p className="truncate text-[11px] text-[var(--sc-text-muted)]">
+                                {item.addonName}{item.releaseInfo ? ` · ${item.releaseInfo}` : ''}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                      <div className="p-2.5">
-                        <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
-                        <p className="truncate text-[11px] text-[var(--sc-text-muted)]">
-                          {item.addonName}{item.releaseInfo ? ` · ${item.releaseInfo}` : ''}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                    </div>
+                  ),
+                )}
               </div>
             )}
           </section>
@@ -1227,40 +1321,6 @@ export function App() {
               subtitle="Retome exatamente de onde parou"
               items={continueWatching}
               variant="landscape"
-              onPlay={playLibraryItem}
-              onOpenDetails={(target) => setSelectedShow(target)}
-              onToggleWatchlist={(target) => void toggleWatchlist(target)}
-            />
-
-            <MediaCarousel
-              title="Minha lista"
-              subtitle="Seus títulos salvos neste perfil"
-              items={watchlistItems}
-              onPlay={playLibraryItem}
-              onOpenDetails={(target) => setSelectedShow(target)}
-              onToggleWatchlist={(target) => void toggleWatchlist(target)}
-            />
-
-            <MediaCarousel
-              title="Recomendados para você"
-              subtitle="Baseado no seu perfil e rotacionado diariamente"
-              items={recommendedItems}
-              onPlay={playLibraryItem}
-              onOpenDetails={(target) => setSelectedShow(target)}
-              onToggleWatchlist={(target) => void toggleWatchlist(target)}
-            />
-
-            <MediaCarousel
-              title="Filmes no catálogo"
-              items={moviesRow}
-              onPlay={playLibraryItem}
-              onOpenDetails={(target) => setSelectedShow(target)}
-              onToggleWatchlist={(target) => void toggleWatchlist(target)}
-            />
-
-            <MediaCarousel
-              title="Séries e animações"
-              items={seriesRow}
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
               onToggleWatchlist={(target) => void toggleWatchlist(target)}
@@ -1302,7 +1362,7 @@ export function App() {
                       }
                       className="group w-[150px] shrink-0 overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)]/60 sm:w-[170px] cursor-pointer"
                     >
-                      <div className="aspect-[2/3] w-full bg-black/50">
+                      <div className="relative aspect-[2/3] w-full bg-black/50">
                         {item.poster ? (
                           <img
                             src={item.poster}
@@ -1311,6 +1371,9 @@ export function App() {
                             className="h-full w-full object-cover transition group-hover:scale-105"
                           />
                         ) : null}
+                        <span className="absolute top-2 left-2 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
+                          {item.type === 'movie' ? 'Filme' : item.type === 'anime' ? 'Anime' : 'Série'}
+                        </span>
                       </div>
                       <div className="p-2.5">
                         <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">
@@ -1325,6 +1388,40 @@ export function App() {
                 </div>
               </section>
             )}
+
+            <MediaCarousel
+              title="Minha lista"
+              subtitle="Seus títulos salvos neste perfil"
+              items={watchlistItems}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+            />
+
+            <MediaCarousel
+              title="Recomendados para você"
+              subtitle="Baseado no seu perfil e rotacionado diariamente"
+              items={recommendedItems}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+            />
+
+            <MediaCarousel
+              title="Filmes no catálogo"
+              items={moviesRow}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+            />
+
+            <MediaCarousel
+              title="Séries e animações"
+              items={seriesRow}
+              onPlay={playLibraryItem}
+              onOpenDetails={(target) => setSelectedShow(target)}
+              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+            />
 
             {genreCarousels.map((row) => (
               <MediaCarousel

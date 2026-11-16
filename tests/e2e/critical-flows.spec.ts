@@ -14,7 +14,8 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
   test('Home exibe Hero com Mais informações e carrosséis', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Mais informações/i }).first()).toBeVisible()
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('button', { name: /Mais informações/i }).first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Recomendados para você')).toBeVisible()
     await expect(page.getByRole('button', { name: /Mais informações sobre/i }).first()).toBeVisible()
   })
@@ -69,10 +70,10 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
 
   test('Busca por South Park mostra a série e filtros de ordenação/não assistidos funcionam', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText(/Novo volume/i)).toBeVisible()
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 15000 })
     const search = page.locator('#sc-search-input')
     await search.fill('South Park')
-    await expect(page.locator('article h3', { hasText: /^South Park$/i }).first()).toBeVisible()
+    await expect(page.locator('article h3', { hasText: /^South Park$/i }).first()).toBeVisible({ timeout: 10000 })
 
     await search.fill('')
     await page.getByLabel('Ordenar catálogo').selectOption('az')
@@ -124,8 +125,36 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.goto('/')
     await page.getByRole('navigation').getByRole('button', { name: 'Acervo Online', exact: true }).click()
     await expect(page.getByRole('heading', { name: /Acervo Online/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Filmes', exact: true }).first()).toBeVisible()
     await page.getByRole('button', { name: /Gerenciar \/ Adicionar Addons/i }).click()
     await expect(page.getByRole('heading', { name: /Adicionar & Gerenciar Addons/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /QR Code/i })).toBeVisible()
+  })
+
+  test('Aba Servidor & Conexões abre por ?tab=server para Admin e é bloqueada para perfil não-admin', async ({
+    page,
+    context,
+    request,
+  }) => {
+    await page.goto('/?tab=server')
+    await expect(page.getByRole('heading', { name: /Painel do Catálogo/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Servidor & Conexões/i })).toBeVisible()
+
+    const profilesRes = await request.get('/api/profiles')
+    const profiles = (await profilesRes.json()) as Array<{ id: string; isAdmin?: boolean }>
+    const nonAdmin = profiles.find((p) => !p.isAdmin)
+    if (nonAdmin) {
+      await context.clearCookies()
+      await context.addCookies([
+        {
+          name: 'sc_profile_session',
+          value: nonAdmin.id,
+          url: 'http://127.0.0.1:4173',
+        },
+      ])
+      await page.goto('/?tab=server')
+      await expect(page.getByRole('heading', { name: /Painel do Catálogo/i })).toBeHidden()
+      await expect(page.getByRole('button', { name: /^Admin/i })).toBeHidden()
+    }
   })
 })

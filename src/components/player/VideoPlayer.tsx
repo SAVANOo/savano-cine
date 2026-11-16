@@ -1,5 +1,5 @@
 import Hls from 'hls.js'
-import { ArrowLeft, Check, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Check, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 
@@ -56,6 +56,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
       : media.url,
   )
   const [playbackError, setPlaybackError] = useState('')
+  const [downloadToast, setDownloadToast] = useState('')
+  const isOnlineStream =
+    media.url.startsWith('/api/addons/torrent-stream') || /^https?:\/\//i.test(media.url)
   const [subtitleTracks, setSubtitleTracks] = useState<Array<{ label: string; url: string }>>(
     () => media.externalSubtitles ?? [],
   )
@@ -801,28 +804,78 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                   Torrent · {torrentStats.numPeers} peer(s) · {Math.round(torrentStats.downloadSpeed / 1024)} KB/s · {Math.round(torrentStats.progress * 100)}%
                 </p>
               )}
+              {downloadToast && (
+                <p className="mt-0.5 mb-0 text-[11px] font-medium text-emerald-300">{downloadToast}</p>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (episodesMenuOpen) {
-                setEpisodesMenuOpen(false)
-              } else if (trackMenuOpen) {
-                setTrackMenuOpen(false)
-              } else if (showPausedInfo) {
-                setShowPausedInfo(false)
-              } else {
-                setControlsVisible(false)
-              }
-            }}
-            aria-label="Ocultar informações do player"
-            title="Ocultar informações do player"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="pointer-events-auto flex items-center gap-2">
+            {isOnlineStream && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const isTorrent = media.url.startsWith('/api/addons/torrent-stream')
+                    if (isTorrent) {
+                      const qs = media.url.split('?')[1] || ''
+                      const infoHash = new URLSearchParams(qs).get('infoHash') || ''
+                      if (!infoHash) return
+                      setDownloadToast('Enviando para downloads...')
+                      const res = await fetch('/api/downloads/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ infoHash, title: media.title }),
+                      })
+                      const data = await res.json().catch(() => null)
+                      setDownloadToast(
+                        res.ok
+                          ? data?.status === 'queued_qbittorrent'
+                            ? 'Enviado para o qBittorrent!'
+                            : 'Download salvo na fila!'
+                          : data?.error || 'Falha ao iniciar download.',
+                      )
+                    } else {
+                      setDownloadToast('Adicionando à fila de download...')
+                      const res = await fetch('/api/downloads/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: media.url, title: media.title }),
+                      })
+                      const data = await res.json().catch(() => null)
+                      setDownloadToast(res.ok ? 'Download iniciado no servidor!' : data?.error || 'Falha ao baixar.')
+                    }
+                  } catch {
+                    setDownloadToast('Falha ao conectar com a API de downloads.')
+                  }
+                }}
+                title="Baixar este título para assistir offline no Acervo Local"
+                className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Baixar pro Acervo</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (episodesMenuOpen) {
+                  setEpisodesMenuOpen(false)
+                } else if (trackMenuOpen) {
+                  setTrackMenuOpen(false)
+                } else if (showPausedInfo) {
+                  setShowPausedInfo(false)
+                } else {
+                  setControlsVisible(false)
+                }
+              }}
+              aria-label="Ocultar informações do player"
+              title="Ocultar informações do player"
+              className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Bottom Custom Netflix-style Control Bar */}

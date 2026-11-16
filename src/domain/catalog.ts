@@ -17,7 +17,7 @@ export type Rating = {
 export type Profile = {
   id: string
   name: string
-  avatarKey: 'cartman' | 'south-park' | 'ben-10' | 'savino'
+  avatarKey: 'cartman' | 'south-park' | 'ben-10' | 'savino' | (string & {})
   isAdmin?: boolean
   isKids?: boolean
   hasPassword?: boolean
