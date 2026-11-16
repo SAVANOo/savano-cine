@@ -198,6 +198,8 @@ let activeTunnelChild = null
 
 const ADDON_CATALOG_CACHE = new Map()
 const ADDON_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
+const SHOW_ARTWORK_CACHE = new Map()
+const SHOW_ARTWORK_CACHE_TTL_MS = 60 * 60 * 1000
 
 function trackClientConnection(request) {
   const ip = getClientIp(request)
@@ -2039,6 +2041,16 @@ async function analyzeMediaStreams(mediaId, response) {
 
 async function buildLibrary(profileId) {
   const transcodeExtensions = new Set(['rmvb', 'rm', 'avi', 'wmv', 'flv'])
+  const subtitlesByMediaId = new Map()
+  for (const row of database.prepare(`
+    SELECT media_item_id AS mediaId, language, label, 1 AS available, provider
+    FROM subtitle_tracks
+    ORDER BY language, relative_path
+  `).all()) {
+    const list = subtitlesByMediaId.get(row.mediaId) || []
+    list.push({ language: row.language, label: row.label, available: row.available, provider: row.provider })
+    subtitlesByMediaId.set(row.mediaId, list)
+  }
   const watchlistRows = database.prepare('SELECT target_type, target_id FROM watchlist WHERE profile_id = ?').all(profileId)
   const watchlistSet = new Set(watchlistRows.map((r) => `${r.target_type}:${r.target_id}`))
   const rawMovies = database.prepare(`
@@ -2078,7 +2090,7 @@ async function buildLibrary(profileId) {
     subtitleUrl: `/api/media/${item.id}/subtitles`,
     mediaId: item.id,
     inWatchlist: watchlistSet.has(`movie:${item.id}`),
-    subtitles: getSubtitleTracks(item.id),
+    subtitles: subtitlesByMediaId.get(item.id) || [],
     tags: JSON.parse(item.tags_json || '[]'),
     artwork: { source: 'none', verified: false },
     ...(item.hasPoster || item.hasBanner ? {
@@ -2206,7 +2218,7 @@ async function buildLibrary(profileId) {
           title: episode.title,
           filename: episode.filename,
           duration: episode.progressDuration ? `${Math.max(1, Math.round(episode.progressDuration / 60))} min` : '',
-          subtitles: getSubtitleTracks(episode.mediaId),
+          subtitles: subtitlesByMediaId.get(episode.mediaId) || [],
           mediaUrl: `/api/media/${episode.mediaId}`,
           subtitleUrl: `/api/media/${episode.mediaId}/subtitles`,
           thumbnailUrl: episode.sourceStatus === 'online' ? `/api/media/${episode.mediaId}/thumbnail?t=90` : undefined,
@@ -2304,31 +2316,47 @@ async function buildLibrary(profileId) {
   }
 
   async function fetchShowArtwork(title) {
+    const showId = `show-${slugify(title)}`
+    const localArt = database.prepare(`
+      SELECT artwork_type AS type
+      FROM artwork
+      WHERE show_id = ? AND source = 'local'
+    `).all(showId)
+    const hasPoster = localArt.some((art) => art.type === 'poster')
+    const hasBanner = localArt.some((art) => art.type === 'banner')
+    const cached = SHOW_ARTWORK_CACHE.get(showId)
+    if (cached && Date.now() - cached.savedAt < SHOW_ARTWORK_CACHE_TTL_MS) {
+      return cached.value
+    }
     try {
-      const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(title)}`)
+      const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(title)}`, {
+        signal: AbortSignal.timeout(1800),
+      })
       if (!response.ok) throw new Error(`TVMaze ${response.status}`)
       const show = await response.json()
       const posterUrl = show.image?.original || show.image?.medium
       const tags = ['Série']
       if (show.type === 'Animation') tags.push('Animação')
       for (const genre of show.genres || []) tags.push(genre)
-      const showId = `show-${slugify(title)}`
-      const localArt = database.prepare(`
-        SELECT artwork_type AS type
-        FROM artwork
-        WHERE show_id = ? AND source = 'local'
-      `).all(showId)
-      const hasPoster = localArt.some((art) => art.type === 'poster')
-      const hasBanner = localArt.some((art) => art.type === 'banner')
-      return {
-        artwork: posterUrl
+      const value = {
+        artwork: posterUrl || hasPoster
           ? { source: hasPoster ? 'local' : 'tvmaze', posterUrl: hasPoster ? `/api/artwork/${showId}/poster` : posterUrl, providerId: String(show.id), verified: true }
           : { source: 'none', verified: false },
         bannerUrl: hasBanner ? `/api/artwork/${showId}/banner` : posterUrl,
         tags,
       }
+      SHOW_ARTWORK_CACHE.set(showId, { savedAt: Date.now(), value })
+      return value
     } catch {
-      return { artwork: { source: 'none', verified: false }, tags: ['Série'] }
+      const fallback = {
+        artwork: hasPoster
+          ? { source: 'local', posterUrl: `/api/artwork/${showId}/poster`, verified: true }
+          : { source: 'none', verified: false },
+        bannerUrl: hasBanner ? `/api/artwork/${showId}/banner` : undefined,
+        tags: ['Série'],
+      }
+      SHOW_ARTWORK_CACHE.set(showId, { savedAt: Date.now(), value: fallback })
+      return fallback
     }
 
     function slugify(value) {
@@ -2342,15 +2370,6 @@ async function buildLibrary(profileId) {
   }
 
   return items
-}
-
-function getSubtitleTracks(mediaId) {
-  return database.prepare(`
-    SELECT language, label, 1 AS available, provider
-    FROM subtitle_tracks
-    WHERE media_item_id = ?
-    ORDER BY language, relative_path
-  `).all(mediaId)
 }
 
 function send(response, status, body) {
