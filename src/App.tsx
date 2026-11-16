@@ -1128,6 +1128,12 @@ export function App() {
             setProfileEditorOpen(true)
           }}
           onEditProfile={(profile) => {
+            if (profile?.hasPassword && !unlockedProfiles.has(profile.id)) {
+              setPendingUnlockProfile(profile)
+              setUnlockPassword('')
+              setUnlockError('')
+              return
+            }
             setEditingProfile(profile)
             setProfileEditorOpen(true)
           }}

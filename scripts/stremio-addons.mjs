@@ -381,6 +381,15 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
     .sort((a, b) => (b.seeders ?? -1) - (a.seeders ?? -1))
 }
 
+function subtitleLanguageRank(lang) {
+  const l = String(lang || '').toLowerCase()
+  if (l === 'pob' || l === 'pt-br' || l === 'ptbr' || l.includes('brazil')) return 0
+  if (l === 'por' || l === 'pt' || l.startsWith('portug')) return 1
+  if (l === 'eng' || l === 'en') return 2
+  if (l === 'spa' || l === 'es') return 3
+  return 4
+}
+
 export async function queryAddonSubtitles(database, { type, id }) {
   ensureStremioAddonsTable(database)
   assertSafeSegment(type, 'Tipo')
@@ -415,6 +424,7 @@ export async function queryAddonSubtitles(database, { type, id }) {
   return settled
     .filter((entry) => entry.status === 'fulfilled')
     .flatMap((entry) => entry.value)
+    .sort((a, b) => subtitleLanguageRank(a.lang) - subtitleLanguageRank(b.lang))
 }
 
 export async function searchAddonFallback(query) {

@@ -429,7 +429,7 @@ function AddonStreamModalContent({
                               title: `${streamTargetLabel} (${stream.addonName})`,
                               url: stream.url!,
                               overview: detail.description,
-                              externalSubtitles: subtitles.slice(0, 10).map((sub) => ({
+                              externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                                 label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
                                 url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
                               })),
@@ -465,7 +465,7 @@ function AddonStreamModalContent({
                               title: `${streamTargetLabel} (${stream.addonName})`,
                               url: `/api/addons/torrent-stream?${params.toString()}`,
                               overview: detail.description,
-                              externalSubtitles: subtitles.slice(0, 10).map((sub) => ({
+                              externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                                 label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
                                 url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
                               })),

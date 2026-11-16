@@ -508,6 +508,23 @@ async function handleApiRequest(request, response) {
       const isKids = body.isKids ? 1 : 0
       const rawPassword = typeof body.password === 'string' ? body.password.trim() : ''
       const clearPassword = Boolean(body.clearPassword)
+      const existingProfile = database.prepare('SELECT id, passcode_hash FROM profiles WHERE id = ?').get(id)
+      if (existingProfile?.passcode_hash) {
+        const cookieHeader = String(request.headers.cookie || '')
+        const sessionMatch = cookieHeader.match(/(?:^|;\s*)sc_profile_session=([^;]+)/)
+        const sessionProfileId = sessionMatch ? decodeURIComponent(sessionMatch[1]) : ''
+        const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword.trim() : ''
+        const currentMatches =
+          currentPassword &&
+          hashProfilePasscode(id, currentPassword).length === existingProfile.passcode_hash.length &&
+          timingSafeEqual(
+            Buffer.from(hashProfilePasscode(id, currentPassword)),
+            Buffer.from(existingProfile.passcode_hash),
+          )
+        if (sessionProfileId !== id && !currentMatches) {
+          return send(response, 403, { error: 'Apenas o dono deste perfil pode editar ou remover a senha.' })
+        }
+      }
       if (clearPassword) {
         database.prepare(`
           INSERT INTO profiles (id, name, avatar_key, is_kids, passcode_hash)
@@ -540,6 +557,7 @@ async function handleApiRequest(request, response) {
       `).get(id)
       return send(response, 200, {
         ...saved,
+        isAdmin: saved?.id === 'profile-savio',
         isKids: Boolean(saved?.isKids),
         hasPassword: Boolean(saved?.hasPassword),
         watchedCount: Number(saved?.watchedCount || 0),
@@ -554,6 +572,7 @@ async function handleApiRequest(request, response) {
       ORDER BY p.created_at
     `).all().map((row) => ({
       ...row,
+      isAdmin: row.id === 'profile-savio',
       isKids: Boolean(row.isKids),
       hasPassword: Boolean(row.hasPassword),
       watchedCount: Number(row.watchedCount || 0),
@@ -594,6 +613,9 @@ async function handleApiRequest(request, response) {
   const deleteProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)$/)
   if (deleteProfileMatch && request.method === 'DELETE') {
     const profileId = decodeURIComponent(deleteProfileMatch[1])
+    if (profileId === 'profile-savio') {
+      return send(response, 403, { error: 'O perfil administrador principal não pode ser excluído.' })
+    }
     const total = database.prepare('SELECT COUNT(*) AS count FROM profiles').get()?.count ?? 0
     if (total <= 1) {
       return send(response, 400, { error: 'Não é possível excluir o único perfil restante.' })

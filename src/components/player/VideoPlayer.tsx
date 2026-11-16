@@ -234,7 +234,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
         setAddonSubsNotice('Nenhuma legenda encontrada nos addons.')
         return
       }
-      const mapped = found.slice(0, 12).map((s: { lang?: string; addonName?: string; url: string }) => ({
+      const mapped = found.slice(0, 30).map((s: { lang?: string; addonName?: string; url: string }) => ({
         label: `${String(s.lang || 'SUB').toUpperCase()} (${s.addonName || 'Addon'})`,
         url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(s.url)}`,
       }))
@@ -689,7 +689,12 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                 applyVolume(volume, muted)
               }
             }
-            if (videoRef.current && !playbackUrl.includes('/transcode') && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+            if (
+              videoRef.current &&
+              !playbackUrl.includes('/transcode') &&
+              Number.isFinite(videoRef.current.duration) &&
+              videoRef.current.duration > Math.max(2, totalDurationRef.current || 0)
+            ) {
               totalDurationRef.current = videoRef.current.duration
               setDuration(videoRef.current.duration)
             }
@@ -701,10 +706,25 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
               void videoRef.current.play().catch(() => undefined)
             }
           }}
+          onDurationChange={() => {
+            if (
+              videoRef.current &&
+              !playbackUrl.includes('/transcode') &&
+              Number.isFinite(videoRef.current.duration) &&
+              videoRef.current.duration > (totalDurationRef.current || 0)
+            ) {
+              totalDurationRef.current = videoRef.current.duration
+              setDuration(videoRef.current.duration)
+            }
+          }}
           onTimeUpdate={() => {
             if (videoRef.current) {
               setCurrentTime(transcodeOffsetRef.current + videoRef.current.currentTime)
-              if (!totalDurationRef.current && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+              if (
+                !playbackUrl.includes('/transcode') &&
+                Number.isFinite(videoRef.current.duration) &&
+                videoRef.current.duration > (totalDurationRef.current || 0)
+              ) {
                 totalDurationRef.current = videoRef.current.duration
                 setDuration(videoRef.current.duration)
               }
@@ -1263,25 +1283,72 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                 <span>Desligadas</span>
                 {!selectedSubtitleUrl && !subtitleStream && <Check className="h-3.5 w-3.5" />}
               </button>
-              {subtitleTracks.map((track) => {
-                const active = selectedSubtitleUrl === track.url
-                return (
-                  <button
-                    key={track.url}
-                    type="button"
-                    onClick={() => {
-                      setSubtitleStream('')
-                      setSelectedSubtitleUrl(track.url)
-                    }}
-                    className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
-                      active ? 'bg-white/15 font-semibold text-white' : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
-                    }`}
-                  >
-                    <span className="truncate">{track.label}</span>
-                    {active && <Check className="h-3.5 w-3.5 shrink-0" />}
-                  </button>
-                )
-              })}
+              {(() => {
+                const groups = new Map<string, Array<{ label: string; url: string }>>()
+                for (const track of subtitleTracks) {
+                  const rawCode = track.label.split(' ')[0]?.toUpperCase() || track.label
+                  const friendly =
+                    rawCode === 'POB' || rawCode === 'PT-BR'
+                      ? 'Português (BR)'
+                      : rawCode === 'POR' || rawCode === 'PT'
+                        ? 'Português'
+                        : rawCode === 'ENG' || rawCode === 'EN'
+                          ? 'English'
+                          : rawCode === 'SPA' || rawCode === 'ES'
+                            ? 'Español'
+                            : track.label
+                  const arr = groups.get(friendly) ?? []
+                  arr.push(track)
+                  groups.set(friendly, arr)
+                }
+                return Array.from(groups.entries()).map(([langLabel, variants]) => {
+                  const activeIdx = variants.findIndex((v) => v.url === selectedSubtitleUrl)
+                  const isGroupActive = activeIdx >= 0
+                  return (
+                    <div key={langLabel} className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubtitleStream('')
+                          setSelectedSubtitleUrl(variants[0].url)
+                        }}
+                        className={`flex items-center justify-between rounded px-2.5 py-1.5 text-left text-xs cursor-pointer ${
+                          isGroupActive
+                            ? 'bg-white/15 font-semibold text-white'
+                            : 'text-[var(--sc-text-secondary)] hover:bg-white/8'
+                        }`}
+                      >
+                        <span className="truncate">{langLabel}</span>
+                        {isGroupActive && <Check className="h-3.5 w-3.5 shrink-0" />}
+                      </button>
+                      {variants.length > 1 && (isGroupActive || langLabel.startsWith('Português')) && (
+                        <div className="flex flex-wrap gap-1 pl-2.5 pb-1">
+                          {variants.slice(0, 8).map((variant, vIdx) => {
+                            const active = variant.url === selectedSubtitleUrl
+                            return (
+                              <button
+                                key={variant.url}
+                                type="button"
+                                onClick={() => {
+                                  setSubtitleStream('')
+                                  setSelectedSubtitleUrl(variant.url)
+                                }}
+                                className={`h-6 min-w-6 rounded px-1.5 text-[11px] font-bold cursor-pointer ${
+                                  active
+                                    ? 'bg-[var(--sc-accent)] text-white'
+                                    : 'bg-white/10 text-white/75 hover:bg-white/20'
+                                }`}
+                              >
+                                {vIdx + 1}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              })()}
               {streamInfo?.subtitles.map((track) => {
                 const key = String(track.index)
                 const active = subtitleStream === key

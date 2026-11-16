@@ -231,17 +231,19 @@ export function Sidebar({
                     </span>
                     {selected && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />}
                   </button>
-                  <button
-                    type="button"
-                    title={`Editar ${profile.name}`}
-                    onClick={() => {
-                      onOpenProfileEditor(profile)
-                      setProfileMenuOpen(false)
-                    }}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sc-radius-sm)] text-[var(--sc-text-muted)] hover:bg-white/10 hover:text-white cursor-pointer"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
+                  {(profile.id === activeProfile.id || (!profile.hasPassword && profile.id !== 'profile-savio')) && (
+                    <button
+                      type="button"
+                      title={`Editar ${profile.name}`}
+                      onClick={() => {
+                        onOpenProfileEditor(profile)
+                        setProfileMenuOpen(false)
+                      }}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sc-radius-sm)] text-[var(--sc-text-muted)] hover:bg-white/10 hover:text-white cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -290,38 +292,42 @@ export function Sidebar({
           )
         })}
 
-        <button
-          type="button"
-          onClick={onOpenAddons}
-          className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
-            addonsActive
-              ? 'bg-white/12 text-white'
-              : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
-          }`}
-        >
-          <Puzzle className="h-4 w-4 shrink-0" />
-          <span>Addons</span>
-        </button>
+        {(activeProfile.id === 'profile-savio' || activeProfile.isAdmin) && (
+          <>
+            <button
+              type="button"
+              onClick={onOpenAddons}
+              className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+                addonsActive
+                  ? 'bg-white/12 text-white'
+                  : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+              }`}
+            >
+              <Puzzle className="h-4 w-4 shrink-0" />
+              <span>Addons</span>
+            </button>
 
-        <button
-          type="button"
-          onClick={onOpenAdmin}
-          className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
-            adminActive && !addonsActive
-              ? 'bg-white/12 text-white'
-              : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <ShieldCheck className="h-4 w-4 shrink-0" />
-            <span>Admin</span>
-          </span>
-          {adminBadgeCount > 0 && (
-            <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-bold text-red-200">
-              {adminBadgeCount}
-            </span>
-          )}
-        </button>
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+                adminActive && !addonsActive
+                  ? 'bg-white/12 text-white'
+                  : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <ShieldCheck className="h-4 w-4 shrink-0" />
+                <span>Admin</span>
+              </span>
+              {adminBadgeCount > 0 && (
+                <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-bold text-red-200">
+                  {adminBadgeCount}
+                </span>
+              )}
+            </button>
+          </>
+        )}
       </nav>
 
       {/* Compact Sources & Refresh */}

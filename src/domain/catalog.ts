@@ -18,6 +18,7 @@ export type Profile = {
   id: string
   name: string
   avatarKey: 'cartman' | 'south-park' | 'ben-10' | 'savino'
+  isAdmin?: boolean
   isKids?: boolean
   hasPassword?: boolean
   watchedCount?: number
