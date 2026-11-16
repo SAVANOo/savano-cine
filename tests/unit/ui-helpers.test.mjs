@@ -6,6 +6,7 @@ import {
   resolvePlayableMedia,
   translateGenre,
 } from '../../src/domain/uiHelpers.ts'
+import { extractStreamLanguages } from '../../src/domain/streamLanguages.ts'
 
 test('translateGenre translates English genres to Portuguese', () => {
   assert.equal(translateGenre('Animation'), 'Animação')
@@ -53,4 +54,15 @@ test('getRelatedItems ranks shared genres higher', () => {
   const partial = { ...target, id: 'c', title: 'C', genres: ['Drama'] }
   const related = getRelatedItems(target, [partial, match])
   assert.equal(related[0]?.id, 'b')
+})
+
+test('extractStreamLanguages detects PT-BR, Dublado, Dual Audio and foreign flags', () => {
+  assert.deepEqual(
+    extractStreamLanguages('Filme 1080p PT-BR Dublado Dual Audio'),
+    ['🇧🇷 PT-BR', '🇧🇷 Dublado', '🔊 Dual Áudio'],
+  )
+  assert.deepEqual(
+    extractStreamLanguages('Iron Man 2008 Rutracker ENG RUS'),
+    ['🇺🇸 ENG', '🇷🇺 RUS'],
+  )
 })

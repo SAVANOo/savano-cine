@@ -196,6 +196,9 @@ function applySecurityHeaders(response) {
 const RECENT_CONNECTIONS = new Map()
 let activeTunnelChild = null
 
+const ADDON_CATALOG_CACHE = new Map()
+const ADDON_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
+
 function trackClientConnection(request) {
   const ip = getClientIp(request)
   const ua = String(request.headers['user-agent'] || '').slice(0, 120)
@@ -954,6 +957,16 @@ async function handleApiRequest(request, response) {
       const rows = database
         .prepare('SELECT media_key AS mediaKey, title, poster, position_sec AS positionSec, duration_sec AS durationSec, updated_at AS updatedAt FROM stremio_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT 30')
         .all(profileId)
+        .map((row) => {
+          const epMatch = String(row.title || '').match(/T(\d+):E(\d+)/i)
+          return {
+            ...row,
+            contentKey: row.mediaKey,
+            type: epMatch ? 'series' : 'movie',
+            season: epMatch ? Number(epMatch[1]) : null,
+            episode: epMatch ? Number(epMatch[2]) : null,
+          }
+        })
       return send(response, 200, rows)
     }
     if (request.method === 'POST') {
@@ -964,7 +977,12 @@ async function handleApiRequest(request, response) {
         return send(response, 400, { error: 'JSON inválido.' })
       }
       const profileId = typeof body.profileId === 'string' && body.profileId.trim() ? body.profileId.trim() : 'profile-savio'
-      const mediaKey = typeof body.mediaKey === 'string' ? body.mediaKey.trim() : ''
+      const mediaKey =
+        typeof body.mediaKey === 'string' && body.mediaKey.trim()
+          ? body.mediaKey.trim()
+          : typeof body.contentKey === 'string'
+            ? body.contentKey.trim()
+            : ''
       if (!mediaKey) return send(response, 400, { error: 'mediaKey obrigatório.' })
       const poster = typeof body.poster === 'string' ? body.poster.trim() : null
       database.prepare(`
@@ -1115,9 +1133,23 @@ async function handleApiRequest(request, response) {
     const search = requestUrl.searchParams.get('search') || ''
     const skipRaw = Number(requestUrl.searchParams.get('skip') || 0)
     const skip = Number.isInteger(skipRaw) && skipRaw > 0 ? skipRaw : 0
+    const cacheKey = `${addonId}::${type}::${catalogId}::${skip}`
+    if (!search) {
+      const cached = ADDON_CATALOG_CACHE.get(cacheKey)
+      if (cached && Date.now() - cached.savedAt < ADDON_CATALOG_CACHE_TTL_MS) {
+        return send(response, 200, cached.result)
+      }
+    }
     try {
       const result = await fetchAddonCatalog(database, addonId, { type, catalogId, search, skip })
       if (!result) return send(response, 404, { error: 'Addon não encontrado.' })
+      if (!search) {
+        ADDON_CATALOG_CACHE.set(cacheKey, { savedAt: Date.now(), result })
+        if (ADDON_CATALOG_CACHE.size > 100) {
+          const oldest = ADDON_CATALOG_CACHE.keys().next().value
+          if (oldest) ADDON_CATALOG_CACHE.delete(oldest)
+        }
+      }
       return send(response, 200, result)
     } catch (error) {
       return send(response, 400, { error: error instanceof Error ? error.message : 'Falha ao carregar catálogo.' })

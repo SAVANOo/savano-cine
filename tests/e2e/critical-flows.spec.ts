@@ -155,6 +155,46 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
       await page.goto('/?tab=server')
       await expect(page.getByRole('heading', { name: /Painel do Catálogo/i })).toBeHidden()
       await expect(page.getByRole('button', { name: /^Admin/i })).toBeHidden()
+
+      for (const [method, url] of [
+        ['GET', '/api/admin/connections'],
+        ['POST', '/api/admin/tunnel/start'],
+        ['POST', '/api/admin/tunnel/stop'],
+        ['GET', '/api/logs/errors'],
+      ] as const) {
+        const res = await request.fetch(url, {
+          method,
+          headers: { Cookie: `sc_profile_session=${encodeURIComponent(nonAdmin.id)}` },
+        })
+        expect(res.status()).toBe(403)
+      }
     }
+  })
+
+  test('Progresso online persiste e aparece em Continuar assistindo', async ({ page, request }) => {
+    const uniqueKey = `addon:test-${Date.now()}`
+    const saveRes = await request.post('/api/addons/progress', {
+      data: {
+        profileId: 'profile-savio',
+        mediaKey: uniqueKey,
+        title: 'Teste Online E2E — T1:E2',
+        poster: 'https://image.tmdb.org/t/p/w500/example.jpg',
+        positionSec: 120,
+        durationSec: 600,
+      },
+    })
+    expect(saveRes.ok()).toBeTruthy()
+
+    const listRes = await request.get('/api/addons/progress?profileId=profile-savio')
+    expect(listRes.ok()).toBeTruthy()
+    const rows = (await listRes.json()) as Array<{ mediaKey: string; contentKey: string; type: string }>
+    const found = rows.find((r) => r.mediaKey === uniqueKey)
+    expect(found?.contentKey).toBe(uniqueKey)
+    expect(found?.type).toBe('series')
+
+    await page.goto('/')
+    await page.getByRole('navigation').getByRole('button', { name: 'Continuar assistindo', exact: true }).click()
+    await expect(page.getByText('Continuar assistindo (Online · Addons)')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Teste Online E2E — T1:E2').first()).toBeVisible()
   })
 })

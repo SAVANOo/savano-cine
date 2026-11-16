@@ -39,6 +39,7 @@ import {
 } from './data/mockCatalog'
 import type { LibraryItem, MediaSource, Profile, ReviewItem } from './domain/catalog'
 import { useGamepadNavigation } from './hooks/useGamepadNavigation'
+import { useOnlineCatalogDiscovery } from './hooks/useOnlineCatalogDiscovery'
 import {
   resolvePlayableMedia,
   translateGenre,
@@ -70,21 +71,16 @@ export function App() {
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [catalogNotice, setCatalogNotice] = useState('')
-  const [addonSearchResults, setAddonSearchResults] = useState<
-    Array<{ id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string; addonName: string }>
-  >([])
-  const [addonSearching, setAddonSearching] = useState(false)
-  const [homeTrendingOnline, setHomeTrendingOnline] = useState<
-    Array<{ id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string; addonName: string }>
-  >([])
+  const { addonSearchResults, addonSearching, homeTrendingOnline } = useOnlineCatalogDiscovery(query)
   const [onlineContinueItems, setOnlineContinueItems] = useState<
     Array<{
-      contentKey: string
+      mediaKey?: string
+      contentKey?: string
       title: string
-      type: string
+      type?: string
       poster: string | null
-      season: number | null
-      episode: number | null
+      season?: number | null
+      episode?: number | null
       positionSec: number
       durationSec: number
       updatedAt: string
@@ -239,77 +235,6 @@ export function App() {
   )
 
   useEffect(() => {
-    const trimmed = query.trim()
-    if (trimmed.length < 2) {
-      return
-    }
-    let active = true
-    const timer = window.setTimeout(() => {
-      if (active) setAddonSearching(true)
-      fetch('/api/addons')
-        .then((res) => (res.ok ? res.json() : []))
-        .then(async (addons: Array<{ id: string; name: string; enabled: boolean; catalogs: Array<{ type: string; id: string }> }>) => {
-          const enabledAddons = (addons || []).filter((a) => a.enabled)
-          if (enabledAddons.length === 0) {
-            if (active) setAddonSearchResults([])
-            return
-          }
-          const catalogAddons = enabledAddons.filter((a) => a.catalogs?.length > 0)
-          const lookups = catalogAddons.slice(0, 5).flatMap((addon) =>
-            addon.catalogs.slice(0, 2).map((cat) =>
-              fetch(
-                `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
-              )
-                .then((r) => (r.ok ? r.json() : null))
-                .then((data) =>
-                  (data?.metas || []).slice(0, 6).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
-                    ...meta,
-                    addonName: addon.name,
-                  })),
-                )
-                .catch(() => []),
-            ),
-          )
-          const chunks = await Promise.all(lookups)
-          if (!active) return
-          const seen = new Set<string>()
-          let merged = chunks.flat().filter((item) => {
-            const key = `${item.type}:${item.id}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          if (merged.length === 0) {
-            const fallbackRes = await fetch(`/api/addons/search?q=${encodeURIComponent(trimmed)}`).catch(() => null)
-            const fallbackData = fallbackRes && fallbackRes.ok ? await fallbackRes.json().catch(() => null) : null
-            if (!active) return
-            merged = (fallbackData?.metas || []).slice(0, 24).map(
-              (meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
-                ...meta,
-                addonName: enabledAddons[0]?.name || 'Addons',
-              }),
-            )
-          }
-          if (active) {
-            setAddonSearchResults(merged.slice(0, 24))
-            setAddonSearching(false)
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setAddonSearchResults([])
-            setAddonSearching(false)
-          }
-        })
-    }, 400)
-    return () => {
-      active = false
-      setAddonSearching(false)
-      window.clearTimeout(timer)
-    }
-  }, [query])
-
-  useEffect(() => {
     fetch('/api/auth/pin')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { required?: boolean; authenticated?: boolean } | null) => {
@@ -413,71 +338,6 @@ export function App() {
     refreshArtworkCandidates()
     refreshHistory()
   }, [activeProfileId, refreshArtworkCandidates, refreshHistory, refreshReview])
-
-  useEffect(() => {
-    let active = true
-    fetch('/api/addons')
-      .then((res) => (res.ok ? res.json() : []))
-      .then(async (addons: Array<{ id: string; name: string; enabled: boolean; catalogs: Array<{ type: string; id: string }> }>) => {
-        const catalogAddons = (addons || []).filter((a) => a.enabled && a.catalogs?.length > 0)
-        if (catalogAddons.length === 0) return
-        const orderedAddons = [...catalogAddons].sort((a, b) => {
-          const aHasVideo = a.catalogs.some((c) => c.type === 'movie' || c.type === 'series') ? 0 : 1
-          const bHasVideo = b.catalogs.some((c) => c.type === 'movie' || c.type === 'series') ? 0 : 1
-          return aHasVideo - bHasVideo
-        })
-        const lookups = orderedAddons.slice(0, 5).flatMap((addon) => {
-          const picks = [
-            addon.catalogs.find((c) => c.type === 'movie'),
-            addon.catalogs.find((c) => c.type === 'series'),
-          ].filter((c): c is { type: string; id: string } => Boolean(c))
-          const targets = picks.length > 0 ? picks : addon.catalogs.slice(0, 1)
-          return targets.map((cat) =>
-            fetch(
-              `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}`,
-            )
-              .then((r) => (r.ok ? r.json() : null))
-              .then((data) =>
-                (data?.metas || []).slice(0, 6).map((meta: { id: string; type: string; name: string; poster: string | null; releaseInfo: string | null; description?: string }) => ({
-                  ...meta,
-                  addonName: addon.name,
-                })),
-              )
-              .catch(() => []),
-          )
-        })
-        const chunks = await Promise.all(lookups)
-        if (!active) return
-        const interleaved: Array<{
-          id: string
-          type: string
-          name: string
-          poster: string | null
-          releaseInfo: string | null
-          description?: string
-          addonName: string
-        }> = []
-        const maxLen = Math.max(0, ...chunks.map((c) => c.length))
-        for (let i = 0; i < maxLen; i += 1) {
-          for (const chunk of chunks) {
-            if (chunk[i]) interleaved.push(chunk[i])
-          }
-        }
-        const seen = new Set<string>()
-        const merged = interleaved.filter((item) => {
-          if (!item.poster) return false
-          const key = `${item.type}:${item.id}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
-        setHomeTrendingOnline(merged.slice(0, 24))
-      })
-      .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [])
 
   useEffect(() => {
     refreshProfiles()
@@ -1118,12 +978,24 @@ export function App() {
                       entry.durationSec > 0
                         ? Math.min(100, Math.round((entry.positionSec / entry.durationSec) * 100))
                         : 0
-                    const cleanId = entry.contentKey.replace(/^addon:/, '')
+                    const rawKey = entry.contentKey || entry.mediaKey || entry.title
+                    const cleanId = rawKey.replace(/^addon:/, '')
+                    const isPlayableUrl = cleanId.startsWith('/api/') || /^https?:\/\//i.test(cleanId)
                     return (
                       <button
-                        key={`cont-online-${entry.contentKey}`}
+                        key={`cont-online-${rawKey}`}
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          if (isPlayableUrl) {
+                            setSelectedMedia({
+                              mediaId: '',
+                              title: entry.title,
+                              url: cleanId,
+                              poster: entry.poster || undefined,
+                              startPosition: entry.positionSec,
+                            })
+                            return
+                          }
                           setActiveAddonItem({
                             id: cleanId,
                             type: entry.type || 'movie',
@@ -1132,7 +1004,7 @@ export function App() {
                             description: '',
                             releaseInfo: null,
                           })
-                        }
+                        }}
                         className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)]/60 cursor-pointer"
                       >
                         <div className="relative aspect-[2/3] w-full bg-black/50">

@@ -1,4 +1,3 @@
-import Hls from 'hls.js'
 import { ArrowLeft, Check, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
@@ -336,12 +335,18 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   useEffect(() => {
     const video = videoRef.current
     if (!video || !playbackUrl.includes('.m3u8')) return
-    if (!Hls.isSupported()) return
-    const hls = new Hls()
-    hls.loadSource(playbackUrl)
-    hls.attachMedia(video)
+    let active = true
+    let hlsInstance: { destroy: () => void } | null = null
+    void import('hls.js').then(({ default: Hls }) => {
+      if (!active || !Hls.isSupported()) return
+      const hls = new Hls()
+      hlsInstance = hls
+      hls.loadSource(playbackUrl)
+      hls.attachMedia(video)
+    })
     return () => {
-      hls.destroy()
+      active = false
+      hlsInstance?.destroy()
     }
   }, [playbackUrl])
 
@@ -822,7 +827,7 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                       const infoHash = new URLSearchParams(qs).get('infoHash') || ''
                       if (!infoHash) return
                       setDownloadToast('Enviando para downloads...')
-                      const res = await fetch('/api/downloads/add', {
+                      const res = await fetch('/api/addons/download-local', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ infoHash, title: media.title }),
@@ -830,14 +835,14 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
                       const data = await res.json().catch(() => null)
                       setDownloadToast(
                         res.ok
-                          ? data?.status === 'queued_qbittorrent'
+                          ? data?.status === 'qbittorrent'
                             ? 'Enviado para o qBittorrent!'
                             : 'Download salvo na fila!'
                           : data?.error || 'Falha ao iniciar download.',
                       )
                     } else {
                       setDownloadToast('Adicionando à fila de download...')
-                      const res = await fetch('/api/downloads/add', {
+                      const res = await fetch('/api/addons/download-local', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: media.url, title: media.title }),
