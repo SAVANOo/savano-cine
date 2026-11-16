@@ -1,6 +1,7 @@
 import { ArrowLeft, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
+import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
 import { PlayerEpisodesDrawer } from './PlayerEpisodesDrawer'
 import { PlayerTrackMenu } from './PlayerTrackMenu'
 
@@ -73,6 +74,57 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
   })
   const [subtitleOffsetSec, setSubtitleOffsetSec] = useState(0)
   const [subtitleSize, setSubtitleSize] = useState<'sm' | 'md' | 'lg'>('md')
+  const [secondarySubtitleUrl, setSecondarySubtitleUrl] = useState('')
+  const [dualSubLayout, setDualSubLayout] = useState<'native-larger' | 'study-larger'>(() => {
+    try {
+      const saved = localStorage.getItem('sc_dual_sub_layout')
+      return saved === 'study-larger' ? 'study-larger' : 'native-larger'
+    } catch {
+      return 'native-larger'
+    }
+  })
+  const [dualSubColor, setDualSubColor] = useState<'amber' | 'cyan' | 'white'>(() => {
+    try {
+      const saved = localStorage.getItem('sc_dual_sub_color')
+      return saved === 'cyan' || saved === 'white' ? saved : 'amber'
+    } catch {
+      return 'amber'
+    }
+  })
+  const [primaryCues, setPrimaryCues] = useState<VttCue[]>([])
+  const [secondaryCues, setSecondaryCues] = useState<VttCue[]>([])
+
+  useEffect(() => {
+    if (!secondarySubtitleUrl || !selectedSubtitleUrl) return
+    let active = true
+    fetch(selectedSubtitleUrl)
+      .then((res) => (res.ok ? res.text() : ''))
+      .then((text) => {
+        if (active) setPrimaryCues(text ? parseWebVtt(text) : [])
+      })
+      .catch(() => {
+        if (active) setPrimaryCues([])
+      })
+    return () => {
+      active = false
+    }
+  }, [secondarySubtitleUrl, selectedSubtitleUrl])
+
+  useEffect(() => {
+    if (!secondarySubtitleUrl) return
+    let active = true
+    fetch(secondarySubtitleUrl)
+      .then((res) => (res.ok ? res.text() : ''))
+      .then((text) => {
+        if (active) setSecondaryCues(text ? parseWebVtt(text) : [])
+      })
+      .catch(() => {
+        if (active) setSecondaryCues([])
+      })
+    return () => {
+      active = false
+    }
+  }, [secondarySubtitleUrl])
   const [loadingAddonSubs, setLoadingAddonSubs] = useState(false)
   const [addonSubsNotice, setAddonSubsNotice] = useState('')
   const [torrentStats, setTorrentStats] = useState<{ numPeers: number; downloadSpeed: number; progress: number } | null>(null)
@@ -759,10 +811,79 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou se o FFmpeg está disponível.')
           }}
         >
-          {selectedSubtitleUrl && (
+          {selectedSubtitleUrl && !secondarySubtitleUrl && (
             <track kind="subtitles" label="Legenda" src={selectedSubtitleUrl} default />
           )}
         </video>
+
+        {secondarySubtitleUrl && (() => {
+          const syncTime = currentTime + subtitleOffsetSec
+          const primaryText = selectedSubtitleUrl ? findActiveCueText(primaryCues, syncTime) : ''
+          const studyText = findActiveCueText(secondaryCues, syncTime)
+          if (!primaryText && !studyText) return null
+          const studyColorClass =
+            dualSubColor === 'cyan'
+              ? 'text-cyan-200'
+              : dualSubColor === 'white'
+                ? 'text-white/90'
+                : 'text-amber-200'
+          const largerSizeClass =
+            subtitleSize === 'lg'
+              ? 'text-xl sm:text-3xl'
+              : subtitleSize === 'sm'
+                ? 'text-base sm:text-lg'
+                : 'text-lg sm:text-2xl'
+          const smallerSizeClass =
+            subtitleSize === 'lg'
+              ? 'text-sm sm:text-lg'
+              : subtitleSize === 'sm'
+                ? 'text-xs sm:text-sm'
+                : 'text-xs sm:text-base'
+          return (
+            <div
+              aria-live="off"
+              className={`pointer-events-none absolute inset-x-4 z-15 flex flex-col items-center gap-1.5 text-center transition-all ${
+                controlsVisible || isPaused ? 'bottom-28' : 'bottom-8'
+              }`}
+            >
+              {dualSubLayout === 'native-larger' ? (
+                <>
+                  {studyText && (
+                    <span
+                      className={`max-w-3xl whitespace-pre-line rounded bg-black/65 px-3 py-1 font-medium drop-shadow ${smallerSizeClass} ${studyColorClass}`}
+                    >
+                      {studyText}
+                    </span>
+                  )}
+                  {primaryText && (
+                    <span
+                      className={`max-w-3xl whitespace-pre-line rounded bg-black/75 px-3.5 py-1 font-bold text-white drop-shadow ${largerSizeClass}`}
+                    >
+                      {primaryText}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  {primaryText && (
+                    <span
+                      className={`max-w-3xl whitespace-pre-line rounded bg-black/65 px-3 py-1 font-medium text-white/90 drop-shadow ${smallerSizeClass}`}
+                    >
+                      {primaryText}
+                    </span>
+                  )}
+                  {studyText && (
+                    <span
+                      className={`max-w-3xl whitespace-pre-line rounded bg-black/75 px-3.5 py-1 font-bold drop-shadow ${largerSizeClass} ${studyColorClass}`}
+                    >
+                      {studyText}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })()}
 
         {seekToast && (
           <div className="pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/75 px-5 py-2 text-sm font-bold text-white backdrop-blur-md">
@@ -1186,6 +1307,9 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             audioStream={audioStream}
             subtitleStream={subtitleStream}
             selectedSubtitleUrl={selectedSubtitleUrl}
+            secondarySubtitleUrl={secondarySubtitleUrl}
+            dualSubLayout={dualSubLayout}
+            dualSubColor={dualSubColor}
             loadingAddonSubs={loadingAddonSubs}
             addonSubsNotice={addonSubsNotice}
             subtitleOffsetSec={subtitleOffsetSec}
@@ -1193,6 +1317,23 @@ export function VideoPlayer({ media, profileId, capabilities, onPlayNext, onClos
             onChangeAudio={changeAudioStream}
             onChangeEmbeddedSubtitle={changeSubtitleStream}
             onSelectExternalSubtitle={setSelectedSubtitleUrl}
+            onSelectSecondarySubtitle={setSecondarySubtitleUrl}
+            onChangeDualSubLayout={(layout) => {
+              setDualSubLayout(layout)
+              try {
+                localStorage.setItem('sc_dual_sub_layout', layout)
+              } catch {
+                // ignore
+              }
+            }}
+            onChangeDualSubColor={(color) => {
+              setDualSubColor(color)
+              try {
+                localStorage.setItem('sc_dual_sub_color', color)
+              } catch {
+                // ignore
+              }
+            }}
             onFetchAddonSubtitles={() => void fetchAddonSubtitlesInPlayer()}
             onAdjustSubtitleOffset={adjustSubtitleOffset}
             onChangeSubtitleSize={setSubtitleSize}

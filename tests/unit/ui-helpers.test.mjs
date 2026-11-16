@@ -7,6 +7,7 @@ import {
   translateGenre,
 } from '../../src/domain/uiHelpers.ts'
 import { extractStreamLanguages } from '../../src/domain/streamLanguages.ts'
+import { findActiveCueText, parseWebVtt } from '../../src/domain/vttParser.ts'
 
 test('translateGenre translates English genres to Portuguese', () => {
   assert.equal(translateGenre('Animation'), 'Animação')
@@ -65,4 +66,20 @@ test('extractStreamLanguages detects PT-BR, Dublado, Dual Audio and foreign flag
     extractStreamLanguages('Iron Man 2008 Rutracker ENG RUS'),
     ['🇺🇸 ENG', '🇷🇺 RUS'],
   )
+})
+
+test('parseWebVtt and findActiveCueText parse cues and match timestamps for dual subtitles', () => {
+  const sample = `WEBVTT
+
+00:00:01.000 --> 00:00:04.500
+<i>Olá mundo</i>
+
+00:00:05.000 --> 00:00:08.000
+Привет мир
+`
+  const cues = parseWebVtt(sample)
+  assert.equal(cues.length, 2)
+  assert.equal(findActiveCueText(cues, 2.5), 'Olá mundo')
+  assert.equal(findActiveCueText(cues, 6.2), 'Привет мир')
+  assert.equal(findActiveCueText(cues, 10), '')
 })

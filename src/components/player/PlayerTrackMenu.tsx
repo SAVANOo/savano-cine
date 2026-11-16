@@ -18,6 +18,9 @@ type PlayerTrackMenuProps = {
   audioStream: string
   subtitleStream: string
   selectedSubtitleUrl: string
+  secondarySubtitleUrl: string
+  dualSubLayout: 'native-larger' | 'study-larger'
+  dualSubColor: 'amber' | 'cyan' | 'white'
   loadingAddonSubs: boolean
   addonSubsNotice: string
   subtitleOffsetSec: number
@@ -25,6 +28,9 @@ type PlayerTrackMenuProps = {
   onChangeAudio: (value: string) => void
   onChangeEmbeddedSubtitle: (value: string) => void
   onSelectExternalSubtitle: (url: string) => void
+  onSelectSecondarySubtitle: (url: string) => void
+  onChangeDualSubLayout: (layout: 'native-larger' | 'study-larger') => void
+  onChangeDualSubColor: (color: 'amber' | 'cyan' | 'white') => void
   onFetchAddonSubtitles: () => void
   onAdjustSubtitleOffset: (deltaOrZero: number) => void
   onChangeSubtitleSize: (size: 'sm' | 'md' | 'lg') => void
@@ -41,9 +47,11 @@ function groupSubtitleTracks(tracks: SubtitleTrackItem[]) {
           ? 'Português'
           : rawCode === 'ENG' || rawCode === 'EN'
             ? 'English'
-            : rawCode === 'SPA' || rawCode === 'ES'
-              ? 'Español'
-              : track.label
+            : rawCode === 'RUS' || rawCode === 'RU'
+              ? 'Русский (Russo)'
+              : rawCode === 'SPA' || rawCode === 'ES'
+                ? 'Español'
+                : track.label
     const arr = groups.get(friendly) ?? []
     arr.push(track)
     groups.set(friendly, arr)
@@ -59,6 +67,9 @@ export function PlayerTrackMenu({
   audioStream,
   subtitleStream,
   selectedSubtitleUrl,
+  secondarySubtitleUrl,
+  dualSubLayout,
+  dualSubColor,
   loadingAddonSubs,
   addonSubsNotice,
   subtitleOffsetSec,
@@ -66,6 +77,9 @@ export function PlayerTrackMenu({
   onChangeAudio,
   onChangeEmbeddedSubtitle,
   onSelectExternalSubtitle,
+  onSelectSecondarySubtitle,
+  onChangeDualSubLayout,
+  onChangeDualSubColor,
   onFetchAddonSubtitles,
   onAdjustSubtitleOffset,
   onChangeSubtitleSize,
@@ -73,7 +87,7 @@ export function PlayerTrackMenu({
   const groupedSubtitles = groupSubtitleTracks(subtitleTracks)
 
   return (
-    <div className="absolute right-6 bottom-24 z-30 grid w-[min(92vw,440px)] grid-cols-2 gap-4 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
+    <div className="absolute right-6 bottom-24 z-30 grid max-h-[65vh] w-[min(92vw,480px)] grid-cols-2 gap-4 overflow-y-auto rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#14161f]/95 p-5 shadow-2xl backdrop-blur-xl">
       <div className="flex flex-col gap-1.5 border-r border-white/10 pr-3">
         <h4 className="m-0 mb-1 text-xs font-bold uppercase tracking-wider text-white">
           Idioma
@@ -237,22 +251,92 @@ export function PlayerTrackMenu({
           <div className="flex items-center justify-between gap-1">
             <span className="text-[10px] text-[var(--sc-text-muted)]">Tamanho:</span>
             <div className="flex items-center gap-1">
-              {(['sm', 'md', 'lg'] as const).map((sz) => (
-                <button
-                  key={sz}
-                  type="button"
-                  onClick={() => onChangeSubtitleSize(sz)}
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                    subtitleSize === sz ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {sz === 'sm' ? 'P' : sz === 'md' ? 'M' : 'G'}
-                </button>
-              ))}
+                  {(['sm', 'md', 'lg'] as const).map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => onChangeSubtitleSize(sz)}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        subtitleSize === sz ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                    >
+                      {sz === 'sm' ? 'P' : sz === 'md' ? 'M' : 'G'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {subtitleTracks.length > 0 && (
+                <div className="space-y-1.5 border-t border-white/10 pt-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    2ª Legenda (Estudo de Idioma)
+                    <select
+                      aria-label="Segunda legenda (idioma de estudo)"
+                      value={secondarySubtitleUrl}
+                      onChange={(e) => onSelectSecondarySubtitle(e.target.value)}
+                      className="mt-1 w-full rounded border border-white/15 bg-black/60 px-2 py-1 text-[11px] font-medium text-white outline-none focus:border-[var(--sc-accent)]"
+                    >
+                      <option value="">Desativada</option>
+                      {subtitleTracks.map((track, idx) => (
+                        <option key={`sec-${idx}-${track.url}`} value={track.url}>
+                          {track.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {secondarySubtitleUrl && (
+                    <>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-[var(--sc-text-muted)]">Maior:</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onChangeDualSubLayout('native-larger')}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              dualSubLayout === 'native-larger' ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            Nativa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onChangeDualSubLayout('study-larger')}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              dualSubLayout === 'study-larger' ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            Estudo
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-[var(--sc-text-muted)]">Cor 2ª:</span>
+                        <div className="flex items-center gap-1">
+                          {(
+                            [
+                              { key: 'amber', label: 'Âmbar' },
+                              { key: 'cyan', label: 'Ciano' },
+                              { key: 'white', label: 'Branco' },
+                            ] as const
+                          ).map((c) => (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => onChangeDualSubColor(c.key)}
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                dualSubColor === c.key ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                              }`}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
-    </div>
   )
 }
