@@ -51,7 +51,7 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
             className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-red-950/50 via-neutral-900 to-black" />
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-950/45 via-neutral-900 to-black" />
         )}
         <div className="absolute inset-0 bg-gradient-to-r from-[#08090d] via-[#08090d]/80 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-transparent to-black/30" />

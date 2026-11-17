@@ -410,7 +410,7 @@ export function Sidebar({
                 <span>Admin</span>
               </span>
               {adminBadgeCount > 0 && (
-                <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-bold text-red-200">
+                <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--sc-accent-hover)]">
                   {adminBadgeCount}
                 </span>
               )}

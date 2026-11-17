@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-lg bg-[#e50914] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#f40612] cursor-pointer"
+              className="rounded-lg bg-[var(--sc-accent,#f59e0b)] px-5 py-2.5 text-sm font-semibold text-[#090a0d] hover:bg-[var(--sc-accent-hover,#fbbf24)] cursor-pointer"
             >
               Recarregar
             </button>
