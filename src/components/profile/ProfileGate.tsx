@@ -2,6 +2,7 @@ import { Lock, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 import type { Profile } from '../../domain/catalog'
 import { getAvatarStyle } from '../../domain/uiHelpers'
+import { SavanoLogo } from '../ui/SavanoLogo'
 
 type ProfileGateProps = {
   profiles: Profile[]
@@ -43,9 +44,7 @@ export function ProfileGate({
 
       <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-8 text-center">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--sc-radius-md)] bg-gradient-to-br from-[#e50914] to-[#9b1c31] text-base font-black text-white shadow-lg">
-            S
-          </span>
+          <SavanoLogo size={38} className="shadow-lg" />
           <span className="text-lg font-bold tracking-tight text-white">Savano Cine</span>
         </div>
 
