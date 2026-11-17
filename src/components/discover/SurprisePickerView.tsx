@@ -1,5 +1,5 @@
 import { Flame, Ghost, Heart, Info, Laugh, Play, RefreshCw, Rocket, Shuffle, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import type { OnlineMetaDiscoveryItem } from '../../hooks/useOnlineCatalogDiscovery'
 import type { AddonMetaSummary } from '../addons/AddonStreamModal'
@@ -58,7 +58,7 @@ const MOODS: MoodOption[] = [
     id: 'scifi',
     label: 'Viagem & Mistério',
     subtitle: 'Ficção científica, fantasia e enigmas',
-    keywords: ['espacial', 'espaço', 'futuro', 'sci-fi', 'ficção', 'ficcao', 'mistério', 'misterio', 'fantasia', 'magia'],
+    keywords: ['espacial', 'espaço', 'futuro', 'sci-fi', 'ficção', 'ficcao', 'mistério', 'misterio', 'fantasia', 'magia', 'alienigena', 'alienígena', 'alien', 'extraterrestre', 'nave', 'planeta'],
     genres: ['Science Fiction', 'Sci-Fi', 'Fantasy', 'Mystery'],
     icon: Rocket,
     accentClass: 'from-cyan-500/25 to-blue-500/15 border-cyan-500/40',
@@ -107,8 +107,31 @@ export function SurprisePickerView({
   const [kindFilter, setKindFilter] = useState<'all' | 'movie' | 'series'>('all')
   const [unwatchedOnly, setUnwatchedOnly] = useState(true)
   const [rolling, setRolling] = useState(false)
+  const [onlinePromptResults, setOnlinePromptResults] = useState<OnlineMetaDiscoveryItem[]>([])
   const [currentPick, setCurrentPick] = useState<PickCandidate | null>(null)
   const [history, setHistory] = useState<PickCandidate[]>([])
+
+  useEffect(() => {
+    const q = promptText.trim()
+    if (q.length < 2 || sourceScope === 'local') {
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      fetch(`/api/addons/search?q=${encodeURIComponent(q)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { results?: OnlineMetaDiscoveryItem[] } | null) => {
+          if (!cancelled && Array.isArray(data?.results)) {
+            setOnlinePromptResults(data.results)
+          }
+        })
+        .catch(() => undefined)
+    }, 250)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [promptText, sourceScope])
 
   const selectedMood = MOODS.find((m) => m.id === selectedMoodId) ?? MOODS[0]
 
@@ -151,22 +174,35 @@ export function SurprisePickerView({
     }
 
     if (sourceScope !== 'local') {
-      for (const item of onlineTrending) {
+      const mergedOnline = new Map<string, OnlineMetaDiscoveryItem>()
+      const activeOnline = promptText.trim().length >= 2 && onlinePromptResults.length > 0
+        ? [...onlinePromptResults, ...onlineTrending]
+        : onlineTrending
+      for (const item of activeOnline) {
+        const key = `${item.type}:${item.id}`
+        if (!mergedOnline.has(key)) mergedOnline.set(key, item)
+      }
+      for (const item of mergedOnline.values()) {
         if (kindFilter === 'movie' && item.type !== 'movie') continue
         if (kindFilter === 'series' && item.type === 'movie') continue
         const textBlob = normalize(`${item.name} ${item.description || ''} ${item.addonName}`)
         let score = 2
         for (const word of queryWords) {
-          if (textBlob.includes(word)) score += 4
+          if (textBlob.includes(word)) score += 6
         }
         if (item.poster) score += 2
         pool.push({ candidate: { source: 'online', key: `online:${item.type}:${item.id}`, item }, score })
       }
     }
 
-    const best = pool.filter((entry) => entry.score >= 5)
-    return (best.length >= 3 ? best : pool).map((entry) => entry.candidate)
-  }, [kindFilter, localCatalog, onlineTrending, promptText, selectedMood, sourceScope, unwatchedOnly])
+    const sorted = [...pool].sort((a, b) => b.score - a.score)
+    if (queryWords.length > 0) {
+      const exactMatches = sorted.filter((entry) => entry.score >= 8)
+      if (exactMatches.length > 0) return exactMatches.map((entry) => entry.candidate)
+    }
+    const best = sorted.filter((entry) => entry.score >= 5)
+    return (best.length >= 1 ? best : sorted).map((entry) => entry.candidate)
+  }, [kindFilter, localCatalog, onlinePromptResults, onlineTrending, promptText, selectedMood, sourceScope, unwatchedOnly])
 
   function rollSuggestion() {
     if (candidates.length === 0) {
@@ -199,7 +235,7 @@ export function SurprisePickerView({
           </p>
         </div>
         <span className="rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1 text-xs font-semibold text-[var(--sc-text-secondary)]">
-          {candidates.length} opção(ões) no sorteio
+          {candidates.length} sugestão(ões) encontrada(s)
         </span>
       </div>
 
