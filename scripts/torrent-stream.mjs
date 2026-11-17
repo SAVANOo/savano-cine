@@ -115,6 +115,74 @@ function getMimeType(filename) {
   return 'video/mp4'
 }
 
+/** Probes the first 2MB of a torrent video file to pick Portuguese > English > first audio stream. */
+async function pickPreferredTorrentAudioMap(file) {
+  return await new Promise((resolve) => {
+    const fallback = '0:a:0?'
+    let settled = false
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        probeStream?.destroy()
+        ffprobeProc?.kill('SIGTERM')
+      } catch {
+        // ignore
+      }
+      finish(fallback)
+    }, 1800)
+    timer.unref?.()
+
+    const maxBytes = Math.min(Math.max(file.length - 1, 0), 2 * 1024 * 1024)
+    const probeStream = file.createReadStream({ start: 0, end: maxBytes })
+    const ffprobeProc = spawn(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'stream=index,codec_type:stream_tags=language,title', '-of', 'json', '-i', 'pipe:0'],
+      { windowsHide: true },
+    )
+
+    let stdout = ''
+    ffprobeProc.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8')
+    })
+    ffprobeProc.on('error', () => {
+      clearTimeout(timer)
+      probeStream.destroy()
+      finish(fallback)
+    })
+    ffprobeProc.on('close', () => {
+      clearTimeout(timer)
+      probeStream.destroy()
+      try {
+        const parsed = JSON.parse(stdout)
+        const audioStreams = (parsed.streams || []).filter((s) => s.codec_type === 'audio')
+        if (audioStreams.length === 0) return finish(fallback)
+        const scoreStream = (s) => {
+          const lang = String(s.tags?.language || '').toLowerCase()
+          const title = String(s.tags?.title || '').toLowerCase()
+          if (/^(por|pt|pt-br|pob|bra)$/.test(lang) || /portugu|brasil|brazil|dublado/.test(title)) return 3
+          if (/^(eng|en)$/.test(lang) || /english|ingl/.test(title)) return 2
+          if (/^(rus|ru)$/.test(lang) || /russ/.test(title)) return 0
+          return 1
+        }
+        const best = [...audioStreams].sort((a, b) => scoreStream(b) - scoreStream(a))[0]
+        finish(best && Number.isInteger(best.index) ? `0:${best.index}` : fallback)
+      } catch {
+        finish(fallback)
+      }
+    })
+    probeStream.on('error', () => {
+      clearTimeout(timer)
+      finish(fallback)
+    })
+    probeStream.pipe(ffprobeProc.stdin)
+  })
+}
+
 export async function getTorrentStatus(infoHash) {
   const key = String(infoHash || '').trim().toLowerCase()
   if (!isValidInfoHash(key)) return null
@@ -168,6 +236,7 @@ export async function serveTorrentStream(request, response, { infoHash, fileIdx 
 
   const needsTranscode = !raw && TRANSCODE_EXT_RE.test(file.name)
   if (needsTranscode) {
+    const preferredAudioMap = await pickPreferredTorrentAudioMap(file)
     response.writeHead(200, {
       'Content-Type': 'video/mp4',
       'Cache-Control': 'no-store',
@@ -181,6 +250,10 @@ export async function serveTorrentStream(request, response, { infoHash, fileIdx 
         'error',
         '-i',
         'pipe:0',
+        '-map',
+        '0:v:0',
+        '-map',
+        preferredAudioMap,
         '-c:v',
         'copy',
         '-c:a',

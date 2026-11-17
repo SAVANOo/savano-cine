@@ -1,7 +1,7 @@
 import { Download, ExternalLink, HardDrive, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
-import type { PlayableMedia } from '../../domain/uiHelpers'
+import { parseRuntimeToSeconds, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
@@ -428,6 +428,7 @@ function AddonStreamModalContent({
                               mediaId: '',
                               title: `${streamTargetLabel} (${stream.addonName})`,
                               url: stream.url!,
+                              duration: parseRuntimeToSeconds(detail.runtime),
                               overview: detail.description,
                               externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                                 label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
@@ -464,6 +465,7 @@ function AddonStreamModalContent({
                               mediaId: '',
                               title: `${streamTargetLabel} (${stream.addonName})`,
                               url: `/api/addons/torrent-stream?${params.toString()}`,
+                              duration: parseRuntimeToSeconds(detail.runtime),
                               overview: detail.description,
                               externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                                 label: `${sub.lang.toUpperCase()} (${sub.addonName})`,

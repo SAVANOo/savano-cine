@@ -146,11 +146,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [isLoadingMedia, setIsLoadingMedia] = useState(true)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
+  const initialDuration = media.duration && media.duration > 2 ? media.duration : 0
   const [currentTime, setCurrentTime] = useState(initialTranscode ? initialStart : 0)
-  const [duration, setDuration] = useState(0)
+  const [duration, setDuration] = useState(initialDuration)
   const [, setTranscodeOffset] = useState(initialTranscode ? initialStart : 0)
   const transcodeOffsetRef = useRef(initialTranscode ? initialStart : 0)
-  const totalDurationRef = useRef(0)
+  const totalDurationRef = useRef(initialDuration)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const prefsKey = `savano-cine-player-prefs:${profileId}`
@@ -668,8 +669,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
 
   const syncMeasuredDuration = (video: HTMLVideoElement) => {
     if (playbackUrl.includes('/transcode')) return
+    const isLiveTorrent = playbackUrl.includes('/api/addons/torrent-stream')
     let measured = Number.isFinite(video.duration) && video.duration > 2 ? video.duration : 0
-    if (!measured && video.seekable && video.seekable.length > 0) {
+    if (!measured && !isLiveTorrent && video.seekable && video.seekable.length > 0) {
       const end = video.seekable.end(video.seekable.length - 1)
       if (Number.isFinite(end) && end > 2) measured = end
     }

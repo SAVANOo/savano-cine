@@ -241,3 +241,20 @@ export function getRelatedItems(target: LibraryItem, library: LibraryItem[], lim
     .map((entry) => entry.candidate)
 }
 
+/** Parses addon runtime strings like "22 min", "1h 45m", or "110" into seconds. */
+export function parseRuntimeToSeconds(runtime?: string): number | undefined {
+  if (!runtime) return undefined
+  const text = runtime.trim().toLowerCase()
+  if (!text) return undefined
+  let totalMinutes = 0
+  const hourMatch = text.match(/(\d+)\s*h/)
+  const minMatch = text.match(/(\d+)\s*m(?:in)?/)
+  if (hourMatch) totalMinutes += Number(hourMatch[1]) * 60
+  if (minMatch) totalMinutes += Number(minMatch[1])
+  if (!hourMatch && !minMatch) {
+    const plain = text.match(/\b(\d{1,4})\b/)
+    if (plain) totalMinutes = Number(plain[1])
+  }
+  return totalMinutes > 0 ? totalMinutes * 60 : undefined
+}
+

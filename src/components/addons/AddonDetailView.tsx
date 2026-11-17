@@ -2,7 +2,7 @@ import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Tv } from 'lu
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import { extractStreamLanguages } from '../../domain/streamLanguages'
-import type { PlayableMedia } from '../../domain/uiHelpers'
+import { parseRuntimeToSeconds, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { SavanoLoader } from '../ui/SavanoLoader'
@@ -416,12 +416,14 @@ export function AddonDetailView({
                 const canPlayDirect = Boolean(stream.isDirectHttp && stream.url)
                 const canPlayTorrent = Boolean(stream.infoHash)
                 const isPlayable = canPlayDirect || canPlayTorrent
+                const runtimeSeconds = parseRuntimeToSeconds(detail.runtime)
                 const startPlay = () => {
                   if (canPlayDirect) {
                     onPlayStream({
                       mediaId: '',
                       title: `${streamTargetLabel} (${stream.addonName})`,
                       url: stream.url!,
+                      duration: runtimeSeconds,
                       poster: detail.poster || undefined,
                       overview: detail.description,
                       externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
@@ -438,6 +440,7 @@ export function AddonDetailView({
                       mediaId: '',
                       title: `${streamTargetLabel} (${stream.addonName})`,
                       url: `/api/addons/torrent-stream?${params.toString()}`,
+                      duration: runtimeSeconds,
                       poster: detail.poster || undefined,
                       overview: detail.description,
                       externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
