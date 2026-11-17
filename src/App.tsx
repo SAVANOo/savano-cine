@@ -978,6 +978,7 @@ export function App() {
               show={selectedShow}
               library={catalog}
               profileId={activeProfile.id}
+              isAdmin={Boolean(activeProfile.isAdmin)}
               onBack={() => setSelectedShow(null)}
               onPlayMedia={(media) => setSelectedMedia(media)}
               onPlayItem={playLibraryItem}

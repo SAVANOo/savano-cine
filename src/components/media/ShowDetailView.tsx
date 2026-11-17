@@ -14,6 +14,7 @@ type ShowDetailViewProps = {
   show: LibraryItem
   library: LibraryItem[]
   profileId: string
+  isAdmin?: boolean
   onBack: () => void
   onPlayMedia: (media: PlayableMedia) => void
   onPlayItem: (item: LibraryItem) => void
@@ -30,6 +31,7 @@ export function ShowDetailView({
   show,
   library,
   profileId,
+  isAdmin = false,
   onBack,
   onPlayMedia,
   onPlayItem,
@@ -293,10 +295,16 @@ export function ShowDetailView({
                 <Pencil className="h-4 w-4" />
                 Editar
               </Button>
-              {show.kind === 'Filme' && show.mediaId && (
-                <Button variant="ghost" size="md" disabled={saving} onClick={() => void archiveItem()}>
+              {isAdmin && show.kind === 'Filme' && show.mediaId && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  disabled={saving}
+                  title="Ocultar este título da biblioteca (Admin: pode ser restaurado em Revisão -> Ignorados)"
+                  onClick={() => void archiveItem()}
+                >
                   <Archive className="h-4 w-4" />
-                  Arquivar
+                  Ocultar (Admin)
                 </Button>
               )}
             </div>
