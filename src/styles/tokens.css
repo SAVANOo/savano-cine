@@ -76,15 +76,15 @@
 
   --sc-border-subtle: rgba(17, 19, 26, 0.11);
   --sc-border-strong: rgba(17, 19, 26, 0.22);
-  --sc-border-focus: rgba(217, 4, 41, 0.72);
+  --sc-border-focus: rgba(217, 119, 6, 0.72);
 
   --sc-text-primary: #11131a;
   --sc-text-secondary: #434a5c;
   --sc-text-muted: #666e82;
 
-  --sc-accent: #d90429;
-  --sc-accent-hover: #ef233c;
-  --sc-accent-soft: rgba(217, 4, 41, 0.14);
+  --sc-accent: #d97706;
+  --sc-accent-hover: #b45309;
+  --sc-accent-soft: rgba(217, 119, 6, 0.16);
   --sc-shadow-card: 0 10px 24px rgba(17, 19, 26, 0.08);
 }
 

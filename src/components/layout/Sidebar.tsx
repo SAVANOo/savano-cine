@@ -165,17 +165,30 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Desktop Reopen Hamburger when Sidebar is collapsed */}
+      {/* Desktop Reopen Slim Rail when Sidebar is collapsed (hover or click to expand, never overlaps search) */}
       {desktopCollapsed && (
-        <button
-          type="button"
-          onClick={() => setDesktopCollapsed(false)}
-          aria-label="Abrir menu lateral"
-          title="Abrir menu lateral"
-          className="fixed top-4 left-4 z-40 hidden h-10 w-10 items-center justify-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] text-[var(--sc-text-primary)] shadow-lg hover:border-[var(--sc-accent)] lg:flex cursor-pointer"
+        <div
+          onMouseEnter={() => setDesktopCollapsed(false)}
+          className="hidden lg:flex lg:w-14 lg:shrink-0 lg:flex-col lg:items-center lg:gap-4 lg:border-r lg:border-[var(--sc-border-subtle)] lg:bg-[var(--sc-bg-elevated)] lg:py-5"
         >
-          <Menu className="h-5 w-5" />
-        </button>
+          <button
+            type="button"
+            onClick={() => setDesktopCollapsed(false)}
+            aria-label="Abrir menu lateral"
+            title="Abrir menu lateral"
+            className="flex h-10 w-10 items-center justify-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)] cursor-pointer"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onGoHome}
+            title="Voltar para o início"
+            className="border-0 bg-transparent p-0 cursor-pointer"
+          >
+            <SavanoLogo size={32} />
+          </button>
+        </div>
       )}
 
       {/* Mobile Drawer Backdrop */}
@@ -188,7 +201,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 transition-transform duration-200 lg:static lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:translate-x-0 lg:p-4 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 lg:p-4 ${
           mobileDrawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         } ${desktopCollapsed ? 'lg:hidden' : 'lg:flex'}`}
       >
