@@ -1,9 +1,11 @@
 import { Download, ExternalLink, HardDrive, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
+import { extractStreamLanguages } from '../../domain/streamLanguages'
 import { parseRuntimeToSeconds, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
 import { Modal } from '../ui/Modal'
 
 function normalizeMatchTitle(value: string): string {
@@ -385,6 +387,9 @@ function AddonStreamModalContent({
                           <p className="text-xs font-semibold text-[var(--sc-text-primary)]">
                             {stream.addonName} · {stream.name}
                           </p>
+                          {extractStreamLanguages(`${stream.name} ${stream.title}`).map((badge) => (
+                            <LanguageFlagBadge key={badge} label={badge} />
+                          ))}
                           {typeof stream.seeders === 'number' ? (
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${

@@ -1,10 +1,12 @@
-import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Tv } from 'lucide-react'
+import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Subtitles, Tv } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import { extractStreamLanguages } from '../../domain/streamLanguages'
 import { parseRuntimeToSeconds, translateGenre, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
+import { Modal } from '../ui/Modal'
 import { SavanoLoader } from '../ui/SavanoLoader'
 import type { AddonMetaSummary } from './AddonStreamModal'
 
@@ -67,6 +69,7 @@ export function AddonDetailView({
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string>('')
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(() => new Set())
   const [downloadStatus, setDownloadStatus] = useState('')
+  const [subtitlesModalOpen, setSubtitlesModalOpen] = useState(false)
   const [error, setError] = useState('')
 
   const matchedLocalItem = useMemo(() => {
@@ -355,11 +358,11 @@ export function AddonDetailView({
               )}
             </>
           ) : (
-            <>
+            <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="m-0 flex items-center gap-2 text-base font-bold text-[var(--sc-text-primary)]">
                   <Film className="h-4 w-4 text-[var(--sc-accent)]" />
-                  Legendas encontradas ({subtitles.length})
+                  Informações do Filme
                 </h2>
                 <Button
                   type="button"
@@ -371,25 +374,31 @@ export function AddonDetailView({
                   {loadingStreams ? 'Atualizando...' : 'Atualizar fontes'}
                 </Button>
               </div>
-              {subtitles.length === 0 ? (
-                <p className="text-xs text-[var(--sc-text-secondary)]">
-                  {loadingStreams ? 'Buscando legendas nos addons...' : 'Nenhuma legenda externa retornada para este filme.'}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {subtitles.slice(0, 16).map((sub, idx) => (
-                    <a
-                      key={`${sub.addonId}-${sub.id}-${idx}`}
-                      href={`/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}&download=1&filename=${encodeURIComponent(`${detail.name}-${sub.lang}.srt`)}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
-                    >
-                      <Download className="h-3.5 w-3.5 text-[var(--sc-accent)]" />
-                      {sub.lang.toUpperCase()} · {sub.addonName}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </>
+              <p className="m-0 text-sm leading-relaxed text-[var(--sc-text-secondary)]">
+                {detail.description || 'Sinopse indisponível para este título nos metadados atuais.'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {detail.releaseInfo ? <Badge tone="neutral">Ano: {detail.releaseInfo}</Badge> : null}
+                {detail.runtime ? <Badge tone="neutral">Duração: {detail.runtime}</Badge> : null}
+                {detail.genres?.slice(0, 4).map((g) => (
+                  <Badge key={`info-${g}`} tone="neutral">{translateGenre(g)}</Badge>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={subtitles.length === 0 && !loadingStreams}
+                  onClick={() => setSubtitlesModalOpen(true)}
+                >
+                  <Subtitles className="h-4 w-4" />
+                  {loadingStreams
+                    ? 'Buscando legendas...'
+                    : `Baixar legendas (${subtitles.length})`}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -474,16 +483,7 @@ export function AddonDetailView({
                           {stream.addonName} · {stream.name}
                         </p>
                         {langBadges.map((badge) => (
-                          <span
-                            key={badge}
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              badge.includes('🇧🇷') || badge.includes('Dual')
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : 'bg-white/10 text-[var(--sc-text-primary)]'
-                            }`}
-                          >
-                            {badge}
-                          </span>
+                          <LanguageFlagBadge key={badge} label={badge} />
                         ))}
                         {typeof stream.seeders === 'number' ? (
                           <span
@@ -587,6 +587,31 @@ export function AddonDetailView({
           ) : null}
         </div>
       </div>
+
+      <Modal
+        open={subtitlesModalOpen}
+        onClose={() => setSubtitlesModalOpen(false)}
+        title={`Legendas disponíveis · ${detail.name}`}
+      >
+        {subtitles.length === 0 ? (
+          <p className="m-0 text-xs text-[var(--sc-text-secondary)]">
+            Nenhuma legenda externa encontrada nos addons para este título.
+          </p>
+        ) : (
+          <div className="flex max-h-[380px] flex-wrap gap-2 overflow-y-auto pr-1">
+            {subtitles.slice(0, 32).map((sub, idx) => (
+              <a
+                key={`modal-${sub.addonId}-${sub.id}-${idx}`}
+                href={`/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}&download=1&filename=${encodeURIComponent(`${detail.name}-${sub.lang}.srt`)}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+              >
+                <Download className="h-3.5 w-3.5 text-[var(--sc-accent)]" />
+                {sub.lang.toUpperCase()} · {sub.addonName}
+              </a>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
