@@ -3155,6 +3155,30 @@ function reconcileMisclassifiedEpisodes() {
       }
     }
 
+    // Reclassify movies under "Marvel" folder falsely parsed as episodes (e.g. "5.1" audio -> S5E1)
+    const marvelEps = database.prepare(`
+      SELECT e.id AS episodeId, e.season_id AS seasonId, m.id AS mediaId
+      FROM episodes e
+      JOIN seasons s ON s.id = e.season_id
+      JOIN shows sh ON sh.id = s.show_id
+      JOIN media_items m ON m.id = e.media_item_id
+      WHERE sh.id = 'show-marvel' OR lower(sh.title) = 'marvel'
+    `).all()
+    if (marvelEps.length > 0) {
+      const delEp = database.prepare(`DELETE FROM episodes WHERE id = ?`)
+      const markMovie = database.prepare(`
+        UPDATE media_items
+        SET kind = 'movie', classification_status = 'approved', classification_reason = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `)
+      for (const row of marvelEps) {
+        delEp.run(row.episodeId)
+        markMovie.run(row.mediaId)
+      }
+      database.prepare(`DELETE FROM seasons WHERE id NOT IN (SELECT DISTINCT season_id FROM episodes)`).run()
+      database.prepare(`DELETE FROM shows WHERE id NOT IN (SELECT DISTINCT show_id FROM seasons)`).run()
+    }
+
     const southParkShow = database.prepare("SELECT id FROM shows WHERE lower(title) LIKE '%south park%' LIMIT 1").get()
     if (!southParkShow?.id) return
     const rows = database.prepare(`
