@@ -22,6 +22,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { MediaSource, Profile } from '../../domain/catalog'
 import { getAvatarStyle } from '../../domain/uiHelpers'
+import { SavanoLogo } from '../ui/SavanoLogo'
 
 type SidebarProps = {
   sources: MediaSource[]
@@ -129,8 +130,8 @@ export function Sidebar({
           title="Voltar para o início"
           className="flex items-center gap-2.5 border-0 bg-transparent p-0 text-left cursor-pointer"
         >
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--sc-radius-md)] bg-gradient-to-br from-[#e50914] to-[#9b1c31] text-base font-black text-white shadow-lg shadow-red-950/30">
-            S
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+            <SavanoLogo size={36} className="shadow-lg shadow-amber-950/30" />
             {theme === 'momolada' && (
               <svg
                 viewBox="0 0 24 14"

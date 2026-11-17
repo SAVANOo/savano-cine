@@ -80,5 +80,88 @@ select,
 :focus-visible {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.45);
+  box-shadow: 0 0 0 4px var(--sc-border-focus);
+}
+
+@keyframes scSnakeCrawl {
+  0% {
+    stroke-dasharray: 26 160;
+    stroke-dashoffset: 30;
+    opacity: 1;
+  }
+  52% {
+    stroke-dasharray: 26 160;
+    stroke-dashoffset: -92;
+    opacity: 1;
+  }
+  66%,
+  90% {
+    stroke-dasharray: 125 160;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dasharray: 26 160;
+    stroke-dashoffset: 30;
+    opacity: 0.4;
+  }
+}
+
+@keyframes scSnakeApple {
+  0%,
+  48% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  54% {
+    transform: scale(1.45);
+    opacity: 1;
+  }
+  60%,
+  92% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes scSnakePlay {
+  0%,
+  56% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  68% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+  76%,
+  88% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  98%,
+  100% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+
+.sc-snake-crawl {
+  animation: scSnakeCrawl 3.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.sc-snake-apple {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: scSnakeApple 3.4s ease-in-out infinite;
+}
+
+.sc-snake-play {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: scSnakePlay 3.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }

@@ -1,9 +1,11 @@
+import { SavanoLogo } from './SavanoLogo'
+
 type SavanoLoaderProps = {
   label?: string
   fullscreen?: boolean
 }
 
-/** Branded Savano Cine pulsing S emblem loader for profile switches and online lookups. */
+/** Branded Savano Cine animated snake-to-play emblem loader. */
 export function SavanoLoader({ label = 'Carregando...', fullscreen = false }: SavanoLoaderProps) {
   return (
     <div
@@ -16,10 +18,8 @@ export function SavanoLoader({ label = 'Carregando...', fullscreen = false }: Sa
       }
     >
       <div className="relative flex h-16 w-16 items-center justify-center">
-        <span className="absolute inset-0 animate-ping rounded-2xl bg-[var(--sc-accent)]/30" />
-        <span className="relative flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-gradient-to-br from-[#e50914] to-[#9b1c31] text-2xl font-black text-white shadow-xl">
-          S
-        </span>
+        <span className="absolute inset-0 animate-ping rounded-2xl bg-[var(--sc-accent)]/25" />
+        <SavanoLogo size={60} animated className="relative shadow-xl" />
       </div>
       <p className="m-0 text-xs font-semibold tracking-wide text-[var(--sc-text-secondary)]">{label}</p>
     </div>
