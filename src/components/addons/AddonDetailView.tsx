@@ -2,7 +2,7 @@ import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Tv } from 'lu
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import { extractStreamLanguages } from '../../domain/streamLanguages'
-import { parseRuntimeToSeconds, type PlayableMedia } from '../../domain/uiHelpers'
+import { parseRuntimeToSeconds, translateGenre, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { SavanoLoader } from '../ui/SavanoLoader'
@@ -232,7 +232,7 @@ export function AddonDetailView({
               <Badge tone="accent">{detail.type === 'series' ? 'Série Online' : 'Filme Online'}</Badge>
               {detail.releaseInfo ? <Badge tone="neutral">{detail.releaseInfo}</Badge> : null}
               {detail.genres?.slice(0, 4).map((g) => (
-                <Badge key={g} tone="neutral">{g}</Badge>
+                <Badge key={g} tone="neutral">{translateGenre(g)}</Badge>
               ))}
             </div>
             <h1 className="m-0 text-2xl font-black tracking-tight text-white sm:text-4xl">

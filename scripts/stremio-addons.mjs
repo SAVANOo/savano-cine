@@ -272,6 +272,92 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   return result
 }
 
+const ptBrMetaCache = new Map()
+
+async function translateTextChunk(text) {
+  const clean = String(text || '').trim()
+  if (!clean) return ''
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(clean)}`
+  const res = await fetch(url, { signal: AbortSignal.timeout(2500) })
+  if (!res.ok) return clean
+  const data = await res.json().catch(() => null)
+  if (!Array.isArray(data?.[0])) return clean
+  return data[0].map((part) => (Array.isArray(part) ? String(part[0] || '') : '')).join('') || clean
+}
+
+async function localizeMetaToPtBr(metaObj) {
+  if (!metaObj || !metaObj.id) return metaObj
+  const cacheKey = `${metaObj.type}:${metaObj.id}`
+  if (ptBrMetaCache.has(cacheKey)) return ptBrMetaCache.get(cacheKey)
+
+  try {
+    const videos = Array.isArray(metaObj.videos) ? metaObj.videos : []
+    const epSample = videos.slice(0, 40)
+    const SEP = '\n[[[SC_SEP]]]\n'
+    const parts = [
+      metaObj.description || '',
+      ...epSample.map((v) => v.title || ''),
+      ...epSample.map((v) => v.overview || ''),
+    ]
+    const joined = parts.join(SEP)
+    let translatedParts = parts
+    if (joined.trim().length > 0 && joined.length <= 12000) {
+      const translated = await translateTextChunk(joined)
+      const split = translated.split(/\s*\[\[\[SC_SEP\]\]\]\s*/)
+      if (split.length === parts.length) {
+        translatedParts = split
+      }
+    } else if (metaObj.description) {
+      translatedParts[0] = await translateTextChunk(metaObj.description)
+    }
+
+    const localized = {
+      ...metaObj,
+      description: translatedParts[0] || metaObj.description,
+      videos: videos.map((v, idx) => {
+        if (idx >= epSample.length) return v
+        return {
+          ...v,
+          title: translatedParts[1 + idx]?.trim() || v.title,
+          overview: translatedParts[1 + epSample.length + idx]?.trim() || v.overview,
+        }
+      }),
+    }
+    ptBrMetaCache.set(cacheKey, localized)
+    if (ptBrMetaCache.size > 200) {
+      const firstKey = ptBrMetaCache.keys().next().value
+      if (firstKey) ptBrMetaCache.delete(firstKey)
+    }
+    return localized
+  } catch {
+    return metaObj
+  }
+}
+
+function normalizeMetaPayload(meta, type, metaId) {
+  return {
+    id: String(meta.id || metaId),
+    type: String(meta.type || type),
+    name: String(meta.name || 'Sem título'),
+    poster: typeof meta.poster === 'string' ? meta.poster : null,
+    background: typeof meta.background === 'string' ? meta.background : null,
+    description: typeof meta.description === 'string' ? meta.description : '',
+    releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
+    runtime: meta.runtime ? String(meta.runtime) : null,
+    genres: Array.isArray(meta.genres) ? meta.genres : [],
+    videos: Array.isArray(meta.videos)
+      ? meta.videos.map((v) => ({
+          id: String(v.id || ''),
+          title: String(v.title || v.name || `Episódio ${v.episode ?? ''}`),
+          season: typeof v.season === 'number' ? v.season : null,
+          episode: typeof v.episode === 'number' ? v.episode : null,
+          thumbnail: typeof v.thumbnail === 'string' ? v.thumbnail : null,
+          overview: typeof v.overview === 'string' ? v.overview : '',
+        }))
+      : [],
+  }
+}
+
 export async function fetchAddonMeta(database, addonId, { type, metaId }) {
   ensureStremioAddonsTable(database)
   const addon = serializeAddonRow(database.prepare('SELECT * FROM stremio_addons WHERE id = ?').get(addonId))
@@ -290,26 +376,7 @@ export async function fetchAddonMeta(database, addonId, { type, metaId }) {
   const payload = await response.json().catch(() => ({}))
   const meta = payload?.meta
   if (!meta) return null
-  return {
-    id: String(meta.id || metaId),
-    type: String(meta.type || type),
-    name: String(meta.name || 'Sem título'),
-    poster: typeof meta.poster === 'string' ? meta.poster : null,
-    background: typeof meta.background === 'string' ? meta.background : null,
-    description: typeof meta.description === 'string' ? meta.description : '',
-    releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
-    genres: Array.isArray(meta.genres) ? meta.genres : [],
-    videos: Array.isArray(meta.videos)
-      ? meta.videos.map((v) => ({
-          id: String(v.id || ''),
-          title: String(v.title || v.name || `Episódio ${v.episode ?? ''}`),
-          season: typeof v.season === 'number' ? v.season : null,
-          episode: typeof v.episode === 'number' ? v.episode : null,
-          thumbnail: typeof v.thumbnail === 'string' ? v.thumbnail : null,
-          overview: typeof v.overview === 'string' ? v.overview : '',
-        }))
-      : [],
-  }
+  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
 }
 
 function isSafeHttpUrl(candidate) {
@@ -497,24 +564,5 @@ export async function fetchFallbackMeta(type, metaId) {
   const payload = await response.json().catch(() => ({}))
   const meta = payload?.meta
   if (!meta) return null
-  return {
-    id: String(meta.id || metaId),
-    type: String(meta.type || type),
-    name: String(meta.name || 'Sem título'),
-    poster: typeof meta.poster === 'string' ? meta.poster : null,
-    background: typeof meta.background === 'string' ? meta.background : null,
-    description: typeof meta.description === 'string' ? meta.description : '',
-    releaseInfo: meta.releaseInfo ? String(meta.releaseInfo) : null,
-    genres: Array.isArray(meta.genres) ? meta.genres : [],
-    videos: Array.isArray(meta.videos)
-      ? meta.videos.map((v) => ({
-          id: String(v.id || ''),
-          title: String(v.title || v.name || `Episódio ${v.episode ?? ''}`),
-          season: typeof v.season === 'number' ? v.season : null,
-          episode: typeof v.episode === 'number' ? v.episode : null,
-          thumbnail: typeof v.thumbnail === 'string' ? v.thumbnail : null,
-          overview: typeof v.overview === 'string' ? v.overview : '',
-        }))
-      : [],
-  }
+  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
 }
