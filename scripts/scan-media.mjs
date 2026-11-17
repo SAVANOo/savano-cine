@@ -292,6 +292,7 @@ function normalizeSegment(value) {
 
 function cleanTitle(value) {
   let cleaned = String(value || '')
+    .replace(/^(?:\[[^\]]*\]\s*|(?:www\.)?(?:comando(?:\.?to)?|comandotorrents(?:\.com)?|bludv(?:\.tv)?|lapumia|torrentdosfilmes(?:\.to)?)\s*[-–—:]\s*)+/gi, '')
     .replace(/\((?:www\.|https?:\/\/)[^)]*\)?/gi, '')
     .replace(/\(\s*www\b.*$/gi, '')
     .replace(/\[[^\]]*\]/g, '')
