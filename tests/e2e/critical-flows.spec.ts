@@ -111,14 +111,24 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(page.getByRole('heading', { name: 'Séries', exact: true })).toBeVisible()
   })
 
-  test('Alternador de temas aplica Escuro, Claro e Momolada', async ({ page }) => {
+  test('Alternador de temas aplica Escuro, Claro e Momolada exclusivo da Mari', async ({ page, context }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Momolada', exact: true }).click()
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'momolada')
+    await expect(page.getByRole('button', { name: 'Momolada', exact: true })).toBeHidden()
     await page.getByRole('button', { name: 'Claro', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     await page.getByRole('button', { name: 'Escuro', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+    await context.addCookies([
+      {
+        name: 'sc_profile_session',
+        value: 'profile-family',
+        url: 'http://127.0.0.1:4173',
+      },
+    ])
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Momolada', exact: true }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'momolada')
   })
 
   test('Acervo Online e Gerenciador de Addons abrem corretamente', async ({ page }) => {

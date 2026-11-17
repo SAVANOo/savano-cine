@@ -189,15 +189,6 @@ export function App() {
     setSelectedShowId(item?.id ?? null)
   }, [])
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    try {
-      localStorage.setItem('sc_theme', theme)
-    } catch {
-      // ignore storage quota errors
-    }
-  }, [theme])
-
   const completeProfileSwitch = useCallback(
     (nextId: string) => {
       setProfileSessionCookie(nextId)
@@ -457,6 +448,19 @@ export function App() {
   const isActiveAdmin =
     Boolean(activeProfileId) &&
     Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')
+  const isMariProfile =
+    Boolean(activeProfileId) &&
+    (activeProfile.id === 'profile-family' || activeProfile.name.toLowerCase().includes('mari'))
+  const effectiveTheme = theme === 'momolada' && !isMariProfile ? 'dark' : theme
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = effectiveTheme
+    try {
+      localStorage.setItem('sc_theme', effectiveTheme)
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [effectiveTheme])
 
   useEffect(() => {
     if (typeof window === 'undefined' || isActiveAdmin) return
@@ -814,7 +818,7 @@ export function App() {
         }
         adminBadgeCount={reviewItems.length + artworkCandidates.length}
         gamepadConnected={Boolean(connectedGamepad)}
-        theme={theme}
+        theme={effectiveTheme}
         onChangeTheme={setTheme}
       />
 

@@ -94,6 +94,8 @@ export function Sidebar({
   }
 
   const activeStyle = getAvatarStyle(activeProfile.avatarKey)
+  const canUseMomolada =
+    activeProfile.id === 'profile-family' || activeProfile.name.toLowerCase().includes('mari')
   const onlineCount = sources.filter((source) => source.status === 'online').length
 
   async function submitSource(event: FormEvent) {
@@ -424,11 +426,11 @@ export function Sidebar({
             <Palette className="h-3.5 w-3.5" />
             <span>Tema</span>
           </div>
-          <div className="grid grid-cols-3 gap-1">
+          <div className={`grid gap-1 ${canUseMomolada ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[
               { id: 'dark' as const, label: 'Escuro' },
               { id: 'light' as const, label: 'Claro' },
-              { id: 'momolada' as const, label: 'Momolada' },
+              ...(canUseMomolada ? [{ id: 'momolada' as const, label: 'Momolada' }] : []),
             ].map((opt) => (
               <button
                 key={opt.id}
