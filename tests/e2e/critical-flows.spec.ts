@@ -1,8 +1,16 @@
+import { createHash } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+
+const DEFAULT_PIN_TOKEN = createHash('sha256').update('savano-cine:4321').digest('hex')
 
 test.describe('Savano Cine - Fluxos Críticos E2E', () => {
   test.beforeEach(async ({ context }) => {
     await context.addCookies([
+      {
+        name: 'sc_pin_ok',
+        value: DEFAULT_PIN_TOKEN,
+        url: 'http://127.0.0.1:4173',
+      },
       {
         name: 'sc_profile_session',
         value: 'profile-savio',
@@ -94,12 +102,28 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
 
   test('Gate Quem está assistindo aparece sem cookie e entra ao escolher perfil', async ({ page, context }) => {
     await context.clearCookies()
+    await context.addCookies([
+      {
+        name: 'sc_pin_ok',
+        value: DEFAULT_PIN_TOKEN,
+        url: 'http://127.0.0.1:4173',
+      },
+    ])
     await page.goto('/')
     const gate = page.getByRole('dialog', { name: 'Quem está assistindo?' })
     await expect(gate).toBeVisible()
     await gate.getByRole('button', { name: /Savio/i }).first().click()
     await expect(gate).toBeHidden()
     await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
+  })
+
+  test('PinGate exige PIN 4321 sem cookie sc_pin_ok e libera acesso', async ({ page, context }) => {
+    await context.clearCookies()
+    await page.goto('/')
+    await expect(page.getByPlaceholder(/PIN/i).or(page.getByLabel(/PIN/i)).first()).toBeVisible({ timeout: 10000 })
+    await page.locator('input[type="password"]').first().fill('4321')
+    await page.getByRole('button', { name: /Entrar|Desbloquear/i }).first().click()
+    await expect(page.getByRole('dialog', { name: 'Quem está assistindo?' })).toBeVisible({ timeout: 10000 })
   })
 
   test('Navbar Filmes e Séries filtram o catálogo ao clicar', async ({ page }) => {
@@ -144,19 +168,23 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
   test('Aba Servidor & Conexões abre por ?tab=server para Admin e é bloqueada para perfil não-admin', async ({
     page,
     context,
-    request,
   }) => {
     await page.goto('/?tab=server')
     await expect(page.getByRole('heading', { name: /Painel do Catálogo/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Servidor & Conexões/i })).toBeVisible()
     await expect(page.getByText(/Downloads para o Acervo Local/i)).toBeVisible()
 
-    const profilesRes = await request.get('/api/profiles')
+    const profilesRes = await page.request.get('/api/profiles')
     const profiles = (await profilesRes.json()) as Array<{ id: string; isAdmin?: boolean }>
     const nonAdmin = profiles.find((p) => !p.isAdmin)
     if (nonAdmin) {
       await context.clearCookies()
       await context.addCookies([
+        {
+          name: 'sc_pin_ok',
+          value: DEFAULT_PIN_TOKEN,
+          url: 'http://127.0.0.1:4173',
+        },
         {
           name: 'sc_profile_session',
           value: nonAdmin.id,
@@ -176,18 +204,20 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
         ['POST', '/api/catalog/fake-id/archive'],
         ['POST', '/api/artwork/fetch'],
       ] as const) {
-        const res = await request.fetch(url, {
+        const res = await page.request.fetch(url, {
           method,
-          headers: { Cookie: `sc_profile_session=${encodeURIComponent(nonAdmin.id)}` },
+          headers: {
+            Cookie: `sc_pin_ok=${DEFAULT_PIN_TOKEN}; sc_profile_session=${encodeURIComponent(nonAdmin.id)}`,
+          },
         })
         expect(res.status()).toBe(403)
       }
     }
   })
 
-  test('Progresso online persiste e aparece em Continuar assistindo', async ({ page, request }) => {
+  test('Progresso online persiste e aparece em Continuar assistindo', async ({ page }) => {
     const uniqueKey = `addon:test-${Date.now()}`
-    const saveRes = await request.post('/api/addons/progress', {
+    const saveRes = await page.request.post('/api/addons/progress', {
       data: {
         profileId: 'profile-savio',
         mediaKey: uniqueKey,
@@ -199,7 +229,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     })
     expect(saveRes.ok()).toBeTruthy()
 
-    const listRes = await request.get('/api/addons/progress?profileId=profile-savio')
+    const listRes = await page.request.get('/api/addons/progress?profileId=profile-savio')
     expect(listRes.ok()).toBeTruthy()
     const rows = (await listRes.json()) as Array<{ mediaKey: string; contentKey: string; type: string }>
     const found = rows.find((r) => r.mediaKey === uniqueKey)

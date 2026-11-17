@@ -36,7 +36,10 @@ import { cleanTitle } from './scan-media.mjs'
 
 const port = Number(process.env.CINE_API_PORT || 4174)
 const host = process.env.CINE_HOST?.trim() || '0.0.0.0'
-const accessPin = process.env.CINE_ACCESS_PIN?.trim() || ''
+const accessPin =
+  process.env.CINE_ACCESS_PIN?.trim() === 'off'
+    ? ''
+    : process.env.CINE_ACCESS_PIN?.trim() || '4321'
 const pinToken = accessPin ? createHash('sha256').update(`savano-cine:${accessPin}`).digest('hex') : ''
 const root = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(root, '..', 'dist')
@@ -1514,7 +1517,8 @@ function refreshSourceStatuses(force = false) {
       continue
     }
 
-    const fallbackVolume = existsSync(source.root_path) ? getVolumeInfoForPath(source.root_path) : null
+    const rootExists = existsSync(source.root_path)
+    const fallbackVolume = rootExists ? getVolumeInfoForPath(source.root_path) : null
     if (fallbackVolume) {
       update.run(
         source.root_path,
@@ -1523,6 +1527,18 @@ function refreshSourceStatuses(force = false) {
         `${fallbackVolume.volumeLabel || path.basename(source.root_path)} (${fallbackVolume.driveLetter}:)`,
         fallbackVolume.volumeLabel,
         fallbackVolume.removable ? 1 : source.removable,
+        'online',
+        'online',
+        source.id,
+      )
+    } else if (rootExists) {
+      update.run(
+        source.root_path,
+        sourceWithRelativePath.root_relative_path,
+        source.volume_id,
+        source.name,
+        source.volume_label,
+        source.removable,
         'online',
         'online',
         source.id,

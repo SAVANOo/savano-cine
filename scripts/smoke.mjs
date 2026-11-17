@@ -1,10 +1,29 @@
 const baseUrl = (process.env.CINE_API_URL || 'http://127.0.0.1:4174').replace(/\/+$/, '')
 const checks = []
+let pinCookie = ''
+
+async function ensurePinCookie() {
+  if (pinCookie) return
+  const res = await fetch(`${baseUrl}/api/auth/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: process.env.CINE_ACCESS_PIN || '4321' }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const setCookie = res.headers.get('set-cookie') || ''
+  const match = setCookie.match(/sc_pin_ok=[^;]+/)
+  if (match) pinCookie = match[0]
+}
 
 async function request(path, options = {}) {
   const url = `${baseUrl}${path}`
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000), ...options })
+    await ensurePinCookie()
+    const headers = {
+      ...(options.headers || {}),
+      ...(pinCookie ? { Cookie: pinCookie } : {}),
+    }
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000), ...options, headers })
     const text = await response.text()
     let body = null
     try {

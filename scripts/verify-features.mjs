@@ -9,10 +9,32 @@ const root = path.dirname(fileURLToPath(import.meta.url))
 const databasePath = path.resolve(root, '..', 'data', 'catalog.db')
 const database = new DatabaseSync(databasePath)
 
+let pinCookie = ''
+
+async function ensurePinCookie() {
+  if (pinCookie) return
+  const res = await fetch(`${baseUrl}/api/auth/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: process.env.CINE_ACCESS_PIN || '4321' }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const setCookie = res.headers.get('set-cookie') || ''
+  const match = setCookie.match(/sc_pin_ok=[^;]+/)
+  if (match) pinCookie = match[0]
+}
+
 async function api(pathname, options = {}) {
+  await ensurePinCookie()
+  const existingCookie = options.headers?.Cookie || options.headers?.cookie || ''
+  const combinedCookie = [pinCookie, existingCookie].filter(Boolean).join('; ')
   const response = await fetch(`${baseUrl}${pathname}`, {
     signal: AbortSignal.timeout(5000),
     ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...(combinedCookie ? { Cookie: combinedCookie } : {}),
+    },
   })
   const text = await response.text()
   const body = text ? JSON.parse(text) : null
