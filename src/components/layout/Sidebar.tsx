@@ -8,6 +8,7 @@ import {
   HardDrive,
   Home,
   Lock,
+  Menu,
   Palette,
   Pencil,
   PlayCircle,
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tv,
+  X,
 } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
@@ -79,6 +81,8 @@ export function Sidebar({
   const [sourceStatus, setSourceStatus] = useState('')
   const [savingSource, setSavingSource] = useState(false)
   const [brokenAvatarUrls, setBrokenAvatarUrls] = useState<Set<string>>(() => new Set())
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false)
 
   const markAvatarBroken = (url: string) => {
     setBrokenAvatarUrls((prev) => {
@@ -121,35 +125,115 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-3.5 border-b border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-4">
-      {/* Clickable Brand */}
-      <div className="flex items-center justify-between gap-3">
+    <>
+      {/* Mobile / Tablet Compact Topbar with Hamburger */}
+      <div className="flex w-full items-center justify-between gap-3 border-b border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-4 py-2.5 lg:hidden">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(true)}
+            aria-label="Abrir menu"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-primary)] cursor-pointer"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="flex items-center gap-2 border-0 bg-transparent p-0 text-left cursor-pointer"
+          >
+            <SavanoLogo size={32} />
+            <span className="text-sm font-bold tracking-tight text-[var(--sc-text-primary)]">
+              Savano Cine
+            </span>
+          </button>
+        </div>
         <button
           type="button"
-          onClick={onGoHome}
-          title="Voltar para o início"
-          className="flex items-center gap-2.5 border-0 bg-transparent p-0 text-left cursor-pointer"
+          onClick={() => setMobileDrawerOpen(true)}
+          aria-label={`Perfil ativo: ${activeProfile.name}`}
+          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)]"
+          style={{ background: activeStyle.background }}
         >
-          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-            <SavanoLogo size={36} className="shadow-lg shadow-amber-950/30" />
-            {theme === 'momolada' && (
-              <svg
-                viewBox="0 0 24 14"
-                aria-hidden="true"
-                className="absolute -top-2 -right-2 h-4 w-5 drop-shadow"
-              >
-                <path d="M12 7 L3 2 Q1 7 3 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
-                <path d="M12 7 L21 2 Q23 7 21 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
-                <circle cx="12" cy="7" r="2.6" fill="#ff85c0" stroke="#fff" strokeWidth="1" />
-              </svg>
-            )}
-          </span>
-          <span className="hidden items-center gap-1.5 text-base font-bold tracking-tight text-white md:inline-flex">
-            Savano Cine
-            {theme === 'momolada' && <Sparkles className="h-3.5 w-3.5 text-[var(--sc-accent)]" />}
-          </span>
+          {activeStyle.imageUrl && !brokenAvatarUrls.has(activeStyle.imageUrl) ? (
+            <img src={activeStyle.imageUrl} alt={activeProfile.name} className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-xs font-bold text-white">{activeProfile.name.slice(0, 1).toUpperCase()}</span>
+          )}
         </button>
       </div>
+
+      {/* Desktop Reopen Hamburger when Sidebar is collapsed */}
+      {desktopCollapsed && (
+        <button
+          type="button"
+          onClick={() => setDesktopCollapsed(false)}
+          aria-label="Abrir menu lateral"
+          title="Abrir menu lateral"
+          className="fixed top-4 left-4 z-40 hidden h-10 w-10 items-center justify-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] text-[var(--sc-text-primary)] shadow-lg hover:border-[var(--sc-accent)] lg:flex cursor-pointer"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Mobile Drawer Backdrop */}
+      {mobileDrawerOpen && (
+        <div
+          aria-hidden="true"
+          onClick={() => setMobileDrawerOpen(false)}
+          className="fixed inset-0 z-40 bg-black/65 backdrop-blur-xs lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 transition-transform duration-200 lg:static lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:translate-x-0 lg:p-4 ${
+          mobileDrawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        } ${desktopCollapsed ? 'lg:hidden' : 'lg:flex'}`}
+      >
+        {/* Clickable Brand + Collapse/Close Toggle */}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDrawerOpen(false)
+              onGoHome()
+            }}
+            title="Voltar para o início"
+            className="flex items-center gap-2.5 border-0 bg-transparent p-0 text-left cursor-pointer"
+          >
+            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+              <SavanoLogo size={36} className="shadow-lg shadow-amber-950/30" />
+              {theme === 'momolada' && (
+                <svg
+                  viewBox="0 0 24 14"
+                  aria-hidden="true"
+                  className="absolute -top-2 -right-2 h-4 w-5 drop-shadow"
+                >
+                  <path d="M12 7 L3 2 Q1 7 3 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
+                  <path d="M12 7 L21 2 Q23 7 21 12 Z" fill="#ff4fa3" stroke="#fff" strokeWidth="1" />
+                  <circle cx="12" cy="7" r="2.6" fill="#ff85c0" stroke="#fff" strokeWidth="1" />
+                </svg>
+              )}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-base font-bold tracking-tight text-[var(--sc-text-primary)]">
+              Savano Cine
+              {theme === 'momolada' && <Sparkles className="h-3.5 w-3.5 text-[var(--sc-accent)]" />}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileDrawerOpen(false)
+              setDesktopCollapsed(true)
+            }}
+            aria-label="Recolher menu"
+            title="Recolher menu"
+            className="flex h-8 w-8 items-center justify-center rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-transparent text-[var(--sc-text-secondary)] hover:bg-white/10 hover:text-[var(--sc-text-primary)] cursor-pointer"
+          >
+            <X className="h-4 w-4 lg:hidden" />
+            <Menu className="hidden h-4 w-4 lg:block" />
+          </button>
+        </div>
 
       {/* Active Profile Switcher */}
       <div className="flex flex-col gap-2">
@@ -280,6 +364,7 @@ export function Sidebar({
               key={key}
               type="button"
               onClick={() => {
+                setMobileDrawerOpen(false)
                 onSelectKind(key)
               }}
               className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
@@ -437,5 +522,6 @@ export function Sidebar({
         {refreshStatus && <p className="m-0 px-2 text-[11px] text-[var(--sc-text-muted)]">{refreshStatus}</p>}
       </div>
     </aside>
+    </>
   )
 }
