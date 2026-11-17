@@ -367,10 +367,10 @@ export function Sidebar({
                 setMobileDrawerOpen(false)
                 onSelectKind(key)
               }}
-              className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+              className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] border px-3 py-2 text-sm font-medium transition cursor-pointer ${
                 active
-                  ? 'bg-white/12 text-white'
-                  : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+                  ? 'border-[var(--sc-accent)]/45 bg-[var(--sc-accent-soft)] text-[var(--sc-text-primary)]'
+                  : 'border-transparent text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -384,10 +384,10 @@ export function Sidebar({
             <button
               type="button"
               onClick={onOpenAddons}
-              className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+              className={`flex shrink-0 items-center gap-2.5 rounded-[var(--sc-radius-md)] border px-3 py-2 text-sm font-medium transition cursor-pointer ${
                 addonsActive
-                  ? 'bg-white/12 text-white'
-                  : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+                  ? 'border-[var(--sc-accent)]/45 bg-[var(--sc-accent-soft)] text-[var(--sc-text-primary)]'
+                  : 'border-transparent text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
               }`}
             >
               <Puzzle className="h-4 w-4 shrink-0" />
@@ -397,10 +397,10 @@ export function Sidebar({
             <button
               type="button"
               onClick={onOpenAdmin}
-              className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] px-3 py-2 text-sm font-medium transition cursor-pointer ${
+              className={`flex shrink-0 items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border px-3 py-2 text-sm font-medium transition cursor-pointer ${
                 adminActive && !addonsActive
-                  ? 'bg-white/12 text-white'
-                  : 'text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
+                  ? 'border-[var(--sc-accent)]/45 bg-[var(--sc-accent-soft)] text-[var(--sc-text-primary)]'
+                  : 'border-transparent text-[var(--sc-text-secondary)] hover:bg-white/6 hover:text-white'
               }`}
             >
               <span className="flex items-center gap-2.5">
