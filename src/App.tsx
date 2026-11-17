@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AddonMetaSummary } from './components/addons/AddonStreamModal'
+import { AddonCarouselRow } from './components/home/AddonCarouselRow'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'
 import { Sidebar } from './components/layout/Sidebar'
@@ -1146,7 +1147,9 @@ export function App() {
               </div>
             )}
 
-            {filteredItems.length === 0 && !(activeKind === 'Continuar' && onlineContinueItems.length > 0) ? (
+            {filteredItems.length === 0 &&
+            !(activeKind === 'Continuar' && onlineContinueItems.length > 0) &&
+            !(query.trim().length >= 2 && (addonSearching || addonSearchResults.length > 0)) ? (
               <div className="flex flex-col items-center gap-3 rounded-[var(--sc-radius-xl)] border border-dashed border-white/15 p-12 text-center text-sm text-[var(--sc-text-muted)]">
                 <p className="m-0">
                   {activeKind === 'Continuar'
@@ -1259,40 +1262,12 @@ export function App() {
                     </p>
                   ) : (
                     kindAddonSections.map((section) => (
-                      <div key={section.key} className="space-y-3">
-                        <h3 className="m-0 text-sm font-bold text-[var(--sc-text-secondary)]">{section.title}</h3>
-                        <div className="flex gap-3.5 overflow-x-auto pb-2">
-                          {section.items.map((item) => (
-                            <button
-                              key={`${section.key}-${item.id}`}
-                              type="button"
-                              onClick={() => setActiveAddonItem(item)}
-                              className="group w-36 shrink-0 overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)]/60 cursor-pointer sm:w-40"
-                            >
-                              <div className="relative aspect-[2/3] w-full bg-black/50">
-                                {item.poster ? (
-                                  <img
-                                    src={item.poster}
-                                    alt={item.name}
-                                    loading="lazy"
-                                    className="h-full w-full object-cover transition group-hover:scale-105"
-                                  />
-                                ) : (
-                                  <div className="flex h-full items-center justify-center p-2 text-center text-xs text-[var(--sc-text-muted)]">
-                                    {item.name}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="p-2">
-                                <p className="m-0 truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
-                                {item.releaseInfo && (
-                                  <p className="m-0 truncate text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo}</p>
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <AddonCarouselRow
+                        key={section.key}
+                        title={section.title}
+                        items={section.items}
+                        onSelect={(item) => setActiveAddonItem(item)}
+                      />
                     ))
                   )}
                 </div>
@@ -1316,28 +1291,16 @@ export function App() {
               </div>
             )}
             {query.trim().length >= 2 && !addonSearching && addonSearchResults.length > 0 && (
-              <div className="mt-4 space-y-5 border-t border-[var(--sc-border-subtle)] pt-5">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="m-0 text-base font-bold text-[var(--sc-text-primary)]">
-                    Resultados nos Addons (Stremio)
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setActiveKind('Online')}
-                    className="text-xs font-semibold text-[var(--sc-accent)] hover:underline cursor-pointer"
-                  >
-                    Abrir Acervo Online →
-                  </button>
-                </div>
+              <div className="mt-4 space-y-5">
                 {[
                   {
                     key: 'movie',
-                    label: 'Filmes Online (Addons)',
+                    label: 'Filmes',
                     items: addonSearchResults.filter((item) => item.type === 'movie'),
                   },
                   {
                     key: 'series',
-                    label: 'Séries e Novelas Online (Addons)',
+                    label: 'Séries',
                     items: addonSearchResults.filter((item) => item.type !== 'movie'),
                   },
                 ].map((group) =>
@@ -1413,67 +1376,39 @@ export function App() {
               onToggleWatchlist={(target) => void toggleWatchlist(target)}
             />
 
+            {onlineContinueItems.length > 0 && (
+              <AddonCarouselRow
+                title={continueWatching.length > 0 ? 'Continue assistindo (Online)' : 'Continue assistindo'}
+                subtitle="Retome seus filmes e séries iniciados nos addons"
+                items={onlineContinueItems.map((entry) => {
+                  const rawKey = String(entry.mediaKey || entry.contentKey || '')
+                  const cleanId = rawKey.includes(':') ? rawKey.split(':')[0] : rawKey
+                  const pct =
+                    entry.durationSec > 0
+                      ? Math.min(100, Math.round((entry.positionSec / entry.durationSec) * 100))
+                      : 0
+                  return {
+                    id: cleanId,
+                    type: entry.type || 'movie',
+                    name: entry.title,
+                    poster: entry.poster,
+                    description: '',
+                    releaseInfo: `${entry.season && entry.episode ? `T${entry.season}:E${entry.episode} · ` : ''}${pct}%`,
+                  }
+                })}
+                onSelect={(item) => setActiveAddonItem(item)}
+              />
+            )}
+
             {homeTrendingOnline.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <div>
-                    <h2 className="m-0 text-lg font-bold tracking-tight text-[var(--sc-text-primary)]">
-                      Em alta nos Addons (Online)
-                    </h2>
-                    <p className="m-0 text-xs text-[var(--sc-text-muted)]">
-                      Destaques populares dos seus addons ativos combinados ao acervo local
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveKind('Online')}
-                    className="text-xs font-semibold text-[var(--sc-accent)] hover:underline cursor-pointer"
-                  >
-                    Ver tudo →
-                  </button>
-                </div>
-                <div className="flex gap-3.5 overflow-x-auto pb-2">
-                  {homeTrendingOnline.map((item) => (
-                    <button
-                      key={`home-online-${item.type}-${item.id}`}
-                      type="button"
-                      onClick={() =>
-                        setActiveAddonItem({
-                          id: item.id,
-                          type: item.type,
-                          name: item.name,
-                          poster: item.poster,
-                          description: item.description || '',
-                          releaseInfo: item.releaseInfo,
-                        })
-                      }
-                      className="group w-[150px] shrink-0 overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)]/60 sm:w-[170px] cursor-pointer"
-                    >
-                      <div className="relative aspect-[2/3] w-full bg-black/50">
-                        {item.poster ? (
-                          <img
-                            src={item.poster}
-                            alt={item.name}
-                            loading="lazy"
-                            className="h-full w-full object-cover transition group-hover:scale-105"
-                          />
-                        ) : null}
-                        <span className="absolute top-2 left-2 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
-                          {item.type === 'movie' ? 'Filme' : item.type === 'anime' ? 'Anime' : 'Série'}
-                        </span>
-                      </div>
-                      <div className="p-2.5">
-                        <p className="truncate text-xs font-semibold text-[var(--sc-text-primary)]">
-                          {item.name}
-                        </p>
-                        <p className="truncate text-[11px] text-[var(--sc-text-muted)]">
-                          {item.addonName}{item.releaseInfo ? ` · ${item.releaseInfo}` : ''}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
+              <AddonCarouselRow
+                title="Em alta nos Addons (Online)"
+                subtitle="Destaques populares dos seus addons ativos combinados ao acervo local"
+                items={homeTrendingOnline}
+                onSelect={(item) => setActiveAddonItem(item)}
+                actionLabel="Ver tudo →"
+                onAction={() => setActiveKind('Online')}
+              />
             )}
 
             <MediaCarousel
