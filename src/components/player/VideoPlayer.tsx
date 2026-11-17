@@ -4,6 +4,7 @@ import type { PlayableMedia } from '../../domain/uiHelpers'
 import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
 import { PlayerEpisodesDrawer } from './PlayerEpisodesDrawer'
 import { PlayerTrackMenu } from './PlayerTrackMenu'
+import { SavanoLoader } from '../ui/SavanoLoader'
 
 function formatClock(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -142,6 +143,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     return media.showSeasons?.[0]?.number ?? 1
   })
   const [isPaused, setIsPaused] = useState(false)
+  const [isLoadingMedia, setIsLoadingMedia] = useState(true)
   const [showPausedInfo, setShowPausedInfo] = useState(false)
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(initialTranscode ? initialStart : 0)
@@ -748,7 +750,11 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               lastTouchTapRef.current = { at: now, x: touch.clientX }
             }
           }}
+          onWaiting={() => setIsLoadingMedia(true)}
+          onCanPlay={() => setIsLoadingMedia(false)}
+          onPlaying={() => setIsLoadingMedia(false)}
           onPlay={() => {
+            setIsLoadingMedia(false)
             setIsPaused(false)
             setShowPausedInfo(false)
             if (pauseOverlayTimer.current) window.clearTimeout(pauseOverlayTimer.current)
@@ -803,6 +809,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
               return
             }
+            setIsLoadingMedia(false)
             setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou se o FFmpeg está disponível.')
           }}
         >
@@ -879,6 +886,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             </div>
           )
         })()}
+
+        {isLoadingMedia && !playbackError && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/55 backdrop-blur-xs">
+            <SavanoLoader label="Preparando reprodução..." />
+          </div>
+        )}
 
         {seekToast && (
           <div className="pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/75 px-5 py-2 text-sm font-bold text-white backdrop-blur-md">

@@ -293,7 +293,7 @@ export function AddonDetailView({
                 ) : null}
               </div>
               {loadingMeta ? (
-                <p className="text-xs text-[var(--sc-text-muted)]">Carregando lista de episódios...</p>
+                <SavanoLoader label="Carregando episódios..." />
               ) : visibleVideos.length === 0 ? (
                 <p className="text-xs text-[var(--sc-text-secondary)]">Nenhum episódio listado nos metadados deste addon.</p>
               ) : (
