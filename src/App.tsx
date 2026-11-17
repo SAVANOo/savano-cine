@@ -89,6 +89,10 @@ export function App() {
     }>
   >([])
   const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(null)
+  const [kindAddonSections, setKindAddonSections] = useState<
+    Array<{ key: string; title: string; items: AddonMetaSummary[] }>
+  >([])
+  const [kindAddonLoading, setKindAddonLoading] = useState(false)
   const [selectedShowId, setSelectedShowId] = useState<string | null>(() => getInitialDeepLinkId())
   const [adminOpen, setAdminOpen] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -248,6 +252,64 @@ export function App() {
       .then(setPlayerCapabilities)
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    if (activeKind !== 'Filme' && activeKind !== 'Série') {
+      setKindAddonSections([])
+      setKindAddonLoading(false)
+      return
+    }
+    const targetType = activeKind === 'Filme' ? 'movie' : 'series'
+    let cancelled = false
+    setKindAddonLoading(true)
+    fetch('/api/addons')
+      .then((res) => (res.ok ? res.json() : null))
+      .then(async (addonsPayload: { addons?: Array<{ id: string; name: string; enabled: boolean; catalogs?: Array<{ id: string; type: string; name?: string }> }> } | null) => {
+        if (cancelled) return
+        const addons = (addonsPayload?.addons || []).filter((a) => a.enabled)
+        const picks: Array<{ addonId: string; addonName: string; catalogId: string; title: string }> = []
+        for (const addon of addons) {
+          for (const cat of addon.catalogs || []) {
+            if (cat.type === targetType && !picks.some((p) => p.addonId === addon.id && p.catalogId === cat.id)) {
+              picks.push({
+                addonId: addon.id,
+                addonName: addon.name,
+                catalogId: cat.id,
+                title: cat.name ? `${cat.name} · ${addon.name}` : addon.name,
+              })
+            }
+          }
+        }
+        const selected = picks.slice(0, 4)
+        const results = await Promise.all(
+          selected.map(async (pick) => {
+            try {
+              const params = new URLSearchParams({ type: targetType, id: pick.catalogId })
+              const r = await fetch(`/api/addons/${encodeURIComponent(pick.addonId)}/catalog?${params.toString()}`)
+              if (!r.ok) return null
+              const data = (await r.json()) as { metas?: AddonMetaSummary[] }
+              const items = (data.metas || []).slice(0, 18)
+              if (items.length === 0) return null
+              return { key: `${pick.addonId}:${pick.catalogId}`, title: pick.title, items }
+            } catch {
+              return null
+            }
+          }),
+        )
+        if (!cancelled) {
+          setKindAddonSections(results.filter((x): x is { key: string; title: string; items: AddonMetaSummary[] } => Boolean(x)))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setKindAddonSections([])
+      })
+      .finally(() => {
+        if (!cancelled) setKindAddonLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeKind])
 
   const refreshReview = useCallback(() => {
     fetch('/api/review')
@@ -1127,6 +1189,112 @@ export function App() {
                     </div>
                   )
                 })}
+              </div>
+            ) : (activeKind === 'Filme' || activeKind === 'Série') && query.trim().length === 0 && selectedGenre === 'Todos' ? (
+              <div className="space-y-8">
+                {(() => {
+                  const genreBuckets = new Map<string, LibraryItem[]>()
+                  for (const item of filteredItems) {
+                    for (const rawGenre of item.genres || []) {
+                      const g = translateGenre(rawGenre)
+                      if (!genreBuckets.has(g)) genreBuckets.set(g, [])
+                      genreBuckets.get(g)!.push(item)
+                    }
+                  }
+                  const topGenres = [...genreBuckets.entries()]
+                    .filter(([, list]) => list.length >= 2)
+                    .sort((a, b) => b[1].length - a[1].length)
+                    .slice(0, 5)
+                  return (
+                    <>
+                      {topGenres.map(([genreLabel, genreItems]) => (
+                        <MediaCarousel
+                          key={`kind-genre-${genreLabel}`}
+                          title={`${genreLabel} (Acervo Local)`}
+                          items={genreItems}
+                          onPlay={playLibraryItem}
+                          onOpenDetails={(target) => setSelectedShow(target)}
+                          onToggleWatchlist={(target) => void toggleWatchlist(target)}
+                        />
+                      ))}
+                      <div className="space-y-3">
+                        <h2 className="m-0 text-base font-bold text-[var(--sc-text-primary)]">
+                          Todo o Acervo Local ({filteredItems.length})
+                        </h2>
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                          {filteredItems.map((item) => (
+                            <MediaCard
+                              key={item.id}
+                              item={item}
+                              onPlay={playLibraryItem}
+                              onOpenDetails={(target) => setSelectedShow(target)}
+                              onToggleWatchlist={(target) => void toggleWatchlist(target)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
+
+                <div className="space-y-6 border-t border-[var(--sc-border-subtle)] pt-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="m-0 text-base font-bold text-[var(--sc-text-primary)]">
+                      {activeKind === 'Filme' ? 'Filmes nos Addons (Online)' : 'Séries nos Addons (Online)'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setActiveKind('Online')}
+                      className="text-xs font-semibold text-[var(--sc-accent)] hover:underline cursor-pointer"
+                    >
+                      Explorar tudo no Acervo Online →
+                    </button>
+                  </div>
+                  {kindAddonLoading ? (
+                    <SavanoLoader label="Carregando catálogos dos addons..." />
+                  ) : kindAddonSections.length === 0 ? (
+                    <p className="m-0 text-xs text-[var(--sc-text-muted)]">
+                      Nenhum catálogo online disponível nos addons ativos para esta categoria.
+                    </p>
+                  ) : (
+                    kindAddonSections.map((section) => (
+                      <div key={section.key} className="space-y-3">
+                        <h3 className="m-0 text-sm font-bold text-[var(--sc-text-secondary)]">{section.title}</h3>
+                        <div className="flex gap-3.5 overflow-x-auto pb-2">
+                          {section.items.map((item) => (
+                            <button
+                              key={`${section.key}-${item.id}`}
+                              type="button"
+                              onClick={() => setActiveAddonItem(item)}
+                              className="group w-36 shrink-0 overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)]/60 cursor-pointer sm:w-40"
+                            >
+                              <div className="relative aspect-[2/3] w-full bg-black/50">
+                                {item.poster ? (
+                                  <img
+                                    src={item.poster}
+                                    alt={item.name}
+                                    loading="lazy"
+                                    className="h-full w-full object-cover transition group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center p-2 text-center text-xs text-[var(--sc-text-muted)]">
+                                    {item.name}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-2">
+                                <p className="m-0 truncate text-xs font-semibold text-[var(--sc-text-primary)]">{item.name}</p>
+                                {item.releaseInfo && (
+                                  <p className="m-0 truncate text-[11px] text-[var(--sc-text-muted)]">{item.releaseInfo}</p>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             ) : filteredItems.length > 0 ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
