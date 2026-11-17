@@ -255,14 +255,15 @@ export function App() {
 
   useEffect(() => {
     if (activeKind !== 'Filme' && activeKind !== 'Série') {
-      setKindAddonSections([])
-      setKindAddonLoading(false)
       return
     }
     const targetType = activeKind === 'Filme' ? 'movie' : 'series'
     let cancelled = false
-    setKindAddonLoading(true)
-    fetch('/api/addons')
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setKindAddonLoading(true)
+        return fetch('/api/addons')
+      })
       .then((res) => (res.ok ? res.json() : null))
       .then(async (addonsPayload: { addons?: Array<{ id: string; name: string; enabled: boolean; catalogs?: Array<{ id: string; type: string; name?: string }> }> } | null) => {
         if (cancelled) return
@@ -1190,7 +1191,7 @@ export function App() {
                   )
                 })}
               </div>
-            ) : (activeKind === 'Filme' || activeKind === 'Série') && query.trim().length === 0 && selectedGenre === 'Todos' ? (
+            ) : (activeKind === 'Filme' || activeKind === 'Série') && query.trim().length === 0 ? (
               <div className="space-y-8">
                 {(() => {
                   const genreBuckets = new Map<string, LibraryItem[]>()

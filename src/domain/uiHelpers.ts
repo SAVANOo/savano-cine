@@ -133,6 +133,7 @@ export type PlayableMedia = {
   overview?: string
   year?: number
   startPosition?: number
+  duration?: number
   poster?: string
   nextEpisode?: PlayableMedia
   showTitle?: string
@@ -242,7 +243,7 @@ export function getRelatedItems(target: LibraryItem, library: LibraryItem[], lim
 }
 
 /** Parses addon runtime strings like "22 min", "1h 45m", or "110" into seconds. */
-export function parseRuntimeToSeconds(runtime?: string): number | undefined {
+export function parseRuntimeToSeconds(runtime?: string | null): number | undefined {
   if (!runtime) return undefined
   const text = runtime.trim().toLowerCase()
   if (!text) return undefined

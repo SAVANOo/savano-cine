@@ -23,6 +23,7 @@ export type AddonMetaSummary = {
   background?: string | null
   description: string
   releaseInfo: string | null
+  runtime?: string | null
   genres?: string[]
   addonId?: string
   addonName?: string
