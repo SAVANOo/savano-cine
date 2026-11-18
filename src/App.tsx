@@ -1404,7 +1404,10 @@ export function App() {
               <AddonCarouselRow
                 title="Em alta nos Addons (Online)"
                 subtitle="Destaques populares dos seus addons ativos combinados ao acervo local"
-                items={homeTrendingOnline}
+                items={homeTrendingOnline.map((item) => ({
+                  ...item,
+                  description: item.description || '',
+                }))}
                 onSelect={(item) => setActiveAddonItem(item)}
                 actionLabel="Ver tudo →"
                 onAction={() => setActiveKind('Online')}
