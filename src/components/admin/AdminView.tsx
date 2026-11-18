@@ -65,7 +65,19 @@ export function AdminView({
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [showQr, setShowQr] = useState(false)
   const [downloads, setDownloads] = useState<Array<{ id: string; title: string; status: string; progress: number; message: string }>>([])
-  const [connections, setConnections] = useState<Array<{ ip: string; userAgent: string; lastPath: string; lastSeen: string }>>([])
+  const [connections, setConnections] = useState<
+    Array<{
+      ip: string
+      origin?: string
+      device?: string
+      userAgent: string
+      profileId?: string | null
+      lastPath: string
+      lastActivity?: string | null
+      requests?: number
+      lastSeen: string
+    }>
+  >([])
   const [tunnelBusy, setTunnelBusy] = useState(false)
   const [pinRequired, setPinRequired] = useState<boolean | null>(null)
 
@@ -351,11 +363,37 @@ export function AdminView({
             </Button>
           </div>
           {showQr && qrDataUrl && (
-            <div className="mt-2 flex w-full items-center gap-4 border-t border-[var(--sc-border-subtle)] pt-3">
-              <img src={qrDataUrl} alt="QR Code de acesso" className="h-28 w-28 rounded-lg bg-white p-1" />
-              <div className="text-xs text-[var(--sc-text-secondary)]">
-                <p className="m-0 font-semibold text-[var(--sc-text-primary)]">Escaneie com a câmera do celular</p>
-                <p className="mt-1 mb-0">Abre o Savano Cine direto no navegador ou para baixar o APK.</p>
+            <div className="mt-2 flex w-full flex-wrap items-center gap-4 border-t border-[var(--sc-border-subtle)] pt-3">
+              <a
+                href={tunnelUrl || networkUrls[0]}
+                target="_blank"
+                rel="noreferrer"
+                title="Abrir servidor Savano Cine"
+                className="shrink-0 rounded-lg transition hover:ring-2 hover:ring-[var(--sc-accent)]"
+              >
+                <img src={qrDataUrl} alt="QR Code de acesso" className="h-28 w-28 rounded-lg bg-white p-1" />
+              </a>
+              <div className="space-y-1.5 text-xs text-[var(--sc-text-secondary)]">
+                <p className="m-0 font-semibold text-[var(--sc-text-primary)]">Escaneie ou clique no QR Code</p>
+                <p className="mt-0 mb-0">
+                  Abre o Savano Cine no celular ou conecta diretamente no servidor.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <a
+                    href={tunnelUrl || networkUrls[0]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-1 text-[11px] font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                  >
+                    Abrir Web / Conectar
+                  </a>
+                  <a
+                    href={`intent://connect?server=${encodeURIComponent(tunnelUrl || networkUrls[0])}#Intent;scheme=savanocine;package=com.savanocine.app;S.browser_fallback_url=${encodeURIComponent(tunnelUrl || networkUrls[0])};end`}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--sc-accent)]/40 bg-[var(--sc-accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--sc-accent)] hover:bg-[var(--sc-accent)]/20"
+                  >
+                    Abrir no App / Baixar APK
+                  </a>
+                </div>
               </div>
             </div>
           )}
@@ -454,18 +492,41 @@ export function AdminView({
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 text-xs">
-              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
-                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">PC Local</p>
-                <p className="mt-1 mb-0 font-bold text-[var(--sc-text-primary)]">http://127.0.0.1:4174</p>
-              </div>
-              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
-                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">Wi-Fi Local</p>
-                <p className="mt-1 mb-0 font-bold text-[var(--sc-text-primary)]">{networkUrls[0] || 'Indisponível'}</p>
-              </div>
-              <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3">
-                <p className="m-0 font-semibold text-[var(--sc-text-muted)]">Internet Pública</p>
-                <p className="mt-1 mb-0 truncate font-bold text-[var(--sc-accent)]">{tunnelUrl || 'Desligado'}</p>
-              </div>
+              {[
+                { label: 'PC Local', value: 'http://127.0.0.1:4174', accent: false },
+                { label: 'Wi-Fi Local', value: networkUrls[0] || '', accent: false },
+                { label: 'Internet Pública', value: tunnelUrl || '', accent: true },
+              ].map((endpoint) => (
+                <div
+                  key={endpoint.label}
+                  className="flex items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="m-0 font-semibold text-[var(--sc-text-muted)]">{endpoint.label}</p>
+                    <p
+                      className={`mt-1 mb-0 truncate font-bold ${
+                        endpoint.accent ? 'text-[var(--sc-accent)]' : 'text-[var(--sc-text-primary)]'
+                      }`}
+                    >
+                      {endpoint.value || (endpoint.label === 'Internet Pública' ? 'Desligado' : 'Indisponível')}
+                    </p>
+                  </div>
+                  {endpoint.value ? (
+                    <button
+                      type="button"
+                      title={`Copiar ${endpoint.label}`}
+                      aria-label={`Copiar ${endpoint.label}`}
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(endpoint.value)
+                        setFeedback(`Link "${endpoint.label}" copiado: ${endpoint.value}`)
+                      }}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] text-[var(--sc-text-secondary)] hover:border-[var(--sc-accent)] hover:text-[var(--sc-accent)] cursor-pointer"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -500,10 +561,30 @@ export function AdminView({
                     key={`${conn.ip}-${idx}`}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-2 text-xs"
                   >
-                    <div className="min-w-0 flex-1">
-                      <span className="font-bold text-[var(--sc-text-primary)]">{conn.ip}</span>
-                      <span className="ml-2 text-[var(--sc-text-muted)]">{conn.lastPath}</span>
-                      <p className="mt-0.5 mb-0 truncate text-[11px] text-[var(--sc-text-secondary)]">{conn.userAgent}</p>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-[var(--sc-text-primary)]">{conn.ip}</span>
+                        {conn.origin && (
+                          <span className="rounded-full bg-[var(--sc-accent-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--sc-accent)]">
+                            {conn.origin}
+                          </span>
+                        )}
+                        {conn.device && (
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--sc-text-primary)]">
+                            {conn.device}
+                          </span>
+                        )}
+                        {conn.profileId && (
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                            Perfil: {conn.profileId.replace(/^profile-/, '')}
+                          </span>
+                        )}
+                      </div>
+                      <p className="m-0 truncate text-[11px] text-[var(--sc-text-secondary)]">
+                        Rota: {conn.lastPath}
+                        {conn.lastActivity ? ` · ${conn.lastActivity}` : ''}
+                        {conn.requests ? ` · ${conn.requests} reqs` : ''}
+                      </p>
                     </div>
                     <span className="text-[11px] text-[var(--sc-text-muted)]">
                       {new Date(conn.lastSeen).toLocaleTimeString('pt-BR')}
