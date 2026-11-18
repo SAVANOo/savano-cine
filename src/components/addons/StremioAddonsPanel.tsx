@@ -1,4 +1,4 @@
-import { Globe, Plus, Power, Puzzle, Trash2 } from 'lucide-react'
+import { Check, Globe, Plus, Power, Puzzle, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { StremioAddonDescriptor } from '../../domain/sourceAdapter'
@@ -43,7 +43,15 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
 
   async function handleInstall(event: FormEvent) {
     event.preventDefault()
-    if (!manifestUrl.trim()) return
+    const cleanUrl = manifestUrl.trim().replace(/^stremio:\/\//i, 'https://')
+    if (!cleanUrl) return
+    const alreadyInstalled = addons.find(
+      (a) => a.manifestUrl.trim().toLowerCase() === cleanUrl.toLowerCase(),
+    )
+    if (alreadyInstalled) {
+      setFeedback(`O addon "${alreadyInstalled.name}" já está instalado na sua lista!`)
+      return
+    }
     setInstalling(true)
     setFeedback('')
     try {
@@ -103,24 +111,41 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setManifestUrl('https://v3-cinemeta.strem.io/manifest.json')}
-            >
-              <Globe className="h-3.5 w-3.5" />
-              Cinemeta (Catálogo)
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setManifestUrl('https://opensubtitles-v3.strem.io/manifest.json')}
-            >
-              <Globe className="h-3.5 w-3.5" />
-              OpenSubtitles v3 (Legendas)
-            </Button>
+            {[
+              { label: 'Cinemeta (Catálogo)', url: 'https://v3-cinemeta.strem.io/manifest.json' },
+              { label: 'TMDB PT-BR (Catálogo)', url: 'https://94c8cb9f702d-tmdb-addon.baby-beamup.club/manifest.json' },
+              { label: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
+              { label: 'Mico-Leão Dublado BR', url: 'https://27a5b2bfe3c0-stremio-brazilian-addon.baby-beamup.club/manifest.json' },
+              { label: 'Torrentio', url: 'https://torrentio.strem.fun/manifest.json' },
+              { label: 'TorrentsDB', url: 'https://torrentsdb.com/manifest.json' },
+            ].map((preset) => {
+              const isInstalled = addons.some(
+                (a) => a.manifestUrl.trim().toLowerCase() === preset.url.toLowerCase(),
+              )
+              return (
+                <Button
+                  key={preset.url}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (isInstalled) {
+                      setFeedback(`O addon "${preset.label}" já está instalado!`)
+                    } else {
+                      setManifestUrl(preset.url)
+                    }
+                  }}
+                >
+                  {isInstalled ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Globe className="h-3.5 w-3.5" />}
+                  <span>{preset.label}</span>
+                  {isInstalled && (
+                    <span className="ml-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                      Já instalado
+                    </span>
+                  )}
+                </Button>
+              )
+            })}
           </div>
         </div>
 
