@@ -786,7 +786,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           if (video.paused) void video.play().catch(() => undefined)
           else video.pause()
         } else if (cmd.action === 'seekBy' && typeof cmd.value === 'number') {
-          seekBy(cmd.value)
+          video.currentTime = Math.max(0, video.currentTime + cmd.value)
         } else if (cmd.action === 'toggleMute') {
           const nextMuted = !muted
           setMuted(nextMuted)
@@ -806,7 +806,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
       }
     })
     return () => es.close()
-  }, [applyVolume, media.nextEpisode, muted, onClose, onPlayNext, remoteSession, seekBy, volume])
+  }, [applyVolume, media.nextEpisode, muted, onClose, onPlayNext, remoteSession, volume])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
