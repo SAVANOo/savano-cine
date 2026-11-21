@@ -195,9 +195,28 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
                       <p className="text-xs text-[var(--sc-text-muted)]">v{addon.version} · {addon.id}</p>
                     </div>
                   </div>
-                  <Badge tone={addon.enabled ? 'accent' : 'neutral'}>
-                    {addon.enabled ? 'Ativo' : 'Pausado'}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge tone={addon.enabled ? 'accent' : 'neutral'}>
+                      {addon.enabled ? 'Ativo' : 'Pausado'}
+                    </Badge>
+                    {addon.health && addon.health.status !== 'unknown' && (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          addon.health.status === 'healthy'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : addon.health.status === 'slow'
+                              ? 'bg-amber-500/15 text-amber-300'
+                              : 'bg-red-500/15 text-red-300'
+                        }`}
+                      >
+                        {addon.health.status === 'healthy'
+                          ? `Saudável (${addon.health.avgMs}ms)`
+                          : addon.health.status === 'slow'
+                            ? `Lento (${addon.health.avgMs}ms)`
+                            : 'Instável (pausa auto)'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {addon.description ? (
                   <p className="mt-2.5 line-clamp-2 text-xs text-[var(--sc-text-secondary)]">{addon.description}</p>

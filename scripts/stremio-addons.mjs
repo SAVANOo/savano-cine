@@ -7,6 +7,40 @@
 const SAFE_SEGMENT_RE = /^[a-zA-Z0-9._:-]+$/
 const ADDON_RESPONSE_CACHE = new Map()
 const ADDON_CACHE_TTL_MS = 5 * 60_000
+const ADDON_HEALTH = new Map()
+const CIRCUIT_COOLDOWN_MS = 60_000
+
+function recordAddonOutcome(addonId, ok, elapsedMs) {
+  const prev = ADDON_HEALTH.get(addonId) || { okCount: 0, failCount: 0, consecutiveFails: 0, avgMs: 0, cooldownUntil: 0 }
+  const total = prev.okCount + prev.failCount
+  const avgMs = total === 0 ? Math.round(elapsedMs) : Math.round((prev.avgMs * total + elapsedMs) / (total + 1))
+  const consecutiveFails = ok ? 0 : prev.consecutiveFails + 1
+  const cooldownUntil = !ok && consecutiveFails >= 2 ? Date.now() + CIRCUIT_COOLDOWN_MS : ok ? 0 : prev.cooldownUntil
+  ADDON_HEALTH.set(addonId, {
+    okCount: prev.okCount + (ok ? 1 : 0),
+    failCount: prev.failCount + (ok ? 0 : 1),
+    consecutiveFails,
+    avgMs,
+    cooldownUntil,
+  })
+}
+
+function isAddonInCooldown(addonId) {
+  const entry = ADDON_HEALTH.get(addonId)
+  return Boolean(entry && entry.cooldownUntil > Date.now())
+}
+
+function getAddonHealthSummary(addonId) {
+  const entry = ADDON_HEALTH.get(addonId)
+  if (!entry) return { status: 'unknown', avgMs: 0, failCount: 0 }
+  const status =
+    entry.cooldownUntil > Date.now() || entry.consecutiveFails >= 2
+      ? 'degraded'
+      : entry.avgMs > 2500
+        ? 'slow'
+        : 'healthy'
+  return { status, avgMs: entry.avgMs, failCount: entry.failCount }
+}
 
 function getCachedAddonResponse(key) {
   const entry = ADDON_RESPONSE_CACHE.get(key)
@@ -126,6 +160,7 @@ function serializeAddonRow(row) {
     resources: JSON.parse(row.resources_json || '[]'),
     catalogs: JSON.parse(row.catalogs_json || '[]'),
     enabled: Boolean(row.enabled),
+    health: getAddonHealthSummary(row.id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -410,14 +445,22 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
   })
 
   const settled = await Promise.allSettled(
-    targets.map(async (addon) => {
-      const url = `${addon.baseUrl}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
-      const response = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(7000),
-      })
-      if (!response.ok) return []
-      const payload = await response.json().catch(() => ({}))
+    targets
+      .filter((addon) => addonId || !isAddonInCooldown(addon.id))
+      .map(async (addon) => {
+        const started = Date.now()
+        const url = `${addon.baseUrl}/stream/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
+        try {
+          const response = await fetch(url, {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(4500),
+          })
+          if (!response.ok) {
+            recordAddonOutcome(addon.id, false, Date.now() - started)
+            return []
+          }
+          recordAddonOutcome(addon.id, true, Date.now() - started)
+          const payload = await response.json().catch(() => ({}))
       const streams = Array.isArray(payload?.streams) ? payload.streams : []
       return streams.map((stream) => {
         const titleStr = String(stream.title || stream.description || stream.name || 'Stream')
@@ -439,6 +482,10 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
           sizeLabel: health.sizeLabel,
         }
       })
+        } catch {
+          recordAddonOutcome(addon.id, false, Date.now() - started)
+          return []
+        }
     }),
   )
 

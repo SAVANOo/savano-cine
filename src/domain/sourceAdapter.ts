@@ -18,6 +18,11 @@ export type StremioAddonDescriptor = {
   resources: string[]
   catalogs: StremioAddonCatalog[]
   enabled: boolean
+  health?: {
+    status: 'healthy' | 'slow' | 'degraded' | 'unknown'
+    avgMs: number
+    failCount: number
+  }
 }
 
 export type SourceItemDescriptor = {
