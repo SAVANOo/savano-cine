@@ -917,7 +917,7 @@ async function handleApiRequest(request, response) {
     return
   }
 
-  if (await handleSocialRoutes({ request, response, requestUrl, database, readBody, send })) {
+  if (await handleSocialRoutes({ request, response, requestUrl, database, readBody: readJson, send })) {
     return
   }
 
