@@ -31,6 +31,9 @@ const SurprisePickerView = lazy(() =>
 const SocialFeedView = lazy(() =>
   import('./components/social/SocialFeedView').then((m) => ({ default: m.SocialFeedView })),
 )
+const RemoteControlView = lazy(() =>
+  import('./components/player/RemoteControlView').then((m) => ({ default: m.RemoteControlView })),
+)
 const AdminView = lazy(() =>
   import('./components/admin/AdminView').then((m) => ({ default: m.AdminView })),
 )
@@ -73,6 +76,10 @@ function getInitialDeepLinkId(): string | null {
 }
 
 export function App() {
+  const [remoteSessionCode, setRemoteSessionCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('remote')?.trim() || ''
+  })
   const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
@@ -842,6 +849,20 @@ export function App() {
       window.history.replaceState(null, '', '/')
     }
   }, [setSelectedShow])
+
+  if (remoteSessionCode) {
+    return (
+      <Suspense fallback={<SavanoLoader fullscreen label="Conectando controle remoto..." />}>
+        <RemoteControlView
+          sessionCode={remoteSessionCode}
+          onExit={() => {
+            setRemoteSessionCode('')
+            window.history.replaceState(null, '', '/')
+          }}
+        />
+      </Suspense>
+    )
+  }
 
   return (
     <div

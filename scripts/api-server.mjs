@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 import { getAdapterForSource } from './source-adapters.mjs'
 import { handleAdminRoutes, trackClientConnection } from './routes/admin-routes.mjs'
+import { handleRealtimeRoutes } from './routes/realtime-routes.mjs'
 import { handleSocialRoutes } from './routes/social-routes.mjs'
 import {
   deleteStremioAddon,
@@ -918,6 +919,10 @@ async function handleApiRequest(request, response) {
   }
 
   if (await handleSocialRoutes({ request, response, requestUrl, database, readBody: readJson, send })) {
+    return
+  }
+
+  if (await handleRealtimeRoutes({ request, response, requestUrl, readBody: readJson, send })) {
     return
   }
 

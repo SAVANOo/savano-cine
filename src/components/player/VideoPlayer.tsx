@@ -1,4 +1,5 @@
-import { ArrowLeft, Download, FastForward, Layers, ListVideo, Maximize2, Moon, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Copy, Download, FastForward, Layers, ListVideo, Maximize2, Minimize2, Moon, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Send, SkipForward, Smartphone, Subtitles, Users, Volume2, VolumeX, X } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
@@ -168,6 +169,16 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [muted, setMuted] = useState(false)
   const [nightMode, setNightMode] = useState(false)
   const compressorRef = useRef<DynamicsCompressorNode | null>(null)
+  const [isMinimized, setIsMinimized] = useState(false)
+  const preloadedNextRef = useRef<string>('')
+  const [partyOpen, setPartyOpen] = useState(false)
+  const [partyCode, setPartyCode] = useState('')
+  const [partyJoinInput, setPartyJoinInput] = useState('')
+  const [partyMessages, setPartyMessages] = useState<Array<{ id: string; sender: string; text: string }>>([])
+  const [partyChatInput, setPartyChatInput] = useState('')
+  const [remoteOpen, setRemoteOpen] = useState(false)
+  const [remoteSession] = useState(() => Math.random().toString(36).slice(2, 8).toUpperCase())
+  const [remoteQrUrl, setRemoteQrUrl] = useState('')
   const [playbackRate, setPlaybackRate] = useState<number>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(prefsKey) || '{}')
@@ -746,14 +757,114 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
 
   const effectiveDuration = duration > 2 && duration >= currentTime - 1 ? duration : 0
 
+  // Preload next episode metadata/stream headers when reaching 85% progress
+  useEffect(() => {
+    const nextUrl = media.nextEpisode?.url
+    if (!nextUrl || !effectiveDuration || currentTime / effectiveDuration < 0.85) return
+    if (preloadedNextRef.current === nextUrl) return
+    preloadedNextRef.current = nextUrl
+    void fetch(nextUrl, { method: 'HEAD' }).catch(() => undefined)
+  }, [currentTime, effectiveDuration, media.nextEpisode?.url])
+
+  // Remote Control SSE listener + state push
+  useEffect(() => {
+    if (!remoteOpen) return
+    const url = `${window.location.origin}/?remote=${encodeURIComponent(remoteSession)}`
+    void QRCode.toDataURL(url, { width: 150, margin: 1 })
+      .then(setRemoteQrUrl)
+      .catch(() => undefined)
+  }, [remoteOpen, remoteSession])
+
+  useEffect(() => {
+    const es = new EventSource(`/api/remote/${encodeURIComponent(remoteSession)}/events`)
+    es.addEventListener('command', (ev) => {
+      try {
+        const cmd = JSON.parse((ev as MessageEvent).data || '{}')
+        const video = videoRef.current
+        if (!video) return
+        if (cmd.action === 'togglePlay') {
+          if (video.paused) void video.play().catch(() => undefined)
+          else video.pause()
+        } else if (cmd.action === 'seekBy' && typeof cmd.value === 'number') {
+          seekBy(cmd.value)
+        } else if (cmd.action === 'toggleMute') {
+          const nextMuted = !muted
+          setMuted(nextMuted)
+          applyVolume(volume, nextMuted)
+        } else if (cmd.action === 'volumeDelta' && typeof cmd.value === 'number') {
+          const nextVol = Math.max(0, Math.min(3, Math.round((volume + cmd.value) * 100) / 100))
+          setVolume(nextVol)
+          setMuted(nextVol === 0)
+          applyVolume(nextVol, nextVol === 0)
+        } else if (cmd.action === 'nextEpisode' && media.nextEpisode && onPlayNext) {
+          onPlayNext(media.nextEpisode)
+        } else if (cmd.action === 'close') {
+          onClose()
+        }
+      } catch {
+        // ignore malformed remote command
+      }
+    })
+    return () => es.close()
+  }, [applyVolume, media.nextEpisode, muted, onClose, onPlayNext, remoteSession, seekBy, volume])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void fetch(`/api/remote/${encodeURIComponent(remoteSession)}/state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: media.title,
+          paused: isPaused,
+          currentTime,
+          duration: effectiveDuration,
+        }),
+      }).catch(() => undefined)
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [currentTime, effectiveDuration, isPaused, media.title, remoteSession])
+
+  // Watch Party SSE listener
+  useEffect(() => {
+    if (!partyCode) return
+    const es = new EventSource(`/api/party/${encodeURIComponent(partyCode)}/events`)
+    es.addEventListener('sync', (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data || '{}')
+        const video = videoRef.current
+        if (!video) return
+        if (typeof data.positionSec === 'number' && Math.abs(video.currentTime - data.positionSec) > 2.5) {
+          video.currentTime = data.positionSec
+        }
+        if (data.paused === true && !video.paused) video.pause()
+        if (data.paused === false && video.paused) void video.play().catch(() => undefined)
+      } catch {
+        // ignore
+      }
+    })
+    es.addEventListener('chat', (ev) => {
+      try {
+        const msg = JSON.parse((ev as MessageEvent).data || '{}')
+        if (msg?.id) setPartyMessages((prev) => [...prev, msg].slice(-25))
+      } catch {
+        // ignore
+      }
+    })
+    return () => es.close()
+  }, [partyCode])
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95"
+      className={
+        isMinimized
+          ? 'fixed right-4 bottom-4 z-50 w-80 overflow-hidden rounded-xl border border-[var(--sc-accent)]/60 bg-black shadow-2xl'
+          : 'fixed inset-0 z-50 flex items-center justify-center bg-black/95'
+      }
       role="dialog"
-      aria-modal="true"
+      aria-modal={!isMinimized}
       aria-label={media.title}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (!isMinimized && event.target === event.currentTarget) onClose()
       }}
     >
       <div
@@ -1012,6 +1123,47 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           </div>
 
           <div className="pointer-events-auto flex items-center gap-2">
+            {!isMinimized && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemoteOpen(false)
+                    setPartyOpen((v) => !v)
+                  }}
+                  title="Watch Party (Assistir Junto)"
+                  className={`flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold text-white backdrop-blur-md cursor-pointer ${
+                    partyCode
+                      ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
+                      : 'border-white/15 bg-black/50 hover:bg-white/20'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  <span className="hidden md:inline">{partyCode ? `Sala ${partyCode}` : 'Watch Party'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartyOpen(false)
+                    setRemoteOpen((v) => !v)
+                  }}
+                  title="Controle Remoto pelo Celular (QR)"
+                  className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
+                >
+                  <Smartphone className="h-4 w-4" />
+                  <span className="hidden md:inline">Controle</span>
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsMinimized((v) => !v)}
+              title={isMinimized ? 'Expandir player' : 'Minimizar para miniplayer'}
+              aria-label={isMinimized ? 'Expandir player' : 'Minimizar player'}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
+            >
+              {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+            </button>
             {isOnlineStream && (
               <a
                 href={media.url}
@@ -1497,6 +1649,138 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* Watch Party Popover */}
+        {partyOpen && !isMinimized && (
+          <div className="pointer-events-auto absolute top-20 right-6 z-30 w-80 max-w-[calc(100vw-2rem)] space-y-3 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#11131b]/95 p-4 text-xs text-white shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between">
+              <strong className="text-sm">Watch Party · Assistir Junto</strong>
+              <button type="button" onClick={() => setPartyOpen(false)} className="text-white/60 hover:text-white cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {!partyCode ? (
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await fetch('/api/party/create', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ title: media.title, mediaUrl: playbackUrl, positionSec: currentTime, paused: isPaused }),
+                    })
+                    const d = await res.json().catch(() => null)
+                    if (d?.code) setPartyCode(d.code)
+                  }}
+                  className="w-full rounded-lg bg-[var(--sc-accent)] py-2 font-bold text-[#090a0d] cursor-pointer"
+                >
+                  Criar Sala Agora
+                </button>
+                <div className="flex gap-2">
+                  <input
+                    value={partyJoinInput}
+                    onChange={(e) => setPartyJoinInput(e.target.value.toUpperCase())}
+                    placeholder="Código da sala (ex: A1B2C3)"
+                    className="flex-1 rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (partyJoinInput.trim()) setPartyCode(partyJoinInput.trim().toUpperCase())
+                    }}
+                    className="rounded-lg border border-white/15 bg-white/10 px-3 font-semibold hover:bg-white/20 cursor-pointer"
+                  >
+                    Entrar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between rounded-lg bg-white/10 px-3 py-2">
+                  <span>Sala: <strong className="text-[var(--sc-accent)]">{partyCode}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard?.writeText(partyCode)}
+                    className="inline-flex items-center gap-1 text-[11px] text-white/80 hover:text-white cursor-pointer"
+                  >
+                    <Copy className="h-3 w-3" /> Copiar
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void fetch(`/api/party/${encodeURIComponent(partyCode)}/sync`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ positionSec: currentTime, paused: isPaused, sender: profileId }),
+                    })
+                  }}
+                  className="w-full rounded-lg border border-white/15 bg-white/10 py-1.5 font-semibold hover:bg-white/20 cursor-pointer"
+                >
+                  Sincronizar meu tempo ({formatClock(currentTime)})
+                </button>
+                <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg bg-black/40 p-2">
+                  {partyMessages.length === 0 ? (
+                    <p className="m-0 text-[11px] text-white/45">Sem mensagens ainda.</p>
+                  ) : (
+                    partyMessages.map((m) => (
+                      <p key={m.id} className="m-0 text-[11px]">
+                        <strong className="text-[var(--sc-accent)]">{m.sender}:</strong> {m.text}
+                      </p>
+                    ))
+                  )}
+                </div>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!partyChatInput.trim()) return
+                    await fetch(`/api/party/${encodeURIComponent(partyCode)}/chat`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ sender: profileId.replace(/^profile-/, ''), text: partyChatInput }),
+                    })
+                    setPartyChatInput('')
+                  }}
+                  className="flex gap-1.5"
+                >
+                  <input
+                    value={partyChatInput}
+                    onChange={(e) => setPartyChatInput(e.target.value)}
+                    placeholder="Mensagem rápida..."
+                    className="flex-1 rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-white"
+                  />
+                  <button type="submit" className="rounded-lg bg-[var(--sc-accent)] px-2.5 text-[#090a0d] cursor-pointer">
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Phone Remote Control QR Popover */}
+        {remoteOpen && !isMinimized && (
+          <div className="pointer-events-auto absolute top-20 right-6 z-30 w-72 space-y-3 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#11131b]/95 p-4 text-center text-xs text-white shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between">
+              <strong className="text-sm">Controle no Celular</strong>
+              <button type="button" onClick={() => setRemoteOpen(false)} className="text-white/60 hover:text-white cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {remoteQrUrl && <img src={remoteQrUrl} alt="QR Controle Remoto" className="mx-auto h-36 w-36 rounded-lg bg-white p-1.5" />}
+            <p className="m-0 text-[11px] text-white/70">
+              Escaneie com o celular para controlar Play, Pause, Volume e Avançar nesta tela.
+            </p>
+            <a
+              href={`/?remote=${encodeURIComponent(remoteSession)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/20"
+            >
+              Abrir link ({remoteSession})
+            </a>
           </div>
         )}
 
