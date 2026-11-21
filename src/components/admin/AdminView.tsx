@@ -80,6 +80,9 @@ export function AdminView({
   >([])
   const [tunnelBusy, setTunnelBusy] = useState(false)
   const [pinRequired, setPinRequired] = useState<boolean | null>(null)
+  const [maxConns, setMaxConns] = useState(55)
+  const [dlLimitKbps, setDlLimitKbps] = useState(0)
+  const [ulLimitKbps, setUlLimitKbps] = useState(0)
 
   useEffect(() => {
     fetch('/api/network-info')
@@ -533,6 +536,61 @@ export function AdminView({
           <DownloadsPanel alwaysVisible onRefreshCatalog={onRefreshAll} />
 
           <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 space-y-3">
+            <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
+              Limites WebTorrent (Banda e Conexões)
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-4 items-end text-xs">
+              <label className="space-y-1">
+                <span className="font-semibold text-[var(--sc-text-secondary)]">Máx. conexões/peers</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={200}
+                  value={maxConns}
+                  onChange={(e) => setMaxConns(Number(e.target.value))}
+                  className="h-9 w-full rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-[var(--sc-text-primary)]"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="font-semibold text-[var(--sc-text-secondary)]">Download (KB/s, 0=livre)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={dlLimitKbps}
+                  onChange={(e) => setDlLimitKbps(Number(e.target.value))}
+                  className="h-9 w-full rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-[var(--sc-text-primary)]"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="font-semibold text-[var(--sc-text-secondary)]">Upload (KB/s, 0=livre)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={ulLimitKbps}
+                  onChange={(e) => setUlLimitKbps(Number(e.target.value))}
+                  className="h-9 w-full rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-[var(--sc-text-primary)]"
+                />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                onClick={async () => {
+                  const res = await fetch('/api/admin/torrent-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ maxConns, downloadLimitKbps: dlLimitKbps, uploadLimitKbps: ulLimitKbps }),
+                  })
+                  if (res.ok) setFeedback('Limites WebTorrent atualizados!')
+                }}
+              >
+                Aplicar limites
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
                 Conexões Recentes ({connections.length})
@@ -542,8 +600,29 @@ export function AdminView({
                   href="/api/admin/export-history?format=csv"
                   className="inline-flex h-8 items-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
                 >
-                  Exportar CSV (Letterboxd/Trakt)
+                  Exportar CSV
                 </a>
+                <label className="inline-flex h-8 cursor-pointer items-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]">
+                  Importar CSV
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="sr-only"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const csv = await file.text()
+                      const res = await fetch('/api/admin/import-history', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ csv }),
+                      })
+                      const data = await res.json().catch(() => null)
+                      setFeedback(res.ok ? `${data?.imported ?? 0} título(s) importado(s) do CSV!` : data?.error || 'Falha ao importar CSV.')
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
                 <Button
                   type="button"
                   size="sm"

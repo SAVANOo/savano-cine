@@ -86,9 +86,57 @@ export function trackClientConnection(request, getClientIp) {
   }
 }
 
-/** Handles /api/admin/* endpoints (connections tracking, Cloudflare tunnel, backup, and batch artwork PT-BR sync). */
+/** Handles /api/admin/* endpoints (connections tracking, Cloudflare tunnel, backup, import/export, and batch artwork PT-BR sync). */
 export async function handleAdminRoutes({ request, response, requestUrl, root, port, database, send }) {
+  if (database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS client_connections (
+        conn_key TEXT PRIMARY KEY,
+        ip TEXT NOT NULL,
+        origin TEXT,
+        device TEXT,
+        user_agent TEXT,
+        profile_id TEXT,
+        last_path TEXT,
+        last_activity TEXT,
+        requests INTEGER NOT NULL DEFAULT 1,
+        last_seen TEXT NOT NULL
+      )
+    `)
+    if (RECENT_CONNECTIONS.size > 0) {
+      const upsertConn = database.prepare(`
+        INSERT INTO client_connections (conn_key, ip, origin, device, user_agent, profile_id, last_path, last_activity, requests, last_seen)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(conn_key) DO UPDATE SET
+          origin = excluded.origin,
+          device = excluded.device,
+          profile_id = COALESCE(excluded.profile_id, client_connections.profile_id),
+          last_path = excluded.last_path,
+          last_activity = COALESCE(excluded.last_activity, client_connections.last_activity),
+          requests = client_connections.requests + 1,
+          last_seen = excluded.last_seen
+      `)
+      for (const [k, c] of RECENT_CONNECTIONS.entries()) {
+        upsertConn.run(k, c.ip, c.origin, c.device, c.userAgent, c.profileId, c.lastPath, c.lastActivity, c.requests, c.lastSeen)
+      }
+      RECENT_CONNECTIONS.clear()
+    }
+  }
+
   if (requestUrl.pathname === '/api/admin/connections' && request.method === 'GET') {
+    if (database) {
+      const rows = database
+        .prepare(`
+          SELECT ip, origin, device, user_agent AS userAgent, profile_id AS profileId,
+                 last_path AS lastPath, last_activity AS lastActivity, requests, last_seen AS lastSeen
+          FROM client_connections
+          ORDER BY last_seen DESC
+          LIMIT 50
+        `)
+        .all()
+      send(response, 200, rows)
+      return true
+    }
     send(response, 200, Array.from(RECENT_CONNECTIONS.values()).reverse())
     return true
   }
@@ -277,6 +325,63 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
       'Content-Disposition': `attachment; filename="savano-cine-${profileId}-history.csv"`,
     })
     response.end([header, ...lines].join('\n'))
+    return true
+  }
+
+  if (requestUrl.pathname === '/api/admin/import-history' && request.method === 'POST' && database) {
+    const body = await new Promise((resolve) => {
+      let raw = ''
+      request.on('data', (c) => {
+        raw += c
+      })
+      request.on('end', () => {
+        try {
+          resolve(JSON.parse(raw || '{}'))
+        } catch {
+          resolve({})
+        }
+      })
+    })
+    const profileId = String(body?.profileId || 'profile-savio').trim()
+    const csv = String(body?.csv || '')
+    const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0)
+    if (lines.length < 2) {
+      send(response, 400, { error: 'CSV vazio ou inválido.' })
+      return true
+    }
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS social_reviews (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL,
+        content_key TEXT NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'movie',
+        title TEXT NOT NULL,
+        poster TEXT,
+        rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+        comment TEXT NOT NULL DEFAULT '',
+        recommended_to_profile_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(profile_id, content_key)
+      )
+    `)
+    const stmt = database.prepare(`
+      INSERT INTO social_reviews (id, profile_id, content_key, content_type, title, rating, comment)
+      VALUES (?, ?, ?, 'movie', ?, ?, 'Importado via CSV')
+      ON CONFLICT(profile_id, content_key) DO UPDATE SET rating = excluded.rating, updated_at = CURRENT_TIMESTAMP
+    `)
+    let imported = 0
+    for (const line of lines.slice(1, 201)) {
+      const cols = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || []
+      const title = String(cols[0] || '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()
+      if (!title) continue
+      const rawRating = Number(cols[3] || cols[2] || 4)
+      const stars = Math.max(1, Math.min(5, Math.round(Number.isFinite(rawRating) && rawRating > 0 ? rawRating : 4)))
+      const key = `csv:${title.toLowerCase()}`
+      stmt.run(`csv-${imported}-${Date.now()}`, profileId, key, title, stars)
+      imported += 1
+    }
+    send(response, 200, { ok: true, imported })
     return true
   }
 
