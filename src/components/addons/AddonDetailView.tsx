@@ -1,8 +1,9 @@
-import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Subtitles, Tv } from 'lucide-react'
+import { ArrowLeft, Download, ExternalLink, Film, HardDrive, HeartHandshake, Play, Subtitles, Tv } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { LibraryItem } from '../../domain/catalog'
+import type { LibraryItem, Profile } from '../../domain/catalog'
 import { extractStreamLanguages } from '../../domain/streamLanguages'
 import { parseRuntimeToSeconds, translateGenre, type AlternativeSource, type PlayableMedia } from '../../domain/uiHelpers'
+import { SocialRecommendModal } from '../social/SocialRecommendModal'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
@@ -44,6 +45,8 @@ type AddonSubtitleItem = {
 type AddonDetailViewProps = {
   item: AddonMetaSummary
   localCatalog: LibraryItem[]
+  profileId?: string
+  profiles?: Profile[]
   isAdmin?: boolean
   onBack: () => void
   onPlayStream: (media: PlayableMedia) => void
@@ -54,6 +57,8 @@ type AddonDetailViewProps = {
 export function AddonDetailView({
   item,
   localCatalog,
+  profileId = 'profile-savio',
+  profiles = [],
   isAdmin = false,
   onBack,
   onPlayStream,
@@ -70,6 +75,7 @@ export function AddonDetailView({
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(() => new Set())
   const [downloadStatus, setDownloadStatus] = useState('')
   const [subtitlesModalOpen, setSubtitlesModalOpen] = useState(false)
+  const [socialModalOpen, setSocialModalOpen] = useState(false)
   const [streamGroupBy, setStreamGroupBy] = useState<'language' | 'addon'>('language')
   const [streamFilter, setStreamFilter] = useState<'all' | 'pt' | 'hd'>('all')
   const [error, setError] = useState('')
@@ -248,6 +254,12 @@ export function AddonDetailView({
                 {detail.description}
               </p>
             ) : null}
+            <div className="pt-1">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setSocialModalOpen(true)}>
+                <HeartHandshake className="h-4 w-4" />
+                Comentar / Indicar
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -714,6 +726,16 @@ export function AddonDetailView({
           </div>
         )}
       </Modal>
+      <SocialRecommendModal
+        open={socialModalOpen}
+        onClose={() => setSocialModalOpen(false)}
+        profileId={profileId}
+        profiles={profiles}
+        contentKey={detail.id}
+        contentType={detail.type === 'series' ? 'series' : 'movie'}
+        title={detail.name}
+        poster={detail.poster}
+      />
     </div>
   )
 }

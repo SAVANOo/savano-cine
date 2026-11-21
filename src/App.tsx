@@ -1049,6 +1049,8 @@ export function App() {
               key={`${activeAddonItem.type}:${activeAddonItem.id}`}
               item={activeAddonItem}
               localCatalog={catalog}
+              profileId={activeProfile.id}
+              profiles={profiles}
               isAdmin={isActiveAdmin}
               onBack={() => setActiveAddonItem(null)}
               onPlayStream={(media) => setSelectedMedia(media)}
@@ -1105,6 +1107,7 @@ export function App() {
               show={selectedShow}
               library={catalog}
               profileId={activeProfile.id}
+              profiles={profiles}
               isAdmin={Boolean(activeProfile.isAdmin)}
               onBack={() => setSelectedShow(null)}
               onPlayMedia={(media) => setSelectedMedia(media)}

@@ -1,11 +1,12 @@
-import { ArrowLeft, Archive, Check, Download, Image, Pencil, Play, Plus, Puzzle, RotateCcw, Subtitles } from 'lucide-react'
+import { ArrowLeft, Archive, Check, Download, HeartHandshake, Image, Pencil, Play, Plus, Puzzle, RotateCcw, Subtitles } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Episode, LibraryItem, Season } from '../../domain/catalog'
+import type { Episode, LibraryItem, Profile, Season } from '../../domain/catalog'
 import { findNextEpisode, getRelatedItems, resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { AddonStreamModal, type AddonMetaSummary } from '../addons/AddonStreamModal'
 import { MediaCarousel } from '../home/MediaCarousel'
+import { SocialRecommendModal } from '../social/SocialRecommendModal'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { StarRating } from '../ui/StarRating'
@@ -14,6 +15,7 @@ type ShowDetailViewProps = {
   show: LibraryItem
   library: LibraryItem[]
   profileId: string
+  profiles?: Profile[]
   isAdmin?: boolean
   onBack: () => void
   onPlayMedia: (media: PlayableMedia) => void
@@ -31,6 +33,7 @@ export function ShowDetailView({
   show,
   library,
   profileId,
+  profiles = [],
   isAdmin = false,
   onBack,
   onPlayMedia,
@@ -60,6 +63,7 @@ export function ShowDetailView({
   const [subMessage, setSubMessage] = useState('')
   const [searchingSubs, setSearchingSubs] = useState(false)
   const [addonModalItem, setAddonModalItem] = useState<AddonMetaSummary | null>(null)
+  const [socialModalOpen, setSocialModalOpen] = useState(false)
   const [searchingAddons, setSearchingAddons] = useState(false)
 
   async function openAddonLookup() {
@@ -290,6 +294,10 @@ export function ShowDetailView({
               >
                 <Puzzle className="h-4 w-4" />
                 {searchingAddons ? 'Buscando online...' : 'Buscar Online (Addons)'}
+              </Button>
+              <Button variant="secondary" size="md" onClick={() => setSocialModalOpen(true)}>
+                <HeartHandshake className="h-4 w-4" />
+                Comentar / Indicar
               </Button>
               <Button variant="secondary" size="md" onClick={() => setEditing((value) => !value)}>
                 <Pencil className="h-4 w-4" />
@@ -627,6 +635,16 @@ export function ShowDetailView({
         onClose={() => setAddonModalItem(null)}
         onPlayStream={onPlayMedia}
         onPlayLocal={onPlayItem}
+      />
+      <SocialRecommendModal
+        open={socialModalOpen}
+        onClose={() => setSocialModalOpen(false)}
+        profileId={profileId}
+        profiles={profiles}
+        contentKey={show.mediaId || show.id}
+        contentType={show.kind === 'Série' ? 'series' : 'movie'}
+        title={show.title}
+        poster={show.artwork.posterUrl || show.artwork.bannerUrl}
       />
     </div>
   )
