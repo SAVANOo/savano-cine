@@ -18,6 +18,37 @@ const DEFAULT_TRACKERS = [
 
 let clientPromise = null
 const activeTorrents = new Map()
+let torrentLimits = { maxConns: 55, downloadLimitKbps: 0, uploadLimitKbps: 0 }
+
+export function getTorrentLimits() {
+  return { ...torrentLimits }
+}
+
+export async function setTorrentLimits({ maxConns, downloadLimitKbps, uploadLimitKbps }) {
+  if (Number.isFinite(Number(maxConns)) && Number(maxConns) >= 5) {
+    torrentLimits.maxConns = Math.min(200, Math.floor(Number(maxConns)))
+  }
+  if (Number.isFinite(Number(downloadLimitKbps)) && Number(downloadLimitKbps) >= 0) {
+    torrentLimits.downloadLimitKbps = Math.floor(Number(downloadLimitKbps))
+  }
+  if (Number.isFinite(Number(uploadLimitKbps)) && Number(uploadLimitKbps) >= 0) {
+    torrentLimits.uploadLimitKbps = Math.floor(Number(uploadLimitKbps))
+  }
+  if (clientPromise) {
+    try {
+      const client = await clientPromise
+      if (typeof client.throttleDownload === 'function') {
+        client.throttleDownload(torrentLimits.downloadLimitKbps > 0 ? torrentLimits.downloadLimitKbps * 1024 : -1)
+      }
+      if (typeof client.throttleUpload === 'function') {
+        client.throttleUpload(torrentLimits.uploadLimitKbps > 0 ? torrentLimits.uploadLimitKbps * 1024 : -1)
+      }
+    } catch {
+      // ignore if client not ready
+    }
+  }
+  return getTorrentLimits()
+}
 
 export function isValidInfoHash(infoHash) {
   return typeof infoHash === 'string' && INFO_HASH_RE.test(infoHash.trim())

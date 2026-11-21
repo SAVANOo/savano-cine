@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { getTorrentLimits, setTorrentLimits } from '../torrent-stream.mjs'
 
 const RECENT_CONNECTIONS = new Map()
 let activeTunnelChild = null
@@ -219,6 +220,63 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
       }
     }
     send(response, 200, { checked: candidates.length, updated })
+    return true
+  }
+
+  if (requestUrl.pathname === '/api/admin/torrent-settings') {
+    if (request.method === 'GET') {
+      send(response, 200, getTorrentLimits())
+      return true
+    }
+    if (request.method === 'POST') {
+      const body = await new Promise((resolve) => {
+        let raw = ''
+        request.on('data', (c) => {
+          raw += c
+        })
+        request.on('end', () => {
+          try {
+            resolve(JSON.parse(raw || '{}'))
+          } catch {
+            resolve({})
+          }
+        })
+      })
+      const updated = await setTorrentLimits(body || {})
+      send(response, 200, updated)
+      return true
+    }
+  }
+
+  if (requestUrl.pathname === '/api/admin/export-history' && request.method === 'GET' && database) {
+    const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+    const format = requestUrl.searchParams.get('format') || 'csv'
+    const rows = database
+      .prepare(`
+        SELECT m.title AS Title, m.year AS Year, wp.completed AS Watched, wp.updated_at AS WatchedDate,
+               COALESCE(rt.rating, '') AS Rating10
+        FROM watch_progress wp
+        JOIN media_items m ON m.id = wp.media_id
+        LEFT JOIN ratings rt ON rt.profile_id = wp.profile_id AND rt.content_id = m.id
+        WHERE wp.profile_id = ?
+        ORDER BY wp.updated_at DESC
+      `)
+      .all(profileId)
+    if (format === 'json') {
+      send(response, 200, { profileId, exportedAt: new Date().toISOString(), items: rows })
+      return true
+    }
+    const header = 'Title,Year,WatchedDate,Rating'
+    const lines = rows.map((r) => {
+      const safeTitle = `"${String(r.Title || '').replace(/"/g, '""')}"`
+      const stars = r.Rating10 ? (Number(r.Rating10) / 2).toFixed(1) : ''
+      return `${safeTitle},${r.Year || ''},${String(r.WatchedDate || '').slice(0, 10)},${stars}`
+    })
+    response.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="savano-cine-${profileId}-history.csv"`,
+    })
+    response.end([header, ...lines].join('\n'))
     return true
   }
 

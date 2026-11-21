@@ -537,7 +537,13 @@ export function AdminView({
               <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
                 Conexões Recentes ({connections.length})
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href="/api/admin/export-history?format=csv"
+                  className="inline-flex h-8 items-center rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                >
+                  Exportar CSV (Letterboxd/Trakt)
+                </a>
                 <Button
                   type="button"
                   size="sm"
