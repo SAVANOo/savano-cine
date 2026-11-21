@@ -745,6 +745,29 @@ export function AdminView({
                 </Button>
               )}
               <Button
+                variant="secondary"
+                size="sm"
+                disabled={fetchingArtwork}
+                onClick={async () => {
+                  setFetchingArtwork(true)
+                  try {
+                    const res = await fetch('/api/admin/artwork/sync-ptbr', { method: 'POST' })
+                    const data = await res.json().catch(() => null)
+                    if (res.ok) {
+                      setFeedback(`Re-sincronização concluída: ${data?.updated ?? 0} capa(s) atualizada(s) de ${data?.checked ?? 0} verificada(s).`)
+                      onRefreshAll()
+                    } else {
+                      setFeedback(data?.error || 'Falha ao re-sincronizar capas.')
+                    }
+                  } finally {
+                    setFetchingArtwork(false)
+                  }
+                }}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Re-sincronizar Capas
+              </Button>
+              <Button
                 variant="primary"
                 size="sm"
                 disabled={fetchingArtwork}

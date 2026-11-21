@@ -913,7 +913,7 @@ async function handleApiRequest(request, response) {
     return send(response, 200, { stopped, infoHash })
   }
 
-  if (await handleAdminRoutes({ request, response, requestUrl, root, port, send })) {
+  if (await handleAdminRoutes({ request, response, requestUrl, root, port, database, send })) {
     return
   }
 
@@ -2125,6 +2125,7 @@ async function buildLibrary(profileId) {
   const groupedMovies = new Map()
   for (const movie of rawMovies) {
     const key = String(movie.title || '')
+      .replace(/\b(?:2160p|1080p|720p|480p|4k|uhd|imax|bluray|blu-ray|web-dl|webrip|dublado|dual)\b/gi, '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()

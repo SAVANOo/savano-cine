@@ -85,8 +85,8 @@ export function trackClientConnection(request, getClientIp) {
   }
 }
 
-/** Handles /api/admin/* endpoints (connections tracking and Cloudflare tunnel control). */
-export async function handleAdminRoutes({ request, response, requestUrl, root, port, send }) {
+/** Handles /api/admin/* endpoints (connections tracking, Cloudflare tunnel, backup, and batch artwork PT-BR sync). */
+export async function handleAdminRoutes({ request, response, requestUrl, root, port, database, send }) {
   if (requestUrl.pathname === '/api/admin/connections' && request.method === 'GET') {
     send(response, 200, Array.from(RECENT_CONNECTIONS.values()).reverse())
     return true
@@ -167,6 +167,58 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
       }
     }
     send(response, 200, { ok: true, filename: destName, totalBackups: allBackups.length })
+    return true
+  }
+
+  if (requestUrl.pathname === '/api/admin/artwork/sync-ptbr' && request.method === 'POST' && database) {
+    const dataDir = path.resolve(root, '..', 'data', 'artwork', 'movies')
+    mkdirSync(dataDir, { recursive: true })
+    const candidates = database
+      .prepare(`
+        SELECT m.id, m.title, m.year, a.id AS artId, a.remote_url AS remoteUrl, a.local_path AS localPath
+        FROM media_items m
+        LEFT JOIN artwork a ON a.movie_id = m.id AND a.artwork_type = 'poster'
+        WHERE m.deleted_at IS NULL AND m.kind = 'movie' AND m.classification_status IN ('approved', 'auto')
+          AND (a.id IS NULL OR a.remote_url LIKE '%Books-bookshelf%' OR a.verified = 0)
+        LIMIT 20
+      `)
+      .all()
+
+    let updated = 0
+    for (const row of candidates) {
+      try {
+        const searchUrl = `https://v3-cinemeta.strem.io/catalog/movie/top/search=${encodeURIComponent(row.title)}.json`
+        const res = await fetch(searchUrl, { signal: AbortSignal.timeout(4500) })
+        if (!res.ok) continue
+        const payload = await res.json().catch(() => null)
+        const metas = Array.isArray(payload?.metas) ? payload.metas : []
+        const match =
+          metas.find((m) => row.year && String(m.releaseInfo || '').includes(String(row.year))) || metas[0]
+        if (!match?.poster) continue
+        const imgRes = await fetch(match.poster, { signal: AbortSignal.timeout(5000) })
+        if (!imgRes.ok) continue
+        const buf = Buffer.from(await imgRes.arrayBuffer())
+        if (buf.length < 2000) continue
+        const safeSlug = row.id.replace(/[^a-z0-9-]+/gi, '-').slice(0, 80)
+        const relLocal = path.join('data', 'artwork', 'movies', `${safeSlug}-sync.jpg`)
+        await writeFile(path.resolve(root, '..', relLocal), buf)
+        if (row.artId) {
+          database
+            .prepare(`UPDATE artwork SET remote_url = ?, local_path = ?, provider = 'cinemeta', provider_id = ? WHERE id = ?`)
+            .run(match.poster, relLocal, match.id || null, row.artId)
+        } else {
+          database
+            .prepare(
+              `INSERT INTO artwork (id, movie_id, remote_url, local_path, provider, provider_id, source, verified, artwork_type) VALUES (?, ?, ?, ?, 'cinemeta', ?, 'remote', 0, 'poster')`,
+            )
+            .run(`art-sync-${safeSlug}`, row.id, match.poster, relLocal, match.id || null)
+        }
+        updated += 1
+      } catch {
+        // skip transient network failure per item
+      }
+    }
+    send(response, 200, { checked: candidates.length, updated })
     return true
   }
 
