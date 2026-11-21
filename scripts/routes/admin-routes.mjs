@@ -302,10 +302,10 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
     const rows = database
       .prepare(`
         SELECT m.title AS Title, m.year AS Year, wp.completed AS Watched, wp.updated_at AS WatchedDate,
-               COALESCE(rt.rating, '') AS Rating10
+               COALESCE(rt.score, '') AS Rating10
         FROM watch_progress wp
         JOIN media_items m ON m.id = wp.media_id
-        LEFT JOIN ratings rt ON rt.profile_id = wp.profile_id AND rt.content_id = m.id
+        LEFT JOIN ratings rt ON rt.profile_id = wp.profile_id AND rt.media_item_id = m.id
         WHERE wp.profile_id = ?
         ORDER BY wp.updated_at DESC
       `)
