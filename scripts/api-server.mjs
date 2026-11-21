@@ -29,6 +29,7 @@ import {
 import {
   getTorrentStatus,
   isValidInfoHash,
+  probeTorrentInfo,
   serveTorrentStream,
   stopTorrentStream,
 } from './torrent-stream.mjs'
@@ -854,6 +855,8 @@ async function handleApiRequest(request, response) {
     const infoHash = requestUrl.searchParams.get('infoHash') || ''
     const fileIdxRaw = requestUrl.searchParams.get('fileIdx')
     const fileIdx = fileIdxRaw !== null && fileIdxRaw !== '' ? Number(fileIdxRaw) : null
+    const audioStream = requestUrl.searchParams.get('audioStream') || null
+    const startSec = Number(requestUrl.searchParams.get('start') || 0)
     if (!isValidInfoHash(infoHash)) {
       return send(response, 400, { error: 'infoHash inválido.' })
     }
@@ -861,6 +864,8 @@ async function handleApiRequest(request, response) {
       await serveTorrentStream(request, response, {
         infoHash,
         fileIdx: Number.isInteger(fileIdx) ? fileIdx : null,
+        audioStream,
+        startSec,
       })
       return
     } catch (error) {
@@ -870,6 +875,21 @@ async function handleApiRequest(request, response) {
         })
       }
       return
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/torrent-info' && request.method === 'GET') {
+    const infoHash = requestUrl.searchParams.get('infoHash') || ''
+    const fileIdxRaw = requestUrl.searchParams.get('fileIdx')
+    const fileIdx = fileIdxRaw !== null && fileIdxRaw !== '' ? Number(fileIdxRaw) : null
+    if (!isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'infoHash inválido.' })
+    }
+    try {
+      const info = await probeTorrentInfo(infoHash, Number.isInteger(fileIdx) ? fileIdx : null)
+      return send(response, 200, info || { duration: 0, audio: [], subtitles: [] })
+    } catch {
+      return send(response, 200, { duration: 0, audio: [], subtitles: [] })
     }
   }
 

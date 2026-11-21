@@ -115,10 +115,10 @@ function getMimeType(filename) {
   return 'video/mp4'
 }
 
-/** Probes the first 2MB of a torrent video file to pick Portuguese > English > first audio stream. */
-async function pickPreferredTorrentAudioMap(file) {
+/** Probes the first 2MB of a torrent video file to return duration, audio tracks and preferred audio map. */
+async function probeTorrentFileMetadata(file) {
   return await new Promise((resolve) => {
-    const fallback = '0:a:0?'
+    const fallback = { duration: 0, audio: [], preferredAudioMap: '0:a:0?' }
     let settled = false
     const finish = (value) => {
       if (settled) return
@@ -134,14 +134,23 @@ async function pickPreferredTorrentAudioMap(file) {
         // ignore
       }
       finish(fallback)
-    }, 1800)
+    }, 2000)
     timer.unref?.()
 
     const maxBytes = Math.min(Math.max(file.length - 1, 0), 2 * 1024 * 1024)
     const probeStream = file.createReadStream({ start: 0, end: maxBytes })
     const ffprobeProc = spawn(
       'ffprobe',
-      ['-v', 'error', '-show_entries', 'stream=index,codec_type:stream_tags=language,title', '-of', 'json', '-i', 'pipe:0'],
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration:stream=index,codec_type:stream_tags=language,title',
+        '-of',
+        'json',
+        '-i',
+        'pipe:0',
+      ],
       { windowsHide: true },
     )
 
@@ -159,8 +168,10 @@ async function pickPreferredTorrentAudioMap(file) {
       probeStream.destroy()
       try {
         const parsed = JSON.parse(stdout)
+        const dur = Number(parsed?.format?.duration)
+        const duration = Number.isFinite(dur) && dur > 0 ? dur : 0
         const audioStreams = (parsed.streams || []).filter((s) => s.codec_type === 'audio')
-        if (audioStreams.length === 0) return finish(fallback)
+        if (audioStreams.length === 0) return finish({ duration, audio: [], preferredAudioMap: '0:a:0?' })
         const scoreStream = (s) => {
           const lang = String(s.tags?.language || '').toLowerCase()
           const title = String(s.tags?.title || '').toLowerCase()
@@ -170,7 +181,16 @@ async function pickPreferredTorrentAudioMap(file) {
           return 1
         }
         const best = [...audioStreams].sort((a, b) => scoreStream(b) - scoreStream(a))[0]
-        finish(best && Number.isInteger(best.index) ? `0:${best.index}` : fallback)
+        const audio = audioStreams.map((s) => ({
+          index: s.index,
+          language: String(s.tags?.language || 'und'),
+          title: String(s.tags?.title || s.tags?.language || `Faixa ${s.index}`),
+        }))
+        finish({
+          duration,
+          audio,
+          preferredAudioMap: best && Number.isInteger(best.index) ? `0:${best.index}` : '0:a:0?',
+        })
       } catch {
         finish(fallback)
       }
@@ -181,6 +201,14 @@ async function pickPreferredTorrentAudioMap(file) {
     })
     probeStream.pipe(ffprobeProc.stdin)
   })
+}
+
+export async function probeTorrentInfo(infoHash, fileIdx = null) {
+  const torrent = await ensureTorrent(infoHash)
+  const file = pickTorrentFile(torrent, fileIdx)
+  if (!file) return null
+  const info = await probeTorrentFileMetadata(file)
+  return { duration: info.duration, audio: info.audio, subtitles: [] }
 }
 
 export async function getTorrentStatus(infoHash) {
@@ -222,7 +250,11 @@ export async function stopTorrentStream(infoHash) {
   return true
 }
 
-export async function serveTorrentStream(request, response, { infoHash, fileIdx = null, raw = false }) {
+export async function serveTorrentStream(
+  request,
+  response,
+  { infoHash, fileIdx = null, raw = false, audioStream = null, startSec = 0 },
+) {
   const torrent = await ensureTorrent(infoHash)
   const file = pickTorrentFile(torrent, fileIdx)
   if (!file) {
@@ -236,38 +268,38 @@ export async function serveTorrentStream(request, response, { infoHash, fileIdx 
 
   const needsTranscode = !raw && TRANSCODE_EXT_RE.test(file.name)
   if (needsTranscode) {
-    const preferredAudioMap = await pickPreferredTorrentAudioMap(file)
+    const requestedAudio =
+      audioStream !== null && /^\d{1,2}$/.test(String(audioStream))
+        ? `0:${Number(audioStream)}`
+        : (await probeTorrentFileMetadata(file)).preferredAudioMap
+    const startOffset = Number.isFinite(Number(startSec)) && Number(startSec) > 1 ? Math.floor(Number(startSec)) : 0
     response.writeHead(200, {
       'Content-Type': 'video/mp4',
       'Cache-Control': 'no-store',
     })
     const input = file.createReadStream()
-    const ff = spawn(
-      'ffmpeg',
-      [
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        'pipe:0',
-        '-map',
-        '0:v:0',
-        '-map',
-        preferredAudioMap,
-        '-c:v',
-        'copy',
-        '-c:a',
-        'aac',
-        '-ac',
-        '2',
-        '-movflags',
-        'frag_keyframe+empty_moov',
-        '-f',
-        'mp4',
-        'pipe:1',
-      ],
-      { windowsHide: true },
+    const ffArgs = ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0']
+    if (startOffset > 0) {
+      ffArgs.push('-ss', String(startOffset))
+    }
+    ffArgs.push(
+      '-map',
+      '0:v:0',
+      '-map',
+      requestedAudio,
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-ac',
+      '2',
+      '-movflags',
+      'frag_keyframe+empty_moov',
+      '-f',
+      'mp4',
+      'pipe:1',
     )
+    const ff = spawn('ffmpeg', ffArgs, { windowsHide: true })
     input.pipe(ff.stdin)
     ff.stdout.pipe(response)
     const cleanup = () => {

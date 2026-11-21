@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Layers, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Download, FastForward, Layers, ListVideo, Maximize2, Moon, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
@@ -166,6 +166,8 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     }
   })
   const [muted, setMuted] = useState(false)
+  const [nightMode, setNightMode] = useState(false)
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null)
   const [playbackRate, setPlaybackRate] = useState<number>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(prefsKey) || '{}')
@@ -206,6 +208,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
         compressor.connect(ctx.destination)
         audioCtxRef.current = ctx
         gainNodeRef.current = gain
+        compressorRef.current = compressor
       } catch {
         // Fallback to native volume if Web Audio is unavailable
       }
@@ -440,18 +443,49 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   }, [media.subtitleUrl])
 
   useEffect(() => {
-    if (!media.mediaId) return
-    fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
-      .then((response) => (response.ok ? response.json() : null))
+    if (media.mediaId) {
+      fetch(`/api/media/${encodeURIComponent(media.mediaId)}/streams`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((info: StreamInfo | null) => {
+          setStreamInfo(info)
+          if (info?.duration && info.duration > 0) {
+            totalDurationRef.current = info.duration
+            setDuration(info.duration)
+          }
+        })
+        .catch(() => setStreamInfo(null))
+      return
+    }
+    const match = media.url.match(/[?&]infoHash=([a-fA-F0-9]{40}|[A-Z2-7]{32})/i)
+    if (!match) return
+    const fileIdxMatch = media.url.match(/[?&]fileIdx=(\d+)/)
+    const params = new URLSearchParams({ infoHash: match[1] })
+    if (fileIdxMatch) params.set('fileIdx', fileIdxMatch[1])
+    fetch(`/api/addons/torrent-info?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
       .then((info: StreamInfo | null) => {
+        if (!info) return
         setStreamInfo(info)
-        if (info?.duration && info.duration > 0) {
+        if (info.duration && info.duration > 2 && totalDurationRef.current <= 2) {
           totalDurationRef.current = info.duration
           setDuration(info.duration)
         }
       })
-      .catch(() => setStreamInfo(null))
-  }, [media.mediaId])
+      .catch(() => undefined)
+  }, [media.mediaId, media.url])
+
+  const buildTorrentTranscodeUrl = useCallback(
+    (streamIdx: string, startSec: number) => {
+      const base = media.url.split('?')[0]
+      const search = new URLSearchParams(media.url.includes('?') ? media.url.split('?')[1] : '')
+      if (streamIdx) search.set('audioStream', streamIdx)
+      else search.delete('audioStream')
+      if (startSec > 1) search.set('start', String(Math.floor(startSec)))
+      else search.delete('start')
+      return `${base}?${search.toString()}`
+    },
+    [media.url],
+  )
 
   const buildTranscodeUrl = useCallback(
     (streamIdx: string, startSec: number) => {
@@ -467,6 +501,16 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setAudioStream(value)
     setPlaybackError('')
     const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
+    if (playbackUrl.includes('/api/addons/torrent-stream')) {
+      const offset = Math.floor(effectivePos)
+      transcodeOffsetRef.current = offset
+      setTranscodeOffset(offset)
+      setCurrentTime(effectivePos)
+      pendingPosition.current = null
+      setIsLoadingMedia(true)
+      setPlaybackUrl(buildTorrentTranscodeUrl(value, offset))
+      return
+    }
     if (!value && !media.needsTranscode) {
       transcodeOffsetRef.current = 0
       setTranscodeOffset(0)
@@ -488,7 +532,8 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
-    if (!playbackUrl.includes('/transcode')) {
+    const isTranscodedStream = playbackUrl.includes('/transcode') || playbackUrl.includes('/api/addons/torrent-stream')
+    if (!isTranscodedStream) {
       video.currentTime = clamped
       scheduleHideControls()
       return
@@ -500,7 +545,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
       const offset = Math.floor(clamped)
       transcodeOffsetRef.current = offset
       setTranscodeOffset(offset)
-      setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
+      setIsLoadingMedia(true)
+      setPlaybackUrl(
+        playbackUrl.includes('/api/addons/torrent-stream')
+          ? buildTorrentTranscodeUrl(audioStream, offset)
+          : buildTranscodeUrl(audioStream, offset),
+      )
     }
     scheduleHideControls()
   }
@@ -1182,6 +1232,38 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const nextNight = !nightMode
+                  setNightMode(nextNight)
+                  if (compressorRef.current) {
+                    compressorRef.current.threshold.value = nextNight ? -32 : -18
+                    compressorRef.current.ratio.value = nextNight ? 10 : 4
+                  }
+                }}
+                title={nightMode ? 'Desativar Modo Noite' : 'Modo Noite (equilibra falas e explosões)'}
+                aria-label="Modo Noite"
+                className={`flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold text-white transition cursor-pointer ${
+                  nightMode
+                    ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)]/25 text-[var(--sc-accent)]'
+                    : 'border-white/15 bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                <Moon className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Noite</span>
+              </button>
+              {(media.showTitle || media.showSeasons) && currentTime < 240 && (
+                <button
+                  type="button"
+                  onClick={() => seekBy(85)}
+                  title="Pular abertura (+85s)"
+                  className="flex h-9 items-center gap-1.5 rounded-full border border-[var(--sc-accent)]/60 bg-[var(--sc-accent)]/20 px-3 text-xs font-bold text-white hover:bg-[var(--sc-accent)]/35 cursor-pointer"
+                >
+                  <FastForward className="h-3.5 w-3.5 text-[var(--sc-accent)]" />
+                  <span>Pular abertura</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
