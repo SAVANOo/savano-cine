@@ -8,7 +8,7 @@ export type TourStep = {
   hint: string
 }
 
-export const SAVANO_TOUR_STEPS: TourStep[] = [
+const SAVANO_TOUR_STEPS: TourStep[] = [
   {
     selector: '[data-tour="search-bar"]',
     title: 'Busca Unificada',

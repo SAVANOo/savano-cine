@@ -250,14 +250,14 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (pinLocked || profileGateOpen || !activeProfile?.id) return
+    if (pinLocked || profileGateOpen || !activeProfileId) return
     if (typeof navigator !== 'undefined' && navigator.webdriver) return
-    const key = `savano-cine-tour-done:${activeProfile.id}`
+    const key = `savano-cine-tour-done:${activeProfileId}`
     if (!localStorage.getItem(key)) {
       const timer = window.setTimeout(() => setTourOpen(true), 650)
       return () => window.clearTimeout(timer)
     }
-  }, [activeProfile?.id, pinLocked, profileGateOpen])
+  }, [activeProfileId, pinLocked, profileGateOpen])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
