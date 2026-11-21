@@ -10,7 +10,6 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Circuit breaker para addons lentos/instáveis | Ignorar ou aplicar timeout curto (3s) em addons com erro/timeout recorrente para não atrasar a listagem de streams |
 | Alta | Deduplicação automática de versões locais na Home | Garantir que filmes com múltiplas resoluções (720p/1080p/4K) sempre apareçam como um único card com seletor de versão |
 | Média | Re-sincronização em lote de capas PT-BR | Botão no Admin para atualizar capas antigas/em inglês do acervo local usando TMDB/Cinemeta em PT-BR |
 
@@ -18,10 +17,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Alta | Troca de faixa de áudio em streams torrent no Player | Expor faixas detectadas pelo `ffprobe` no menu **Idioma e legendas** mesmo para streams de addons torrent |
-| Alta | Seek real por timestamp no transcode torrent | Permitir avançar/retroceder para qualquer minuto de MKVs via torrent reiniciando o transcode com `-ss` |
-| Média | Perfil Kids / Controle Parental | Modo infantil com filtro de classificação indicativa e proteção por PIN para sair do perfil |
-| Média | Modo Smart TV (10-foot UI) | Layout simplificado com cards maiores, foco D-Pad de alto contraste e controle remoto via celular |
+| Média | Modo Smart TV (10-foot UI) & Controle Remoto QR | Layout simplificado com cards maiores, foco D-Pad de alto contraste e controle remoto via celular |
+| Média | Watch Party ("Assistir Junto") | Sala sincronizada via WebSocket/SSE para duas pessoas assistirem ao mesmo filme à distância com chat/reações |
 
 ## Backlog Extensivo (Brainstorm & Referências: Stremio, Plex, Jellyfin, Netflix, Trakt, Watch2Gether)
 
@@ -65,6 +62,10 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 ## Concluído
 
+- **Espaço Social & Avaliações (`SocialFeedView` + `/api/social/*`)**: aba **Comunidade** com feed compartilhado de notas (1–5★) e comentários de todos os perfis, seção **Indicados para você**, formulário de indicação entre perfis e resumo estatístico do perfil.
+- **Player Avançado**: botão **Modo Noite** (compressor dinâmico para equilibrar falas e explosões), botão **Pular abertura (+85s)** em séries/episódios, probe de faixas de áudio (`GET /api/addons/torrent-info`) e seek real com `-ss` + troca de áudio em streams torrent.
+- **Saúde & Circuit Breaker para Addons**: monitoramento de latência/falhas por addon em `stremio-addons.mjs` com cooldown de 60s para addons instáveis, timeout rápido de 4.5s e badge de saúde (`Saudável`, `Lento`, `Instável`) no painel de Addons.
+- **Perfil Kids & Backup do Banco**: filtragem automática de conteúdo adulto/terror em perfis infantis e endpoint `POST /api/admin/backup` com rotação dos últimos 5 snapshots de `catalog.db`.
 - **Tour Guiado Interativo Step-by-Step (`OnboardingTour`)**: tutorial com spotlight dourado circulando busca, navegação, Acervo Online, Me Surpreenda e perfis/temas, disparado automaticamente no primeiro acesso de cada perfil e reabrível pelo botão **Tutorial** na barra lateral.
 - **Agrupamento de Fontes & Troca de Fonte dentro do Player**: fontes agrupadas por idioma (`Dublado / Português`, `Original / Inglês`, `Outras`) ou por addon com filtros rápidos (`Todas`, `🇧🇷 PT / Dublado`, `4K / 1080p`), além de seletor **Fontes (N)** dentro do `VideoPlayer` para trocar de stream mantendo o tempo atual.
 - **Identidade Visual Noir Âmbar & PWA**: remoção global de tons vermelhos (inclusive no Tema Claro e cursores SVG), geração de `favicon.ico`, `apple-touch-icon.png` e ícones `192x192`/`512x512`, `SavanoLoader` cobra-para-play ao carregar títulos e iniciar reprodução.
