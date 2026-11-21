@@ -681,7 +681,7 @@ export function App() {
       })
     }
     return list
-  }, [activeGenre, activeKind, catalog, query, sortOrder, unwatchedOnly])
+  }, [activeGenre, activeKind, query, sortOrder, unwatchedOnly, visibleCatalog])
 
   const isFilteredView =
     activeKind !== 'Todos' || activeGenre !== 'Todos' || sortOrder !== 'default' || unwatchedOnly || query.trim().length > 0

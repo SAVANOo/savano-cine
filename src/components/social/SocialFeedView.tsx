@@ -73,8 +73,19 @@ export function SocialFeedView({
   }, [activeProfile.id])
 
   useEffect(() => {
-    void loadFeed()
-  }, [loadFeed])
+    let active = true
+    fetch(`/api/social/feed?profileId=${encodeURIComponent(activeProfile.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: SocialFeedPayload | null) => {
+        if (active && payload) setData(payload)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [activeProfile.id])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
