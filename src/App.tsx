@@ -631,17 +631,27 @@ export function App() {
     [refreshArtworkCandidates, refreshCatalogAndSources, setSelectedShow],
   )
 
+  const visibleCatalog = useMemo(() => {
+    if (!activeProfile.isKids) return catalog
+    const blockedRe = /terror|horror|crime|adult|\+18|south park|energia do homem|deadpool/i
+    return catalog.filter(
+      (item) =>
+        !blockedRe.test(item.title) &&
+        !(item.genres ?? []).some((g) => /terror|horror|crime|adult/i.test(g)),
+    )
+  }, [activeProfile.isKids, catalog])
+
   const genreOptions = useMemo(() => {
     const set = new Set<string>()
-    for (const item of catalog) {
+    for (const item of visibleCatalog) {
       for (const genre of item.genres ?? []) set.add(genre)
     }
     return Array.from(set).sort((a, b) => translateGenre(a).localeCompare(translateGenre(b), 'pt-BR'))
-  }, [catalog])
+  }, [visibleCatalog])
 
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    const list = catalog.filter((item) => {
+    const list = visibleCatalog.filter((item) => {
       if (activeKind === 'Continuar') {
         if (!item.resume && (item.progress ?? 0) <= 0) return false
       } else if (activeKind !== 'Todos' && activeKind !== 'Local' && item.kind !== activeKind) {

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -138,6 +138,35 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
       activeTunnelChild = null
     }
     send(response, 200, { running: false })
+    return true
+  }
+
+  if (requestUrl.pathname === '/api/admin/backup' && request.method === 'POST') {
+    const dataDir = path.resolve(root, '..', 'data')
+    const dbPath = path.join(dataDir, 'catalog.db')
+    const backupsDir = path.join(dataDir, 'backups')
+    if (!existsSync(dbPath)) {
+      send(response, 404, { error: 'Banco catalog.db não encontrado.' })
+      return true
+    }
+    mkdirSync(backupsDir, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const destName = `catalog-${stamp}.db`
+    copyFileSync(dbPath, path.join(backupsDir, destName))
+    const allBackups = readdirSync(backupsDir)
+      .filter((f) => f.startsWith('catalog-') && f.endsWith('.db'))
+      .sort()
+    while (allBackups.length > 5) {
+      const oldest = allBackups.shift()
+      if (oldest) {
+        try {
+          unlinkSync(path.join(backupsDir, oldest))
+        } catch {
+          // ignore
+        }
+      }
+    }
+    send(response, 200, { ok: true, filename: destName, totalBackups: allBackups.length })
     return true
   }
 

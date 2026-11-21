@@ -537,20 +537,38 @@ export function AdminView({
               <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
                 Conexões Recentes ({connections.length})
               </h3>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  fetch('/api/admin/connections')
-                    .then((res) => (res.ok ? res.json() : []))
-                    .then((rows) => setConnections(Array.isArray(rows) ? rows : []))
-                    .catch(() => undefined)
-                }}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Atualizar
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    const res = await fetch('/api/admin/backup', { method: 'POST' })
+                    const data = await res.json().catch(() => null)
+                    if (res.ok && data?.filename) {
+                      setFeedback(`Backup salvo: ${data.filename} (${data.totalBackups} mantidos)`)
+                    } else {
+                      setFeedback(data?.error || 'Falha ao gerar backup.')
+                    }
+                  }}
+                >
+                  Backup do Banco
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    fetch('/api/admin/connections')
+                      .then((res) => (res.ok ? res.json() : []))
+                      .then((rows) => setConnections(Array.isArray(rows) ? rows : []))
+                      .catch(() => undefined)
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Atualizar
+                </Button>
+              </div>
             </div>
             {connections.length === 0 ? (
               <p className="text-xs text-[var(--sc-text-secondary)]">Nenhuma conexão registrada ainda.</p>
