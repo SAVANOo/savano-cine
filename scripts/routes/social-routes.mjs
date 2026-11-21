@@ -92,7 +92,7 @@ export async function handleSocialRoutes({ request, response, requestUrl, databa
 
     const localWatched =
       database
-        .prepare(`SELECT COUNT(*) AS cnt FROM watch_progress WHERE profile_id = ? AND completed = 1`)
+        .prepare(`SELECT COUNT(*) AS cnt FROM watch_progress WHERE profile_id = ? AND watched = 1`)
         .get(activeProfileId)?.cnt || 0
     const onlineWatched =
       database

@@ -301,10 +301,10 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
     const format = requestUrl.searchParams.get('format') || 'csv'
     const rows = database
       .prepare(`
-        SELECT m.title AS Title, m.year AS Year, wp.completed AS Watched, wp.updated_at AS WatchedDate,
+        SELECT m.title AS Title, m.year AS Year, wp.watched AS Watched, wp.updated_at AS WatchedDate,
                COALESCE(rt.score, '') AS Rating10
         FROM watch_progress wp
-        JOIN media_items m ON m.id = wp.media_id
+        JOIN media_items m ON m.id = wp.media_item_id
         LEFT JOIN ratings rt ON rt.profile_id = wp.profile_id AND rt.media_item_id = m.id
         WHERE wp.profile_id = ?
         ORDER BY wp.updated_at DESC
