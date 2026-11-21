@@ -179,6 +179,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [remoteOpen, setRemoteOpen] = useState(false)
   const [remoteSession] = useState(() => Math.random().toString(36).slice(2, 8).toUpperCase())
   const [remoteQrUrl, setRemoteQrUrl] = useState('')
+  const [subtitleBg, setSubtitleBg] = useState<'none' | 'soft' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('sc_sub_bg')
+      return saved === 'none' || saved === 'soft' ? saved : 'dark'
+    } catch {
+      return 'dark'
+    }
+  })
   const [playbackRate, setPlaybackRate] = useState<number>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(prefsKey) || '{}')
@@ -879,6 +887,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               : subtitleSize === 'lg'
                 ? '[&::cue]:text-2xl'
                 : '[&::cue]:text-lg'
+          } ${
+            subtitleBg === 'none'
+              ? '[&::cue]:bg-transparent'
+              : subtitleBg === 'soft'
+                ? '[&::cue]:bg-black/45'
+                : '[&::cue]:bg-black/80'
           }`}
           src={playbackUrl}
           autoPlay
@@ -1800,6 +1814,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             addonSubsNotice={addonSubsNotice}
             subtitleOffsetSec={subtitleOffsetSec}
             subtitleSize={subtitleSize}
+            subtitleBg={subtitleBg}
             onChangeAudio={changeAudioStream}
             onChangeEmbeddedSubtitle={changeSubtitleStream}
             onSelectExternalSubtitle={setSelectedSubtitleUrl}
@@ -1823,6 +1838,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             onFetchAddonSubtitles={() => void fetchAddonSubtitlesInPlayer()}
             onAdjustSubtitleOffset={adjustSubtitleOffset}
             onChangeSubtitleSize={setSubtitleSize}
+            onChangeSubtitleBg={(bg) => {
+              setSubtitleBg(bg)
+              try {
+                localStorage.setItem('sc_sub_bg', bg)
+              } catch {
+                // ignore
+              }
+            }}
           />
         )}
       </div>

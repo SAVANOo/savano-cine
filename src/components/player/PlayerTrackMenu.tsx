@@ -25,6 +25,7 @@ type PlayerTrackMenuProps = {
   addonSubsNotice: string
   subtitleOffsetSec: number
   subtitleSize: 'sm' | 'md' | 'lg'
+  subtitleBg?: 'none' | 'soft' | 'dark'
   onChangeAudio: (value: string) => void
   onChangeEmbeddedSubtitle: (value: string) => void
   onSelectExternalSubtitle: (url: string) => void
@@ -34,6 +35,7 @@ type PlayerTrackMenuProps = {
   onFetchAddonSubtitles: () => void
   onAdjustSubtitleOffset: (deltaOrZero: number) => void
   onChangeSubtitleSize: (size: 'sm' | 'md' | 'lg') => void
+  onChangeSubtitleBg?: (bg: 'none' | 'soft' | 'dark') => void
 }
 
 function groupSubtitleTracks(tracks: SubtitleTrackItem[]) {
@@ -74,6 +76,7 @@ export function PlayerTrackMenu({
   addonSubsNotice,
   subtitleOffsetSec,
   subtitleSize,
+  subtitleBg = 'dark',
   onChangeAudio,
   onChangeEmbeddedSubtitle,
   onSelectExternalSubtitle,
@@ -83,6 +86,7 @@ export function PlayerTrackMenu({
   onFetchAddonSubtitles,
   onAdjustSubtitleOffset,
   onChangeSubtitleSize,
+  onChangeSubtitleBg,
 }: PlayerTrackMenuProps) {
   const groupedSubtitles = groupSubtitleTracks(subtitleTracks)
 
@@ -332,6 +336,31 @@ export function PlayerTrackMenu({
                         </div>
                       </div>
                     </>
+                  )}
+                  {onChangeSubtitleBg && (
+                    <div className="flex items-center justify-between gap-1 pt-1">
+                      <span className="text-[10px] text-[var(--sc-text-muted)]">Fundo:</span>
+                      <div className="flex items-center gap-1">
+                        {(
+                          [
+                            { key: 'none', label: 'Limpo' },
+                            { key: 'soft', label: 'Suave' },
+                            { key: 'dark', label: 'Escuro' },
+                          ] as const
+                        ).map((bg) => (
+                          <button
+                            key={bg.key}
+                            type="button"
+                            onClick={() => onChangeSubtitleBg(bg.key)}
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold cursor-pointer ${
+                              subtitleBg === bg.key ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            {bg.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
