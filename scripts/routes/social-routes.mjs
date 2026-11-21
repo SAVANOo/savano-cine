@@ -43,15 +43,20 @@ export async function handleSocialRoutes({ request, response, requestUrl, databa
 
     const legacyRatings = database
       .prepare(`
-        SELECT rt.profile_id AS profileId, rt.content_id AS contentKey, rt.content_type AS contentType,
-               rt.rating AS rawRating, rt.updated_at AS updatedAt,
-               COALESCE(m.title, sh.title, rt.content_id) AS title,
+        SELECT rt.profile_id AS profileId,
+               COALESCE(rt.media_item_id, rt.show_id) AS contentKey,
+               CASE WHEN rt.show_id IS NOT NULL THEN 'series' ELSE 'movie' END AS contentType,
+               rt.score AS rawRating,
+               COALESCE(rt.review, '') AS comment,
+               rt.updated_at AS updatedAt,
+               COALESCE(m.title, sh.title, rt.media_item_id, rt.show_id) AS title,
                COALESCE(am.local_path, ash.local_path, am.remote_url, ash.remote_url) AS poster
         FROM ratings rt
-        LEFT JOIN media_items m ON rt.content_type = 'movie' AND m.id = rt.content_id
-        LEFT JOIN shows sh ON rt.content_type = 'show' AND sh.id = rt.content_id
+        LEFT JOIN media_items m ON rt.media_item_id IS NOT NULL AND m.id = rt.media_item_id
+        LEFT JOIN shows sh ON rt.show_id IS NOT NULL AND sh.id = rt.show_id
         LEFT JOIN artwork am ON am.movie_id = m.id AND am.artwork_type = 'poster'
         LEFT JOIN artwork ash ON ash.show_id = sh.id AND ash.artwork_type = 'poster'
+        WHERE COALESCE(rt.media_item_id, rt.show_id) IS NOT NULL
         ORDER BY rt.updated_at DESC
         LIMIT 50
       `)
@@ -63,11 +68,11 @@ export async function handleSocialRoutes({ request, response, requestUrl, databa
         id: `legacy-${r.profileId}-${r.contentKey}`,
         profileId: r.profileId,
         contentKey: r.contentKey,
-        contentType: r.contentType === 'show' ? 'series' : 'movie',
+        contentType: r.contentType,
         title: r.title,
         poster: r.poster ? (String(r.poster).startsWith('http') ? r.poster : `/api/artwork/file?path=${encodeURIComponent(r.poster)}`) : null,
         rating: Math.max(1, Math.min(5, Math.round(Number(r.rawRating || 6) / 2))),
-        comment: '',
+        comment: r.comment || '',
         recommendedToProfileId: null,
         updatedAt: r.updatedAt,
       }))
