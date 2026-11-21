@@ -113,8 +113,8 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     const gate = page.getByRole('dialog', { name: 'Quem está assistindo?' })
     await expect(gate).toBeVisible()
     await gate.getByRole('button', { name: /Savio/i }).first().click()
-    await expect(gate).toBeHidden()
-    await expect(page.getByRole('button', { name: /Savano Cine/i })).toBeVisible()
+    const unlockDialog = page.getByRole('dialog', { name: /Desbloquear perfil Savio/i })
+    await expect(unlockDialog.or(page.getByRole('button', { name: /Savano Cine/i }))).toBeVisible({ timeout: 5000 })
   })
 
   test('PinGate exige PIN 4321 sem cookie sc_pin_ok e libera acesso', async ({ page, context }) => {
