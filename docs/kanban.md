@@ -10,23 +10,67 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Player compatível com o acervo | Modal integrado a `/streams`; seleção de faixas usa transcoding MP4 quando FFprobe/FFmpeg estão disponíveis; ambiente atual informa indisponibilidade |
-| Média | Arte e metadados de filmes | Wikipedia configurável com fallback pt/en; backdrops TMDB opcionais por correspondência exata, com fallback para poster |
-| Média | Histórico e restauração de alterações | Tela operacional lista arquivados e títulos alterados; restauração lógica validada por API |
+| Alta | Circuit breaker para addons lentos/instáveis | Ignorar ou aplicar timeout curto (3s) em addons com erro/timeout recorrente para não atrasar a listagem de streams |
+| Alta | Deduplicação automática de versões locais na Home | Garantir que filmes com múltiplas resoluções (720p/1080p/4K) sempre apareçam como um único card com seletor de versão |
+| Média | Re-sincronização em lote de capas PT-BR | Botão no Admin para atualizar capas antigas/em inglês do acervo local usando TMDB/Cinemeta em PT-BR |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Média | Sinopses e banners widescreen em PT-BR | Enriquecer catálogo com backdrops horizontais opcionais via TMDB |
+| Alta | Troca de faixa de áudio em streams torrent no Player | Expor faixas detectadas pelo `ffprobe` no menu **Idioma e legendas** mesmo para streams de addons torrent |
+| Alta | Seek real por timestamp no transcode torrent | Permitir avançar/retroceder para qualquer minuto de MKVs via torrent reiniciando o transcode com `-ss` |
+| Média | Perfil Kids / Controle Parental | Modo infantil com filtro de classificação indicativa e proteção por PIN para sair do perfil |
+| Média | Modo Smart TV (10-foot UI) | Layout simplificado com cards maiores, foco D-Pad de alto contraste e controle remoto via celular |
 
-## Backlog
+## Backlog Extensivo (Brainstorm & Referências: Stremio, Plex, Jellyfin, Netflix, Trakt, Watch2Gether)
 
-| Área | Cartão | Observação |
+### 1. Player & Reprodução Avançada
+| Prioridade | Cartão | Referência / Ideia |
 | --- | --- | --- |
-| Integrações | Adapters de fontes autorizadas | Protocolo base definido em `src/domain/sourceAdapter.ts`; adapters concretos para servidores próprios/licenciados ficam no backlog |
+| Alta | Pular Abertura / Pular Créditos | Detecção de silêncio/capítulos ou marcação manual estilo Netflix ("Pular abertura") |
+| Média | Pré-carregamento do próximo episódio | Iniciar download/buffer dos primeiros MB do próximo episódio aos 85% do episódio atual |
+| Média | Equalizador / Normalização noturna | Preset "Modo Noite" no Web Audio (`DynamicsCompressorNode`) para diálogos claros e explosões suaves |
+| Baixa | Miniplayer persistente | Continuar assistindo em janela flutuante dentro do app enquanto navega pelo catálogo |
+
+### 2. Catálogo, Idiomas & Addons
+| Prioridade | Cartão | Referência / Ideia |
+| --- | --- | --- |
+| Alta | Saúde automática dos Addons | Monitorar taxa de erro/timeout de cada addon e exibir status (`Saudável`, `Lento`, `Offline`) na aba Addons |
+| Alta | Suporte dedicado a TV ao Vivo & EPG | Aba/carrossel específico para canais `type: tv` (Rede Canais TV, ZinTV BR, Rádios BR) com player HLS ao vivo |
+| Média | Integração Trakt.tv / Letterboxd | Sincronizar histórico de assistidos, watchlist e avaliações com conta Trakt (scrobble automático) |
+| Média | Coleções & Sagas automáticas | Agrupar franquias no acervo local (ex.: *Marvel*, *Nárnia*, *Maze Runner*, *Guardiões da Galáxia*) em estantes |
+| Média | Reputação de fontes por histórico | Lembrar qual addon/release funcionou melhor e destacá-lo no topo em próximos episódios da série |
+
+### 3. Experiência Social & Casa Conectada
+| Prioridade | Cartão | Referência / Ideia |
+| --- | --- | --- |
+| Média | Watch Party ("Assistir Junto") | Sala sincronizada via WebSocket/SSE para duas pessoas assistirem ao mesmo filme à distância com chat/reações |
+| Média | Recomendações entre perfis | Botão "Indicar para Mari / Sávio" que cria uma fila especial "Indicados para você" na Home do outro perfil |
+| Baixa | Estatísticas & Wrapped do Perfil | Resumo de horas assistidas, gêneros favoritos, séries concluídas e filmes mais bem avaliados |
+
+### 4. TV, Mobile & PWA
+| Prioridade | Cartão | Referência / Ideia |
+| --- | --- | --- |
+| Alta | Controle Remoto via Celular | Escanear QR Code para usar o celular como controle remoto (play/pause, volume, fonte, legenda) da tela do PC/TV |
+| Média | Fila de Downloads Offline com progresso real | Barra de progresso em tempo real, pausa/retomada e gerenciamento de espaço em disco para filmes baixados dos addons |
+| Baixa | Notificações de novos episódios | Avisar quando sair episódio novo de uma série em andamento no perfil |
+
+### 5. Admin, Segurança & Operação
+| Prioridade | Cartão | Referência / Ideia |
+| --- | --- | --- |
+| Média | Backup automático do `catalog.db` | Snapshot automático antes de rescans ou atualizações em lote, com restauração em 1 clique |
+| Média | Histórico detalhado de sessões/IPs | Registro persistente de sessões (IP, dispositivo, cidade aproximada, perfil e títulos assistidos) |
+| Baixa | Limite de banda / peers no WebTorrent | Configuração no Admin para limitar conexões/upload/download simultâneos em redes móveis |
 
 ## Concluído
+
+- **Tour Guiado Interativo Step-by-Step (`OnboardingTour`)**: tutorial com spotlight dourado circulando busca, navegação, Acervo Online, Me Surpreenda e perfis/temas, disparado automaticamente no primeiro acesso de cada perfil e reabrível pelo botão **Tutorial** na barra lateral.
+- **Agrupamento de Fontes & Troca de Fonte dentro do Player**: fontes agrupadas por idioma (`Dublado / Português`, `Original / Inglês`, `Outras`) ou por addon com filtros rápidos (`Todas`, `🇧🇷 PT / Dublado`, `4K / 1080p`), além de seletor **Fontes (N)** dentro do `VideoPlayer` para trocar de stream mantendo o tempo atual.
+- **Identidade Visual Noir Âmbar & PWA**: remoção global de tons vermelhos (inclusive no Tema Claro e cursores SVG), geração de `favicon.ico`, `apple-touch-icon.png` e ícones `192x192`/`512x512`, `SavanoLoader` cobra-para-play ao carregar títulos e iniciar reprodução.
+- **Navegação, Busca & Home Unificados**: barra lateral retrátil com hover-to-open sem sobrepor a busca, carrosséis de addons com setas de navegação (`AddonCarouselRow`), abas **Filmes** e **Séries** com gêneros locais + addons, **Continue assistindo** local + online na Home e busca unificada por Filmes/Séries.
+- **Player Addons, Idiomas & Metadados PT-BR**: preservação de `duration` em streams torrent, seleção preferencial de faixa de áudio em português (`ffprobe` + `ffmpeg`), layout 50/50 estilo Stremio com modal de legendas, bandeiras SVG de países e tradução em cache de sinopses/episódios para PT-BR.
+- **PIN Global `4321`, Tema `Momolada` exclusivo da Mari, `Me Surpreenda` com busca online, correção de `Capitão América: Guerra Civil` / `COMANDO.TO` / capas duplicadas e melhorias no Servidor & Conexões** (botões copiar, QR Code clicável, telemetria de IP/dispositivo/perfil e badge "Já instalado" nos presets de addons).
 
 - Motor de streaming Torrent sob demanda (`scripts/torrent-stream.mjs` com `webtorrent`, suporte HTTP Range, transcode FFmpeg para `.mkv`/`.avi` e limpeza automática de cache temporário) + suporte HLS (`.m3u8`) via `hls.js` no `VideoPlayer` e busca unificada (acervo local + addons Stremio) na Home.
 - Conector de Addons compatível com protocolo Stremio (`manifest.json` via HTTP/HTTPS): tabela `stremio_addons`, endpoints `/api/addons*` (`scripts/stremio-addons.mjs`), aba **Addons (Stremio)** com atalho na Sidebar, explorador de catálogos/episódios, busca de streams e legendas e reprodução direta no `VideoPlayer`.
