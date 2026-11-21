@@ -78,6 +78,7 @@ export function AddonDetailView({
   const [socialModalOpen, setSocialModalOpen] = useState(false)
   const [streamGroupBy, setStreamGroupBy] = useState<'language' | 'addon'>('language')
   const [streamFilter, setStreamFilter] = useState<'all' | 'pt' | 'hd'>('all')
+  const [nextOnlineEpisode, setNextOnlineEpisode] = useState<PlayableMedia | undefined>(undefined)
   const [error, setError] = useState('')
 
   const matchedLocalItem = useMemo(() => {
@@ -206,6 +207,42 @@ export function AddonDetailView({
       active = false
     }
   }, [item])
+
+  useEffect(() => {
+    if (detail.type !== 'series' || !selectedEpisodeId || !detail.videos?.length) {
+      return
+    }
+    const ordered = [...detail.videos].sort(
+      (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0),
+    )
+    const idx = ordered.findIndex((v) => v.id === selectedEpisodeId)
+    const nextVid = idx >= 0 && idx + 1 < ordered.length ? ordered[idx + 1] : null
+    if (!nextVid) return
+    let active = true
+    const params = new URLSearchParams({ type: 'series', id: nextVid.id })
+    fetch(`/api/addons/streams?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: { streams?: AddonStreamItem[] } | null) => {
+        if (!active || !Array.isArray(payload?.streams)) return
+        const firstPlayable = payload.streams.find((s) => (s.isDirectHttp && s.url) || s.infoHash)
+        if (!firstPlayable) return
+        const url = firstPlayable.isDirectHttp && firstPlayable.url
+          ? firstPlayable.url
+          : `/api/addons/torrent-stream?infoHash=${encodeURIComponent(firstPlayable.infoHash!)}${typeof firstPlayable.fileIdx === 'number' ? `&fileIdx=${firstPlayable.fileIdx}` : ''}`
+        setNextOnlineEpisode({
+          mediaId: '',
+          title: `${detail.name} — T${nextVid.season ?? '?'}:E${nextVid.episode ?? '?'} ${nextVid.title}`,
+          url,
+          duration: parseRuntimeToSeconds(detail.runtime),
+          poster: detail.poster || undefined,
+          overview: nextVid.overview || detail.description,
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [detail.description, detail.name, detail.poster, detail.runtime, detail.type, detail.videos, selectedEpisodeId])
 
   const backdrop = detail.background || detail.poster
 
@@ -476,7 +513,20 @@ export function AddonDetailView({
               return null
             }
 
-            const alternativeSources: AlternativeSource[] = streams
+            const reputationMap = (() => {
+              try {
+                return JSON.parse(localStorage.getItem('savano-cine-addon-reputation') || '{}') as Record<string, number>
+              } catch {
+                return {} as Record<string, number>
+              }
+            })()
+            const sortedStreams = [...streams].sort((a, b) => {
+              const repDiff = (reputationMap[b.addonId] || 0) - (reputationMap[a.addonId] || 0)
+              if (repDiff !== 0) return repDiff
+              return (b.seeders ?? -1) - (a.seeders ?? -1)
+            })
+
+            const alternativeSources: AlternativeSource[] = sortedStreams
               .map((s, idx) => {
                 const url = buildPlaybackUrl(s)
                 if (!url) return null
@@ -493,7 +543,7 @@ export function AddonDetailView({
               })
               .filter((x): x is AlternativeSource => Boolean(x))
 
-            const filteredStreams = streams.filter((s) => {
+            const filteredStreams = sortedStreams.filter((s) => {
               const text = `${s.addonName} ${s.name} ${s.title}`.toLowerCase()
               if (streamFilter === 'pt') {
                 return /pt-br|ptbr|dublado|\bdub\b|dual|brasil|brazil|mico-le|fenix|brazuca|🇧🇷|🇵🇹/.test(text)
@@ -563,6 +613,7 @@ export function AddonDetailView({
                     duration: runtimeSeconds,
                     poster: detail.poster || undefined,
                     overview: detail.description,
+                    nextEpisode: detail.type === 'series' ? nextOnlineEpisode : undefined,
                     alternativeSources,
                     externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
                       label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
@@ -593,6 +644,9 @@ export function AddonDetailView({
                         <p className="m-0 truncate text-xs font-semibold text-[var(--sc-text-primary)]">
                           {stream.addonName} · {stream.name}
                         </p>
+                        {(reputationMap[stream.addonId] || 0) >= 2 && (
+                          <Badge tone="gold">Preferido</Badge>
+                        )}
                         {langBadges.map((badge) => (
                           <LanguageFlagBadge key={badge} label={badge} />
                         ))}
