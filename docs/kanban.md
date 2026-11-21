@@ -20,6 +20,8 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 ## Concluído
 
+- **Avaliação/Indicação Direta nos Detalhes & Próximo Episódio Online (`SocialRecommendModal`, `AddonDetailView`)**: botão **Comentar / Indicar** dentro das páginas de detalhe local e online, selo **Preferido** por reputação de addon e avanço automático para o próximo episódio em séries dos addons.
+- **Personalização de Legendas, Persistência de Conexões, UI WebTorrent & Importação CSV**: fundo customizável de legendas (`Limpo`/`Suave`/`Escuro`), tabela `client_connections` no SQLite, formulário visual de limites WebTorrent e importação/exportação CSV Letterboxd/Trakt + 18 testes E2E Playwright.
 - **Watch Party ("Assistir Junto") (`realtime-routes.mjs` + `VideoPlayer`)**: criação e entrada em salas com código de 6 dígitos, sincronização de play/pause/timestamp via SSE e chat rápido dentro do player.
 - **Controle Remoto pelo Celular via QR Code (`RemoteControlView` + `/api/remote/*`)**: QR Code no player que abre interface mobile (`/?remote=CODE`) para comandar Play/Pause, ±10s, Volume, Mudo e Próximo Episódio em tempo real.
 - **Miniplayer Persistente & Pré-carregamento do Próximo Episódio (`VideoPlayer`)**: botão de minimizar para janela flutuante no canto inferior direito enquanto navega pelo catálogo, e pré-carregamento automático do próximo episódio aos 85%.

@@ -251,4 +251,37 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.getByRole('button', { name: /Sortear sugestão/i }).click()
     await expect(page.getByRole('button', { name: /Sortear outro/i }).first()).toBeVisible({ timeout: 5000 })
   })
+
+  test('Comunidade (Espaço Social) exibe feed e publica nova avaliação', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
+    await page.getByRole('navigation').getByRole('button', { name: 'Comunidade', exact: true }).click()
+    await expect(page.getByRole('heading', { name: /Espaço Social/i })).toBeVisible()
+    const uniqueTitle = `Filme E2E ${Date.now()}`
+    await page.getByPlaceholder(/Nome do filme ou série/i).fill(uniqueTitle)
+    await page.getByPlaceholder(/O que você achou/i).fill('Excelente filme para testar!')
+    await page.getByRole('button', { name: 'Publicar', exact: true }).click()
+    await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5000 })
+  })
+
+  test('Tutorial interativo abre pela barra lateral e avança passos', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
+    await page.getByRole('button', { name: 'Tutorial', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: /Tutorial do Savano Cine/i })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText(/Passo 1 de 5/i)).toBeVisible()
+    await dialog.getByRole('button', { name: /Próximo/i }).click()
+    await expect(dialog.getByText(/Passo 2 de 5/i)).toBeVisible()
+    await dialog.getByRole('button', { name: /Pular tour/i }).click()
+    await expect(dialog).toBeHidden()
+  })
+
+  test('Controle Remoto Mobile (/?remote=TEST99) renderiza controles de reprodução', async ({ page }) => {
+    await page.goto('/?remote=TEST99')
+    await expect(page.getByText(/Controle Remoto/i).first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: /Play ou Pausar/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Voltar 10s/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Avançar 10s/i })).toBeVisible()
+  })
 })
