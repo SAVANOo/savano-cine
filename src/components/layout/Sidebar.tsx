@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tv,
+  Users,
   X,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -32,8 +33,8 @@ type SidebarProps = {
   sourcesError: string
   activeProfile: Profile
   profiles: Profile[]
-  activeKind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir'
-  onSelectKind: (kind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir') => void
+  activeKind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social'
+  onSelectKind: (kind: 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social') => void
   onSelectProfile: (profileId: string) => void
   onOpenProfileEditor: (profile?: Profile) => void
   onGoHome: () => void
@@ -373,6 +374,7 @@ export function Sidebar({
           { key: 'Local' as const, label: 'Acervo Local', icon: HardDrive },
           { key: 'Online' as const, label: 'Acervo Online', icon: Globe },
           { key: 'Descobrir' as const, label: 'Me Surpreenda', icon: Sparkles },
+          { key: 'Social' as const, label: 'Comunidade', icon: Users },
           { key: 'Filme' as const, label: 'Filmes', icon: Film },
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {

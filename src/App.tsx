@@ -28,6 +28,9 @@ const OnlineCatalogView = lazy(() =>
 const SurprisePickerView = lazy(() =>
   import('./components/discover/SurprisePickerView').then((m) => ({ default: m.SurprisePickerView })),
 )
+const SocialFeedView = lazy(() =>
+  import('./components/social/SocialFeedView').then((m) => ({ default: m.SocialFeedView })),
+)
 const AdminView = lazy(() =>
   import('./components/admin/AdminView').then((m) => ({ default: m.AdminView })),
 )
@@ -70,7 +73,7 @@ function getInitialDeepLinkId(): string | null {
 }
 
 export function App() {
-  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir'>('Todos')
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social'>('Todos')
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
@@ -901,7 +904,7 @@ export function App() {
 
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 outline-none sm:px-8 sm:py-7">
         {/* Top Search & Genre Filter Bar */}
-        {!(adminOpen && isActiveAdmin) && activeKind !== 'Online' && activeKind !== 'Descobrir' && (
+        {!(adminOpen && isActiveAdmin) && activeKind !== 'Online' && activeKind !== 'Descobrir' && activeKind !== 'Social' && (
           <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div data-tour="search-bar" className="relative flex-1 max-w-md">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
@@ -1019,6 +1022,22 @@ export function App() {
               onBack={() => setActiveAddonItem(null)}
               onPlayStream={(media) => setSelectedMedia(media)}
               onPlayLocal={(localItem) => playLibraryItem(localItem)}
+            />
+          </Suspense>
+        ) : activeKind === 'Social' ? (
+          <Suspense fallback={<CatalogSkeleton />}>
+            <SocialFeedView
+              activeProfile={activeProfile}
+              profiles={profiles}
+              localCatalog={catalog}
+              onOpenLocalItem={(item) => {
+                setSelectedShow(item)
+                setActiveKind('Todos')
+              }}
+              onSearchTitle={(title) => {
+                setQuery(title)
+                setActiveKind('Todos')
+              }}
             />
           </Suspense>
         ) : activeKind === 'Descobrir' ? (
