@@ -10,57 +10,21 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Próxima verificação |
 | --- | --- | --- |
-| Alta | Deduplicação automática de versões locais na Home | Garantir que filmes com múltiplas resoluções (720p/1080p/4K) sempre apareçam como um único card com seletor de versão |
-| Média | Re-sincronização em lote de capas PT-BR | Botão no Admin para atualizar capas antigas/em inglês do acervo local usando TMDB/Cinemeta em PT-BR |
+| — | Nenhum cartão pendente no ciclo atual | Todos os itens do backlog foram implementados e verificados |
 
 ## Próximo ciclo
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| Média | Modo Smart TV (10-foot UI) & Controle Remoto QR | Layout simplificado com cards maiores, foco D-Pad de alto contraste e controle remoto via celular |
-| Média | Watch Party ("Assistir Junto") | Sala sincronizada via WebSocket/SSE para duas pessoas assistirem ao mesmo filme à distância com chat/reações |
-
-## Backlog Extensivo (Brainstorm & Referências: Stremio, Plex, Jellyfin, Netflix, Trakt, Watch2Gether)
-
-### 1. Player & Reprodução Avançada
-| Prioridade | Cartão | Referência / Ideia |
-| --- | --- | --- |
-| Alta | Pular Abertura / Pular Créditos | Detecção de silêncio/capítulos ou marcação manual estilo Netflix ("Pular abertura") |
-| Média | Pré-carregamento do próximo episódio | Iniciar download/buffer dos primeiros MB do próximo episódio aos 85% do episódio atual |
-| Média | Equalizador / Normalização noturna | Preset "Modo Noite" no Web Audio (`DynamicsCompressorNode`) para diálogos claros e explosões suaves |
-| Baixa | Miniplayer persistente | Continuar assistindo em janela flutuante dentro do app enquanto navega pelo catálogo |
-
-### 2. Catálogo, Idiomas & Addons
-| Prioridade | Cartão | Referência / Ideia |
-| --- | --- | --- |
-| Alta | Saúde automática dos Addons | Monitorar taxa de erro/timeout de cada addon e exibir status (`Saudável`, `Lento`, `Offline`) na aba Addons |
-| Alta | Suporte dedicado a TV ao Vivo & EPG | Aba/carrossel específico para canais `type: tv` (Rede Canais TV, ZinTV BR, Rádios BR) com player HLS ao vivo |
-| Média | Integração Trakt.tv / Letterboxd | Sincronizar histórico de assistidos, watchlist e avaliações com conta Trakt (scrobble automático) |
-| Média | Coleções & Sagas automáticas | Agrupar franquias no acervo local (ex.: *Marvel*, *Nárnia*, *Maze Runner*, *Guardiões da Galáxia*) em estantes |
-| Média | Reputação de fontes por histórico | Lembrar qual addon/release funcionou melhor e destacá-lo no topo em próximos episódios da série |
-
-### 3. Experiência Social & Casa Conectada
-| Prioridade | Cartão | Referência / Ideia |
-| --- | --- | --- |
-| Média | Watch Party ("Assistir Junto") | Sala sincronizada via WebSocket/SSE para duas pessoas assistirem ao mesmo filme à distância com chat/reações |
-| Média | Recomendações entre perfis | Botão "Indicar para Mari / Sávio" que cria uma fila especial "Indicados para você" na Home do outro perfil |
-| Baixa | Estatísticas & Wrapped do Perfil | Resumo de horas assistidas, gêneros favoritos, séries concluídas e filmes mais bem avaliados |
-
-### 4. TV, Mobile & PWA
-| Prioridade | Cartão | Referência / Ideia |
-| --- | --- | --- |
-| Alta | Controle Remoto via Celular | Escanear QR Code para usar o celular como controle remoto (play/pause, volume, fonte, legenda) da tela do PC/TV |
-| Média | Fila de Downloads Offline com progresso real | Barra de progresso em tempo real, pausa/retomada e gerenciamento de espaço em disco para filmes baixados dos addons |
-| Baixa | Notificações de novos episódios | Avisar quando sair episódio novo de uma série em andamento no perfil |
-
-### 5. Admin, Segurança & Operação
-| Prioridade | Cartão | Referência / Ideia |
-| --- | --- | --- |
-| Média | Backup automático do `catalog.db` | Snapshot automático antes de rescans ou atualizações em lote, com restauração em 1 clique |
-| Média | Histórico detalhado de sessões/IPs | Registro persistente de sessões (IP, dispositivo, cidade aproximada, perfil e títulos assistidos) |
-| Baixa | Limite de banda / peers no WebTorrent | Configuração no Admin para limitar conexões/upload/download simultâneos em redes móveis |
+| — | Livre para novas ideias | Novos cartões serão adicionados conforme feedback de uso real |
 
 ## Concluído
+
+- **Watch Party ("Assistir Junto") (`realtime-routes.mjs` + `VideoPlayer`)**: criação e entrada em salas com código de 6 dígitos, sincronização de play/pause/timestamp via SSE e chat rápido dentro do player.
+- **Controle Remoto pelo Celular via QR Code (`RemoteControlView` + `/api/remote/*`)**: QR Code no player que abre interface mobile (`/?remote=CODE`) para comandar Play/Pause, ±10s, Volume, Mudo e Próximo Episódio em tempo real.
+- **Miniplayer Persistente & Pré-carregamento do Próximo Episódio (`VideoPlayer`)**: botão de minimizar para janela flutuante no canto inferior direito enquanto navega pelo catálogo, e pré-carregamento automático do próximo episódio aos 85%.
+- **Modo Smart TV (10-foot UI) (`Sidebar` + `tokens.css`)**: alternador **Modo Smart TV** na barra lateral com escala tipográfica ampliada e anel de foco dourado de alto contraste para navegação por controle/D-Pad.
+- **Deduplicação de Versões, Sagas Automáticas, Re-sync de Capas & Exportação Trakt/Letterboxd**: normalização de versões (720p/1080p/4K), estantes automáticas de sagas (*Nárnia*, *Homem-Aranha*, *Maze Runner*, *Guardiões da Galáxia*), botão **Re-sincronizar Capas** (`POST /api/admin/artwork/sync-ptbr`), registro de reputação de fontes por addon, exportação CSV para Letterboxd/Trakt e limites de banda/peers no WebTorrent.
 
 - **Espaço Social & Avaliações (`SocialFeedView` + `/api/social/*`)**: aba **Comunidade** com feed compartilhado de notas (1–5★) e comentários de todos os perfis, seção **Indicados para você**, formulário de indicação entre perfis e resumo estatístico do perfil.
 - **Player Avançado**: botão **Modo Noite** (compressor dinâmico para equilibrar falas e explosões), botão **Pular abertura (+85s)** em séries/episódios, probe de faixas de áudio (`GET /api/addons/torrent-info`) e seek real com `-ss` + troca de áudio em streams torrent.
