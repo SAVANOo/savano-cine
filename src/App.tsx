@@ -15,6 +15,7 @@ import { PinGate } from './components/profile/PinGate'
 import { ProfileGate } from './components/profile/ProfileGate'
 import { ProfileModal } from './components/profile/ProfileModal'
 import { CatalogSkeleton } from './components/ui/CatalogSkeleton'
+import { OnboardingTour } from './components/ui/OnboardingTour'
 import { SavanoLoader } from './components/ui/SavanoLoader'
 
 const AddonDetailView = lazy(() =>
@@ -90,6 +91,7 @@ export function App() {
     }>
   >([])
   const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(null)
+  const [tourOpen, setTourOpen] = useState(false)
   const [kindAddonSections, setKindAddonSections] = useState<
     Array<{ key: string; title: string; items: AddonMetaSummary[] }>
   >([])
@@ -246,6 +248,16 @@ export function App() {
       })
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    if (pinLocked || profileGateOpen || !activeProfile?.id) return
+    if (typeof navigator !== 'undefined' && navigator.webdriver) return
+    const key = `savano-cine-tour-done:${activeProfile.id}`
+    if (!localStorage.getItem(key)) {
+      const timer = window.setTimeout(() => setTourOpen(true), 650)
+      return () => window.clearTimeout(timer)
+    }
+  }, [activeProfile?.id, pinLocked, profileGateOpen])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -868,6 +880,7 @@ export function App() {
           setAdminTab('addons')
           setAdminOpen(true)
         }}
+        onStartTour={() => setTourOpen(true)}
         adminActive={adminOpen && isActiveAdmin}
         addonsActive={adminOpen && isActiveAdmin && adminTab === 'addons'}
         onRefreshCatalog={() => void fetch('/api/catalog/refresh', { method: 'POST' })}
@@ -890,7 +903,7 @@ export function App() {
         {/* Top Search & Genre Filter Bar */}
         {!(adminOpen && isActiveAdmin) && activeKind !== 'Online' && activeKind !== 'Descobrir' && (
           <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-md">
+            <div data-tour="search-bar" className="relative flex-1 max-w-md">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
               <input
                 id="sc-search-input"
@@ -1593,6 +1606,19 @@ export function App() {
         }}
       />
       {profileFading && <SavanoLoader fullscreen label="Trocando perfil..." />}
+      <OnboardingTour
+        open={tourOpen}
+        onClose={() => {
+          setTourOpen(false)
+          if (activeProfile?.id) {
+            try {
+              localStorage.setItem(`savano-cine-tour-done:${activeProfile.id}`, '1')
+            } catch {
+              // ignore storage quota errors
+            }
+          }
+        }}
+      />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
   Gamepad2,
   Globe,
   HardDrive,
+  HelpCircle,
   Home,
   Lock,
   Menu,
@@ -38,6 +39,7 @@ type SidebarProps = {
   onGoHome: () => void
   onOpenAdmin: () => void
   onOpenAddons: () => void
+  onStartTour?: () => void
   adminActive: boolean
   addonsActive?: boolean
   onRefreshCatalog: () => void
@@ -63,6 +65,7 @@ export function Sidebar({
   onGoHome,
   onOpenAdmin,
   onOpenAddons,
+  onStartTour,
   adminActive,
   addonsActive,
   onRefreshCatalog,
@@ -363,7 +366,7 @@ export function Sidebar({
       </div>
 
       {/* Primary Streaming Nav */}
-      <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
+      <nav data-tour="nav-links" className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
         {[
           { key: 'Todos' as const, label: 'Início', icon: Home },
           { key: 'Continuar' as const, label: 'Continuar assistindo', icon: PlayCircle },
@@ -374,10 +377,17 @@ export function Sidebar({
           { key: 'Série' as const, label: 'Séries', icon: Tv },
         ].map(({ key, label, icon: Icon }) => {
           const active = !adminActive && activeKind === key
+          const tourAttr =
+            key === 'Online'
+              ? 'nav-online'
+              : key === 'Descobrir'
+                ? 'nav-surprise'
+                : undefined
           return (
             <button
               key={key}
               type="button"
+              data-tour={tourAttr}
               onClick={() => {
                 setMobileDrawerOpen(false)
                 onSelectKind(key)
@@ -434,7 +444,10 @@ export function Sidebar({
 
       {/* Compact Sources & Refresh */}
       <div className="mt-auto hidden flex-col gap-2.5 border-t border-[var(--sc-border-subtle)] pt-3 lg:flex">
-        <div className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-2">
+        <div
+          data-tour="profile-theme"
+          className="rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-2"
+        >
           <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--sc-text-secondary)]">
             <Palette className="h-3.5 w-3.5" />
             <span>Tema</span>
@@ -507,6 +520,17 @@ export function Sidebar({
             <FolderPlus className="h-3.5 w-3.5" />
             Fonte
           </button>
+          {onStartTour && (
+            <button
+              type="button"
+              onClick={onStartTour}
+              title="Rever tutorial passo a passo"
+              className="flex items-center gap-1 rounded-[var(--sc-radius-sm)] px-2 py-1.5 text-xs text-[var(--sc-text-secondary)] hover:bg-white/8 hover:text-[var(--sc-accent)] cursor-pointer"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              Tutorial
+            </button>
+          )}
         </div>
 
         {addingSource && (
