@@ -537,6 +537,13 @@ export function AddonDetailView({
                 const startPlay = () => {
                   const targetUrl = buildPlaybackUrl(stream)
                   if (!targetUrl) return
+                  try {
+                    const stats = JSON.parse(localStorage.getItem('savano-cine-addon-reputation') || '{}')
+                    stats[stream.addonId] = (Number(stats[stream.addonId]) || 0) + 1
+                    localStorage.setItem('savano-cine-addon-reputation', JSON.stringify(stats))
+                  } catch {
+                    // ignore
+                  }
                   onPlayStream({
                     mediaId: '',
                     title: `${streamTargetLabel} (${stream.addonName})`,

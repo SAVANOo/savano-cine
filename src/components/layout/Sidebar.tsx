@@ -85,6 +85,12 @@ export function Sidebar({
   const [sourceStatus, setSourceStatus] = useState('')
   const [savingSource, setSavingSource] = useState(false)
   const [brokenAvatarUrls, setBrokenAvatarUrls] = useState<Set<string>>(() => new Set())
+  const [tvMode, setTvMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    const active = localStorage.getItem('savano-cine-tv-mode') === '1'
+    if (active) document.documentElement.setAttribute('data-tv', 'true')
+    return active
+  })
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [desktopCollapsed, setDesktopCollapsed] = useState(false)
 
@@ -474,6 +480,24 @@ export function Sidebar({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !tvMode
+              setTvMode(next)
+              localStorage.setItem('savano-cine-tv-mode', next ? '1' : '0')
+              if (next) document.documentElement.setAttribute('data-tv', 'true')
+              else document.documentElement.removeAttribute('data-tv')
+            }}
+            className={`mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--sc-radius-sm)] border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
+              tvMode
+                ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)] text-[var(--sc-accent)]'
+                : 'border-transparent bg-black/20 text-[var(--sc-text-secondary)] hover:text-white'
+            }`}
+          >
+            <Tv className="h-3.5 w-3.5" />
+            <span>{tvMode ? 'Modo Smart TV: Ativo' : 'Ativar Modo Smart TV'}</span>
+          </button>
         </div>
 
         {gamepadConnected && (

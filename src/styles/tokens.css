@@ -124,6 +124,18 @@
   background: var(--sc-bg-elevated);
 }
 
+:root[data-tv="true"] {
+  font-size: 18px;
+}
+
+:root[data-tv="true"] button:focus-visible,
+:root[data-tv="true"] a:focus-visible,
+:root[data-tv="true"] [role="button"]:focus-visible {
+  outline: 3px solid var(--sc-accent) !important;
+  outline-offset: 3px !important;
+  transform: scale(1.03);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

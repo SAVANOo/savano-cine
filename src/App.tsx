@@ -1477,6 +1477,30 @@ export function App() {
               />
             )}
 
+            {(() => {
+              const sagas = [
+                { key: 'narnia', title: 'Saga As Crônicas de Nárnia', match: /n[áa]rnia/i },
+                { key: 'spider', title: 'Coleção Homem-Aranha', match: /homem[- ]aranha|spider[- ]man/i },
+                { key: 'maze', title: 'Trilogia Maze Runner', match: /maze runner/i },
+                { key: 'guardians', title: 'Guardiões da Galáxia', match: /guardi[õo]es da gal[áa]xia/i },
+              ]
+              return sagas.map((saga) => {
+                const sagaItems = visibleCatalog.filter((item) => saga.match.test(item.title))
+                if (sagaItems.length < 2) return null
+                return (
+                  <MediaCarousel
+                    key={saga.key}
+                    title={saga.title}
+                    subtitle="Coleção automática"
+                    items={sagaItems}
+                    onPlay={playLibraryItem}
+                    onOpenDetails={(target) => setSelectedShow(target)}
+                    onToggleWatchlist={(target) => void toggleWatchlist(target)}
+                  />
+                )
+              })
+            })()}
+
             <MediaCarousel
               title="Minha lista"
               subtitle="Seus títulos salvos neste perfil"
