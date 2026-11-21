@@ -2,7 +2,7 @@ import { ArrowLeft, Download, ExternalLink, Film, HardDrive, Play, Subtitles, Tv
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import { extractStreamLanguages } from '../../domain/streamLanguages'
-import { parseRuntimeToSeconds, translateGenre, type PlayableMedia } from '../../domain/uiHelpers'
+import { parseRuntimeToSeconds, translateGenre, type AlternativeSource, type PlayableMedia } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
@@ -70,6 +70,8 @@ export function AddonDetailView({
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(() => new Set())
   const [downloadStatus, setDownloadStatus] = useState('')
   const [subtitlesModalOpen, setSubtitlesModalOpen] = useState(false)
+  const [streamGroupBy, setStreamGroupBy] = useState<'language' | 'addon'>('language')
+  const [streamFilter, setStreamFilter] = useState<'all' | 'pt' | 'hd'>('all')
   const [error, setError] = useState('')
 
   const matchedLocalItem = useMemo(() => {
@@ -404,9 +406,42 @@ export function AddonDetailView({
 
         {/* Right Column: Streams */}
         <div className="min-w-0 space-y-3 overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
-          <h2 className="m-0 truncate text-base font-bold text-[var(--sc-text-primary)]">
-            Fontes de Reprodução {streamTargetLabel ? `· ${streamTargetLabel}` : ''}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="m-0 truncate text-base font-bold text-[var(--sc-text-primary)]">
+              Fontes de Reprodução {streamTargetLabel ? `· ${streamTargetLabel}` : ''}
+            </h2>
+            {streams.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {(
+                  [
+                    { id: 'all', label: 'Todas' },
+                    { id: 'pt', label: '🇧🇷 PT / Dublado' },
+                    { id: 'hd', label: '4K / 1080p' },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setStreamFilter(f.id)}
+                    className={`rounded-full border px-2.5 py-0.5 font-semibold transition cursor-pointer ${
+                      streamFilter === f.id
+                        ? 'border-[var(--sc-accent)] bg-[var(--sc-accent-soft)] text-[var(--sc-accent)]'
+                        : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-secondary)] hover:text-[var(--sc-text-primary)]'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setStreamGroupBy((prev) => (prev === 'language' ? 'addon' : 'language'))}
+                  className="rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 py-0.5 font-semibold text-[var(--sc-text-secondary)] hover:border-[var(--sc-accent)] hover:text-[var(--sc-text-primary)] cursor-pointer"
+                >
+                  Agrupar: {streamGroupBy === 'language' ? 'Idioma' : 'Addon'}
+                </button>
+              </div>
+            )}
+          </div>
           {error ? <p className="text-xs text-red-400">{error}</p> : null}
           {!streamTargetLabel ? (
             <p className="text-xs text-[var(--sc-text-secondary)]">
@@ -418,46 +453,103 @@ export function AddonDetailView({
             <p className="text-xs text-[var(--sc-text-secondary)]">
               Nenhum stream retornado pelos addons ativos para este título.
             </p>
-          ) : (
-            <div className="max-h-[520px] space-y-2.5 overflow-x-hidden overflow-y-auto pr-1">
-              {streams.map((stream, index) => {
+          ) : (() => {
+            const buildPlaybackUrl = (s: AddonStreamItem): string | null => {
+              if (s.isDirectHttp && s.url) return s.url
+              if (s.infoHash) {
+                const params = new URLSearchParams({ infoHash: s.infoHash })
+                if (typeof s.fileIdx === 'number') params.set('fileIdx', String(s.fileIdx))
+                return `/api/addons/torrent-stream?${params.toString()}`
+              }
+              return null
+            }
+
+            const alternativeSources: AlternativeSource[] = streams
+              .map((s, idx) => {
+                const url = buildPlaybackUrl(s)
+                if (!url) return null
+                return {
+                  id: `${s.addonId}-${idx}`,
+                  label: `${s.addonName} · ${s.name}`,
+                  detail: s.title,
+                  url,
+                  badges: extractStreamLanguages(`${s.name} ${s.title}`),
+                  seeders: s.seeders ?? null,
+                  sizeLabel: s.sizeLabel ?? null,
+                  addonName: s.addonName,
+                } as AlternativeSource
+              })
+              .filter((x): x is AlternativeSource => Boolean(x))
+
+            const filteredStreams = streams.filter((s) => {
+              const text = `${s.addonName} ${s.name} ${s.title}`.toLowerCase()
+              if (streamFilter === 'pt') {
+                return /pt-br|ptbr|dublado|\bdub\b|dual|brasil|brazil|mico-le|fenix|brazuca|🇧🇷|🇵🇹/.test(text)
+              }
+              if (streamFilter === 'hd') {
+                return /2160p|4k|1080p|uhd|bluray/.test(text)
+              }
+              return true
+            })
+
+            const grouped = new Map<string, AddonStreamItem[]>()
+            for (const s of filteredStreams) {
+              const badges = extractStreamLanguages(`${s.name} ${s.title}`)
+              let groupKey = s.addonName
+              if (streamGroupBy === 'language') {
+                const text = `${s.addonName} ${s.name} ${s.title}`.toLowerCase()
+                if (badges.some((b) => b.includes('Dublado') || b.includes('PT-BR') || b.includes('Dual')) || /mico-le|fenix|brazuca/.test(text)) {
+                  groupKey = 'Dublado / Português'
+                } else if (badges.some((b) => b.includes('ENG'))) {
+                  groupKey = 'Original / Inglês'
+                } else {
+                  groupKey = 'Outras Fontes / Multi'
+                }
+              }
+              if (!grouped.has(groupKey)) grouped.set(groupKey, [])
+              grouped.get(groupKey)!.push(s)
+            }
+
+            if (filteredStreams.length === 0) {
+              return (
+                <p className="text-xs text-[var(--sc-text-secondary)]">
+                  Nenhuma fonte corresponde a este filtro. Tente clicar em "Todas".
+                </p>
+              )
+            }
+
+            return (
+              <div className="max-h-[520px] space-y-4 overflow-x-hidden overflow-y-auto pr-1">
+                {[...grouped.entries()].map(([groupTitle, groupItems]) => (
+                  <div key={groupTitle} className="space-y-2">
+                    <div className="sticky top-0 z-10 flex items-center justify-between bg-[var(--sc-bg-elevated)]/95 py-1 backdrop-blur-xs">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--sc-accent)]">
+                        {groupTitle}
+                      </span>
+                      <span className="text-[11px] text-[var(--sc-text-muted)]">{groupItems.length} fonte(s)</span>
+                    </div>
+                    {groupItems.map((stream, index) => {
                 const langBadges = extractStreamLanguages(`${stream.name} ${stream.title}`)
                 const canPlayDirect = Boolean(stream.isDirectHttp && stream.url)
                 const canPlayTorrent = Boolean(stream.infoHash)
                 const isPlayable = canPlayDirect || canPlayTorrent
                 const runtimeSeconds = parseRuntimeToSeconds(detail.runtime)
                 const startPlay = () => {
-                  if (canPlayDirect) {
-                    onPlayStream({
-                      mediaId: '',
-                      title: `${streamTargetLabel} (${stream.addonName})`,
-                      url: stream.url!,
-                      duration: runtimeSeconds,
-                      poster: detail.poster || undefined,
-                      overview: detail.description,
-                      externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
-                        label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                        url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                      })),
-                    })
-                  } else if (canPlayTorrent) {
-                    const params = new URLSearchParams({ infoHash: stream.infoHash! })
-                    if (typeof stream.fileIdx === 'number') {
-                      params.set('fileIdx', String(stream.fileIdx))
-                    }
-                    onPlayStream({
-                      mediaId: '',
-                      title: `${streamTargetLabel} (${stream.addonName})`,
-                      url: `/api/addons/torrent-stream?${params.toString()}`,
-                      duration: runtimeSeconds,
-                      poster: detail.poster || undefined,
-                      overview: detail.description,
-                      externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
-                        label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                        url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                      })),
-                    })
-                  }
+                  const targetUrl = buildPlaybackUrl(stream)
+                  if (!targetUrl) return
+                  onPlayStream({
+                    mediaId: '',
+                    title: `${streamTargetLabel} (${stream.addonName})`,
+                    url: targetUrl,
+                    duration: runtimeSeconds,
+                    poster: detail.poster || undefined,
+                    overview: detail.description,
+                    alternativeSources,
+                    externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
+                      label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                      url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                    })),
+                  })
                 }
                 return (
                   <div
@@ -579,9 +671,12 @@ export function AddonDetailView({
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          )}
+                    })}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
           {downloadStatus ? (
             <p className="text-xs font-medium text-emerald-400">{downloadStatus}</p>
           ) : null}

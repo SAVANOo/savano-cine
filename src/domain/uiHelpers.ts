@@ -123,6 +123,17 @@ export function getAvatarStyle(avatarKey: string): { background: string; badge: 
   return { background: 'linear-gradient(145deg, #e85a82, #8b4ed1)', badge: avatarKey.slice(0, 1).toUpperCase() || 'S' }
 }
 
+export type AlternativeSource = {
+  id: string
+  label: string
+  detail?: string
+  url: string
+  badges?: string[]
+  seeders?: number | null
+  sizeLabel?: string | null
+  addonName?: string
+}
+
 export type PlayableMedia = {
   title: string
   url: string
@@ -138,6 +149,7 @@ export type PlayableMedia = {
   nextEpisode?: PlayableMedia
   showTitle?: string
   showSeasons?: Season[]
+  alternativeSources?: AlternativeSource[]
 }
 
 /** Find the sequential next playable episode in a series after `currentMediaId`. */

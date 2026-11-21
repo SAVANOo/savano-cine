@@ -1,7 +1,8 @@
-import { ArrowLeft, Download, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Download, Layers, ListVideo, Maximize2, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Volume2, VolumeX, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
+import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
 import { PlayerEpisodesDrawer } from './PlayerEpisodesDrawer'
 import { PlayerTrackMenu } from './PlayerTrackMenu'
 import { SavanoLoader } from '../ui/SavanoLoader'
@@ -134,6 +135,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [trackMenuOpen, setTrackMenuOpen] = useState(false)
+  const [sourcesMenuOpen, setSourcesMenuOpen] = useState(false)
   const [episodesMenuOpen, setEpisodesMenuOpen] = useState(false)
   const [hoveredEpisodeId, setHoveredEpisodeId] = useState<string | null>(null)
   const [selectedEpisodeSeason, setSelectedEpisodeSeason] = useState<number>(() => {
@@ -501,6 +503,17 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
       setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
     }
     scheduleHideControls()
+  }
+
+  const switchPlaybackSource = (nextUrl: string) => {
+    const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
+    transcodeOffsetRef.current = 0
+    setTranscodeOffset(0)
+    pendingPosition.current = effectivePos
+    setPlaybackError('')
+    setIsLoadingMedia(true)
+    setPlaybackUrl(nextUrl)
+    setSourcesMenuOpen(false)
   }
 
   const changeSubtitleStream = (value: string) => {
@@ -1210,10 +1223,31 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                   <ListVideo className="h-4 w-4" />
                 </button>
               )}
+              {media.alternativeSources && media.alternativeSources.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrackMenuOpen(false)
+                    setEpisodesMenuOpen(false)
+                    setSourcesMenuOpen((value) => !value)
+                  }}
+                  title="Trocar fonte de reprodução mantendo o ponto atual"
+                  aria-label="Trocar fonte"
+                  className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold text-white transition cursor-pointer ${
+                    sourcesMenuOpen
+                      ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)]/25'
+                      : 'border-white/15 bg-white/10 hover:bg-white/20'
+                  }`}
+                >
+                  <Layers className="h-4 w-4 text-[var(--sc-accent)]" />
+                  <span className="hidden sm:inline">Fontes ({media.alternativeSources.length})</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setEpisodesMenuOpen(false)
+                  setSourcesMenuOpen(false)
                   setTrackMenuOpen((value) => !value)
                 }}
                 title="Idioma e legendas"
@@ -1317,6 +1351,69 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               >
                 Cancelar
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Quick In-Player Source Switcher */}
+        {sourcesMenuOpen && media.alternativeSources && media.alternativeSources.length > 1 && (
+          <div className="pointer-events-auto absolute right-6 bottom-20 z-30 w-96 max-w-[calc(100vw-2rem)] rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#11131b]/95 p-4 shadow-2xl backdrop-blur-xl">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="m-0 text-sm font-bold text-white">Trocar Fonte</h4>
+                <p className="m-0 text-[11px] text-white/60">Mantém a posição atual ({formatClock(currentTime)})</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSourcesMenuOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {media.alternativeSources.map((src) => {
+                const isActive = playbackUrl === src.url
+                return (
+                  <button
+                    key={src.id}
+                    type="button"
+                    onClick={() => {
+                      if (!isActive) switchPlaybackSource(src.url)
+                    }}
+                    className={`flex w-full flex-col gap-1 rounded-[var(--sc-radius-md)] border p-2.5 text-left transition cursor-pointer ${
+                      isActive
+                        ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)]/20'
+                        : 'border-white/10 bg-white/5 hover:border-white/30 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <span className="truncate text-xs font-semibold text-white">{src.label}</span>
+                      {isActive && (
+                        <span className="rounded-full bg-[var(--sc-accent)] px-2 py-0.5 text-[10px] font-bold text-[#090a0d]">
+                          Em uso
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {src.badges?.map((b) => (
+                        <LanguageFlagBadge key={`${src.id}-${b}`} label={b} />
+                      ))}
+                      {typeof src.seeders === 'number' && (
+                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                          {src.seeders} seeds
+                        </span>
+                      )}
+                      {src.sizeLabel && (
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/75">
+                          {src.sizeLabel}
+                        </span>
+                      )}
+                    </div>
+                    {src.detail && <p className="m-0 line-clamp-1 text-[11px] text-white/60">{src.detail}</p>}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
