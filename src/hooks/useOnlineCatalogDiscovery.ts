@@ -14,7 +14,27 @@ type InstalledCatalogAddon = {
   id: string
   name: string
   enabled: boolean
-  catalogs: Array<{ type: string; id: string }>
+  catalogs: Array<{ type: string; id: string; extra?: Array<{ name?: string }> }>
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function matchesSearchQuery(title: string, query: string): boolean {
+  const normTitle = normalizeSearchText(title)
+  const normQuery = normalizeSearchText(query)
+  if (!normQuery) return true
+  if (normTitle.includes(normQuery)) return true
+  const tokens = normQuery.split(/\s+/).filter((t) => t.length >= 2)
+  if (tokens.length === 0) return normTitle.includes(normQuery)
+  const matched = tokens.filter((t) => normTitle.includes(t))
+  return matched.length >= Math.ceil(tokens.length * 0.6)
 }
 
 /**
@@ -46,44 +66,57 @@ export function useOnlineCatalogDiscovery(query: string, enabled = true) {
             return
           }
           const catalogAddons = enabledAddons.filter((a) => a.catalogs?.some((c) => c.type !== 'tv'))
-          const lookups = catalogAddons.slice(0, 5).flatMap((addon) =>
-            addon.catalogs
-              .filter((c) => c.type !== 'tv')
-              .slice(0, 2)
-              .map((cat) =>
+          const lookups = catalogAddons.slice(0, 5).flatMap((addon) => {
+            const nonTv = addon.catalogs.filter((c) => c.type !== 'tv')
+            const searchable = nonTv.filter((c) => c.extra?.some((e) => e.name === 'search'))
+            const chosen = (searchable.length > 0 ? searchable : nonTv).slice(0, 2)
+            return chosen.map((cat) =>
               fetch(
                 `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
               )
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) =>
-                  (data?.metas || []).slice(0, 6).map((meta: Omit<OnlineMetaDiscoveryItem, 'addonName'>) => ({
-                    ...meta,
-                    addonName: addon.name,
-                  })),
+                  (data?.metas || [])
+                    .filter((meta: { name?: string }) => matchesSearchQuery(String(meta?.name || ''), trimmed))
+                    .slice(0, 8)
+                    .map((meta: Omit<OnlineMetaDiscoveryItem, 'addonName'>) => ({
+                      ...meta,
+                      addonName: addon.name,
+                    })),
                 )
                 .catch(() => []),
-            ),
-          )
-          const chunks = await Promise.all(lookups)
+            )
+          })
+          const fallbackPromise = fetch(`/api/addons/search?q=${encodeURIComponent(trimmed)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((fallbackData) =>
+              (fallbackData?.metas || []).slice(0, 24).map(
+                (meta: Omit<OnlineMetaDiscoveryItem, 'addonName'> & { addonName?: string }) => ({
+                  ...meta,
+                  addonName: meta.addonName || 'Cinemeta',
+                }),
+              ),
+            )
+            .catch(() => [])
+
+          const [chunks, fallbackMetas] = await Promise.all([Promise.all(lookups), fallbackPromise])
           if (!active) return
           const seen = new Set<string>()
-          let merged = chunks.flat().filter((item) => {
-            const key = `${item.type}:${item.id}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          if (merged.length === 0) {
-            const fallbackRes = await fetch(`/api/addons/search?q=${encodeURIComponent(trimmed)}`).catch(() => null)
-            const fallbackData = fallbackRes && fallbackRes.ok ? await fallbackRes.json().catch(() => null) : null
-            if (!active) return
-            merged = (fallbackData?.metas || []).slice(0, 24).map(
-              (meta: Omit<OnlineMetaDiscoveryItem, 'addonName'>) => ({
-                ...meta,
-                addonName: enabledAddons[0]?.name || 'Addons',
-              }),
-            )
-          }
+          const normQuery = normalizeSearchText(trimmed)
+          const merged = [...fallbackMetas, ...chunks.flat()]
+            .filter((item) => {
+              const key = `${item.type}:${item.id}`
+              if (seen.has(key)) return false
+              seen.add(key)
+              return true
+            })
+            .sort((a, b) => {
+              const aNorm = normalizeSearchText(a.name || '')
+              const bNorm = normalizeSearchText(b.name || '')
+              const aExact = aNorm === normQuery ? 2 : aNorm.includes(normQuery) ? 1 : 0
+              const bExact = bNorm === normQuery ? 2 : bNorm.includes(normQuery) ? 1 : 0
+              return bExact - aExact
+            })
           if (active) {
             setAddonSearchResults(merged.slice(0, 24))
             setAddonSearching(false)

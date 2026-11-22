@@ -179,7 +179,7 @@ export function Sidebar({
       {desktopCollapsed && (
         <div
           onMouseEnter={() => setDesktopCollapsed(false)}
-          className="hidden lg:flex lg:w-14 lg:shrink-0 lg:flex-col lg:items-center lg:gap-4 lg:border-r lg:border-[var(--sc-border-subtle)] lg:bg-[var(--sc-bg-elevated)] lg:py-5"
+          className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-14 lg:shrink-0 lg:flex-col lg:items-center lg:gap-4 lg:border-r lg:border-[var(--sc-border-subtle)] lg:bg-[var(--sc-bg-elevated)] lg:py-5"
         >
           <button
             type="button"
@@ -211,7 +211,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 lg:p-4 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-3.5 transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:translate-x-0 lg:p-4 ${
           mobileDrawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         } ${desktopCollapsed ? 'lg:hidden' : 'lg:flex'}`}
       >
