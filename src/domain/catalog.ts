@@ -22,6 +22,7 @@ export type Profile = {
   isKids?: boolean
   hasPassword?: boolean
   watchedCount?: number
+  tourCompleted?: boolean
 }
 
 export type SubtitleTrack = {

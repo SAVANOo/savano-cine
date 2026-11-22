@@ -631,23 +631,32 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
-    const isTorrentTranscode =
-      playbackUrl.includes('/api/addons/torrent-stream') &&
-      (playbackUrl.includes('audioStream=') ||
-        playbackUrl.includes('&t=') ||
-        playbackUrl.includes('?t=') ||
-        Boolean(media.needsTranscode))
-    const isTranscodedStream =
+    const isServerStream =
       playbackUrl.includes('/transcode') ||
       playbackUrl.includes('/api/addons/http-transcode') ||
-      isTorrentTranscode
-    if (!isTranscodedStream) {
+      (playbackUrl.includes('/api/addons/torrent-stream') &&
+        (playbackUrl.includes('audioStream=') ||
+          playbackUrl.includes('start=') ||
+          playbackUrl.includes('&t=') ||
+          playbackUrl.includes('?t=') ||
+          Boolean(media.needsTranscode)))
+    const hasFullSeekableRange =
+      Number.isFinite(video.duration) &&
+      video.duration > 0 &&
+      video.seekable.length > 0 &&
+      video.seekable.end(video.seekable.length - 1) >= Math.min(clamped, video.duration - 2)
+    if (!isServerStream && hasFullSeekableRange) {
+      video.currentTime = clamped
+      scheduleHideControls()
+      return
+    }
+    if (!isServerStream && !playbackUrl.includes('/api/addons/torrent-stream')) {
       video.currentTime = clamped
       scheduleHideControls()
       return
     }
     const rel = clamped - transcodeOffsetRef.current
-    if (rel >= 0 && Number.isFinite(video.duration) && rel <= video.duration) {
+    if (rel >= 0 && Number.isFinite(video.duration) && rel <= video.duration && hasFullSeekableRange) {
       video.currentTime = rel
     } else {
       const offset = Math.floor(clamped)
@@ -1198,6 +1207,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             if (pendingPosition.current !== null && videoRef.current) {
               const isServerOffsetStream =
                 playbackUrl.includes('/transcode') ||
+                playbackUrl.includes('start=') ||
                 playbackUrl.includes('&t=') ||
                 playbackUrl.includes('?t=')
               if (!isServerOffsetStream) {
@@ -1214,6 +1224,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           }}
           onTimeUpdate={() => {
             if (videoRef.current) {
+              if (videoRef.current.seeking) return
               const eff = transcodeOffsetRef.current + videoRef.current.currentTime
               setCurrentTime(eff)
               if (eff > 1) lastKnownTimeRef.current = eff

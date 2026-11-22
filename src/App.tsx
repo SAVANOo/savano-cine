@@ -351,12 +351,14 @@ export function App() {
   useEffect(() => {
     if (pinLocked || profileGateOpen || !activeProfileId) return
     if (typeof navigator !== 'undefined' && navigator.webdriver) return
+    const current = profiles.find((p) => p.id === activeProfileId)
+    if (!current || current.tourCompleted !== false) return
     const key = `savano-cine-tour-done:${activeProfileId}`
     if (!localStorage.getItem(key)) {
       const timer = window.setTimeout(() => setTourOpen(true), 650)
       return () => window.clearTimeout(timer)
     }
-  }, [activeProfileId, pinLocked, profileGateOpen])
+  }, [activeProfileId, pinLocked, profileGateOpen, profiles])
 
   useEffect(() => {
     fetch('/api/player/capabilities')
@@ -2002,11 +2004,17 @@ export function App() {
         onClose={() => {
           setTourOpen(false)
           if (activeProfile?.id) {
+            setProfiles((prev) =>
+              prev.map((p) => (p.id === activeProfile.id ? { ...p, tourCompleted: true } : p)),
+            )
             try {
               localStorage.setItem(`savano-cine-tour-done:${activeProfile.id}`, '1')
             } catch {
               // ignore storage quota errors
             }
+            void fetch(`/api/profiles/${encodeURIComponent(activeProfile.id)}/tour`, {
+              method: 'POST',
+            }).catch(() => undefined)
           }
         }}
       />

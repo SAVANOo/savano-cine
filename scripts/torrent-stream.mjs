@@ -403,7 +403,7 @@ export async function serveTorrentStream(
   selectExclusiveTorrentFile(torrent, file)
   touchTorrent(infoHash.trim().toLowerCase())
 
-  const needsTranscode = !raw && (TRANSCODE_EXT_RE.test(file.name) || audioStream !== null)
+  const needsTranscode = !raw && (TRANSCODE_EXT_RE.test(file.name) || audioStream !== null || Number(startSec) > 1)
   if (needsTranscode) {
     const requestedAudio =
       audioStream !== null && /^\d{1,2}$/.test(String(audioStream))

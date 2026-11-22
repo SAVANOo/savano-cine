@@ -625,6 +625,11 @@ function detectHwEncoder(ffmpegAvailable) {
   }
 
   if (requestUrl.pathname === '/api/profiles') {
+    try {
+      database.exec('ALTER TABLE profiles ADD COLUMN tour_completed INTEGER NOT NULL DEFAULT 0')
+    } catch {
+      // column already exists
+    }
     if (request.method === 'POST') {
       let body
       try {
@@ -701,6 +706,7 @@ function detectHwEncoder(ffmpegAvailable) {
 
     const profiles = database.prepare(`
       SELECT p.id, p.name, p.avatar_key AS avatarKey, p.is_kids AS isKids, p.is_admin AS isAdmin,
+        COALESCE(p.tour_completed, 0) AS tourCompleted,
         (p.passcode_hash IS NOT NULL AND p.passcode_hash != '') AS hasPassword,
         (SELECT COUNT(*) FROM watch_progress wp WHERE wp.profile_id = p.id AND wp.watched = 1) AS watchedCount
       FROM profiles p
@@ -710,10 +716,23 @@ function detectHwEncoder(ffmpegAvailable) {
       isAdmin: Boolean(row.isAdmin),
       isKids: Boolean(row.isKids),
       hasPassword: Boolean(row.hasPassword),
+      tourCompleted: Boolean(row.tourCompleted),
       watchedCount: Number(row.watchedCount || 0),
     }))
 
     return send(response, 200, profiles)
+  }
+
+  const tourProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)\/tour$/)
+  if (tourProfileMatch && request.method === 'POST') {
+    try {
+      database.exec('ALTER TABLE profiles ADD COLUMN tour_completed INTEGER NOT NULL DEFAULT 0')
+    } catch {
+      // column already exists
+    }
+    const profileId = decodeURIComponent(tourProfileMatch[1])
+    database.prepare('UPDATE profiles SET tour_completed = 1 WHERE id = ?').run(profileId)
+    return send(response, 200, { ok: true, profileId })
   }
 
   const unlockProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)\/unlock$/)
