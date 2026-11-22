@@ -75,12 +75,59 @@ function getInitialDeepLinkId(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+const VIEW_TO_KIND = {
+  local: 'Local',
+  online: 'Online',
+  filmes: 'Filme',
+  series: 'Série',
+  continuar: 'Continuar',
+  descobrir: 'Descobrir',
+  social: 'Social',
+} as const
+
+const KIND_TO_VIEW: Record<string, string> = {
+  Local: 'local',
+  Online: 'online',
+  Filme: 'filmes',
+  Série: 'series',
+  Continuar: 'continuar',
+  Descobrir: 'descobrir',
+  Social: 'social',
+}
+
+function getInitialKindFromUrl(): 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social' {
+  if (typeof window === 'undefined') return 'Todos'
+  const view = new URLSearchParams(window.location.search).get('view')?.toLowerCase() || ''
+  return VIEW_TO_KIND[view as keyof typeof VIEW_TO_KIND] ?? 'Todos'
+}
+
+function getInitialAddonItemFromUrl(): AddonMetaSummary | null {
+  if (typeof window === 'undefined') return null
+  const sp = new URLSearchParams(window.location.search)
+  const raw = sp.get('online')
+  if (!raw) return null
+  const colonIdx = raw.indexOf(':')
+  if (colonIdx <= 0) return null
+  const type = raw.slice(0, colonIdx)
+  const id = raw.slice(colonIdx + 1)
+  if (!id) return null
+  return {
+    id,
+    type,
+    name: sp.get('title') || id,
+    poster: sp.get('poster') || null,
+    description: '',
+    releaseInfo: null,
+    addonId: sp.get('addonId') || undefined,
+  }
+}
+
 export function App() {
   const [remoteSessionCode, setRemoteSessionCode] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('remote')?.trim() || ''
   })
-  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social'>('Todos')
+  const [activeKind, setActiveKind] = useState<'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social'>(() => getInitialKindFromUrl())
   const [activeGenre, setActiveGenre] = useState('Todos')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
@@ -100,7 +147,7 @@ export function App() {
       updatedAt: string
     }>
   >([])
-  const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(null)
+  const [activeAddonItem, setActiveAddonItem] = useState<AddonMetaSummary | null>(() => getInitialAddonItemFromUrl())
   const [tourOpen, setTourOpen] = useState(false)
   const [kindAddonSections, setKindAddonSections] = useState<
     Array<{ key: string; title: string; items: AddonMetaSummary[] }>
@@ -484,32 +531,63 @@ export function App() {
     else document.title = 'Savano Cine'
   }, [activeKind, adminOpen, adminTab, selectedMedia, selectedShow])
 
-  const layerDepth =
-    (selectedMedia ? 1 : 0) +
-    (activeAddonItem ? 1 : 0) +
-    (profileEditorOpen ? 1 : 0) +
-    (adminOpen ? 1 : 0) +
-    (selectedShow ? 1 : 0)
-  const prevLayerDepthRef = useRef(0)
+  const skipNextHistoryPushRef = useRef(false)
 
   useEffect(() => {
-    if (layerDepth > prevLayerDepthRef.current) {
-      window.history.pushState({ scLayer: layerDepth }, '')
+    if (typeof window === 'undefined' || remoteSessionCode) return
+    let targetPath = '/'
+    const sp = new URLSearchParams()
+    if (selectedShow) {
+      targetPath = `/series/${encodeURIComponent(selectedShow.id)}`
+    } else if (activeAddonItem) {
+      sp.set('online', `${activeAddonItem.type}:${activeAddonItem.id}`)
+      sp.set('title', activeAddonItem.name)
+      if (activeAddonItem.poster) sp.set('poster', activeAddonItem.poster)
+      if (activeAddonItem.addonId) sp.set('addonId', activeAddonItem.addonId)
+    } else if (adminOpen) {
+      sp.set('tab', adminTab)
+    } else if (activeKind !== 'Todos' && KIND_TO_VIEW[activeKind]) {
+      sp.set('view', KIND_TO_VIEW[activeKind])
     }
-    prevLayerDepthRef.current = layerDepth
-  }, [layerDepth])
+    const qs = sp.toString()
+    const targetUrl = qs ? `${targetPath}?${qs}` : targetPath
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (skipNextHistoryPushRef.current) {
+      skipNextHistoryPushRef.current = false
+      return
+    }
+    if (currentUrl !== targetUrl) {
+      window.history.pushState({ scNav: true }, '', targetUrl)
+    }
+  }, [activeAddonItem, activeKind, adminOpen, adminTab, remoteSessionCode, selectedShow])
 
   useEffect(() => {
     const onPopState = () => {
-      if (selectedMedia) setSelectedMedia(null)
-      else if (activeAddonItem) setActiveAddonItem(null)
-      else if (profileEditorOpen) setProfileEditorOpen(false)
-      else if (adminOpen) setAdminOpen(false)
-      else if (selectedShow) setSelectedShow(null)
+      if (selectedMedia) {
+        setSelectedMedia(null)
+        return
+      }
+      if (profileEditorOpen) {
+        setProfileEditorOpen(false)
+        return
+      }
+      skipNextHistoryPushRef.current = true
+      const nextShowId = getInitialDeepLinkId()
+      setSelectedShowId(nextShowId)
+      const nextAddon = getInitialAddonItemFromUrl()
+      setActiveAddonItem(nextAddon)
+      const tab = new URLSearchParams(window.location.search).get('tab')
+      if (tab && ['review', 'artwork', 'history', 'logs', 'addons', 'server'].includes(tab)) {
+        setAdminOpen(true)
+        setAdminTab(tab as 'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server')
+      } else {
+        setAdminOpen(false)
+      }
+      setActiveKind(getInitialKindFromUrl())
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [activeAddonItem, adminOpen, profileEditorOpen, selectedMedia, selectedShow, setSelectedShow])
+  }, [profileEditorOpen, selectedMedia, setSelectedShowId])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1448,7 +1526,7 @@ export function App() {
                 subtitle="Retome seus filmes e séries iniciados nos addons"
                 items={onlineContinueItems.map((entry) => {
                   const rawKey = String(entry.mediaKey || entry.contentKey || '')
-                  const cleanId = rawKey.includes(':') ? rawKey.split(':')[0] : rawKey
+                  const cleanId = /^tt\d+:\d+:\d+$/.test(rawKey) ? rawKey.split(':')[0] : rawKey
                   const pct =
                     entry.durationSec > 0
                       ? Math.min(100, Math.round((entry.positionSec / entry.durationSec) * 100))

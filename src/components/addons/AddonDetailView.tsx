@@ -180,22 +180,69 @@ export function AddonDetailView({
 
   useEffect(() => {
     let active = true
-    const metaUrl = item.addonId
-      ? `/api/addons/${encodeURIComponent(item.addonId)}/meta?type=${encodeURIComponent(item.type)}&id=${encodeURIComponent(item.id)}`
-      : `/api/addons/fallback-meta?type=${encodeURIComponent(item.type)}&id=${encodeURIComponent(item.id)}`
+    const isStreamUrlId = item.id.startsWith('/api/') || item.id.startsWith('http')
+    const epMatch = item.name.match(/T(\d+):E(\d+)/i)
+    const cleanSearchTitle = item.name
+      .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
+      .replace(/\s*\([^)]*\)\s*$/, '')
+      .trim()
 
-    fetch(metaUrl)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!active) return
-        if (payload?.meta) setDetail({ ...item, ...payload.meta })
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setLoadingMeta(false)
-      })
+    const resolveMeta = async () => {
+      let resolvedMeta: AddonMetaSummary | null = null
+      if (!isStreamUrlId) {
+        const metaUrl = item.addonId
+          ? `/api/addons/${encodeURIComponent(item.addonId)}/meta?type=${encodeURIComponent(item.type)}&id=${encodeURIComponent(item.id)}`
+          : `/api/addons/fallback-meta?type=${encodeURIComponent(item.type)}&id=${encodeURIComponent(item.id)}`
+        const res = await fetch(metaUrl).catch(() => null)
+        const payload = res && res.ok ? await res.json().catch(() => null) : null
+        if (payload?.meta) {
+          resolvedMeta = { ...item, ...payload.meta }
+        }
+      }
 
-    if (item.type !== 'series') {
+      if (!resolvedMeta && cleanSearchTitle) {
+        const searchRes = await fetch(`/api/addons/search?q=${encodeURIComponent(cleanSearchTitle)}`).catch(() => null)
+        const searchData = searchRes && searchRes.ok ? await searchRes.json().catch(() => null) : null
+        const hits = Array.isArray(searchData?.metas) ? (searchData.metas as AddonMetaSummary[]) : []
+        const desiredType = epMatch ? 'series' : item.type
+        const match = hits.find((h) => h.type === desiredType && h.id) ?? hits.find((h) => h.id)
+        if (match?.id) {
+          const fbRes = await fetch(
+            `/api/addons/fallback-meta?type=${encodeURIComponent(match.type || desiredType)}&id=${encodeURIComponent(match.id)}`,
+          ).catch(() => null)
+          const fbData = fbRes && fbRes.ok ? await fbRes.json().catch(() => null) : null
+          resolvedMeta = fbData?.meta ? { ...match, ...fbData.meta } : match
+        }
+      }
+
+      if (!active) return
+      if (resolvedMeta) {
+        setDetail(resolvedMeta)
+        if (epMatch && resolvedMeta.videos?.length) {
+          const targetSeason = Number(epMatch[1])
+          const targetEpisode = Number(epMatch[2])
+          setSelectedSeason(targetSeason)
+          const matchedEp = resolvedMeta.videos.find(
+            (v) => v.season === targetSeason && v.episode === targetEpisode,
+          )
+          if (matchedEp) {
+            setSelectedEpisodeId(matchedEp.id)
+            void fetchStreamsFor(
+              'series',
+              matchedEp.id,
+              `${resolvedMeta.name} — T${targetSeason}:E${targetEpisode}`,
+            )
+          }
+        } else if (resolvedMeta.type !== 'series' && isStreamUrlId && resolvedMeta.id) {
+          void fetchStreamsFor(resolvedMeta.type, resolvedMeta.id, resolvedMeta.name)
+        }
+      }
+      setLoadingMeta(false)
+    }
+
+    void resolveMeta()
+
+    if (item.type !== 'series' && !isStreamUrlId) {
       const params = new URLSearchParams({ type: item.type, id: item.id })
       Promise.all([
         fetch(`/api/addons/streams?${params.toString()}`).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => null) })),

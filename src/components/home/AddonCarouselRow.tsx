@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AddonMetaSummary } from '../addons/AddonStreamModal'
 
 type AddonCarouselRowProps = {
@@ -21,6 +21,21 @@ export function AddonCarouselRow({
   onAction,
 }: AddonCarouselRowProps) {
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const [hasOverflow, setHasOverflow] = useState(false)
+
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const check = () => setHasOverflow(el.scrollWidth > el.clientWidth + 4)
+    check()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : null
+    ro?.observe(el)
+    window.addEventListener('resize', check)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', check)
+    }
+  }, [items.length])
 
   if (items.length === 0) return null
 
@@ -51,14 +66,16 @@ export function AddonCarouselRow({
       </div>
 
       <div className="relative">
-        <button
-          type="button"
-          onClick={() => scrollByDirection(-1)}
-          aria-label={`Rolar ${title} para a esquerda`}
-          className="absolute top-1/2 left-1 z-20 hidden -translate-y-1/2 rounded-full border border-white/15 bg-black/75 p-2 text-white opacity-0 shadow-xl backdrop-blur-md transition group-hover/row:opacity-100 hover:border-[var(--sc-accent)] hover:bg-black sm:flex cursor-pointer"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
+        {hasOverflow && (
+          <button
+            type="button"
+            onClick={() => scrollByDirection(-1)}
+            aria-label={`Rolar ${title} para a esquerda`}
+            className="absolute top-1/2 left-1 z-20 hidden -translate-y-1/2 rounded-full border border-white/15 bg-black/75 p-2 text-white opacity-0 shadow-xl backdrop-blur-md transition group-hover/row:opacity-100 hover:border-[var(--sc-accent)] hover:bg-black sm:flex cursor-pointer"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
 
         <div
           ref={trackRef}
@@ -99,14 +116,16 @@ export function AddonCarouselRow({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={() => scrollByDirection(1)}
-          aria-label={`Rolar ${title} para a direita`}
-          className="absolute top-1/2 right-1 z-20 hidden -translate-y-1/2 rounded-full border border-white/15 bg-black/75 p-2 text-white opacity-0 shadow-xl backdrop-blur-md transition group-hover/row:opacity-100 hover:border-[var(--sc-accent)] hover:bg-black sm:flex cursor-pointer"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
+        {hasOverflow && (
+          <button
+            type="button"
+            onClick={() => scrollByDirection(1)}
+            aria-label={`Rolar ${title} para a direita`}
+            className="absolute top-1/2 right-1 z-20 hidden -translate-y-1/2 rounded-full border border-white/15 bg-black/75 p-2 text-white opacity-0 shadow-xl backdrop-blur-md transition group-hover/row:opacity-100 hover:border-[var(--sc-accent)] hover:bg-black sm:flex cursor-pointer"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
       </div>
     </section>
   )
