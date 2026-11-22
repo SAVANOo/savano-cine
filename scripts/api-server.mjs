@@ -1128,6 +1128,15 @@ async function handleApiRequest(request, response) {
       `).run(profileId, mediaKey, String(body.title || ''), poster, Number(body.positionSec) || 0, Number(body.durationSec) || 0)
       return send(response, 200, { saved: true })
     }
+    if (request.method === 'DELETE') {
+      const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+      const mediaKey = requestUrl.searchParams.get('mediaKey') || ''
+      if (!mediaKey) return send(response, 400, { error: 'mediaKey obrigatório.' })
+      const info = database
+        .prepare('DELETE FROM stremio_progress WHERE profile_id = ? AND media_key = ?')
+        .run(profileId, mediaKey)
+      return send(response, 200, { deleted: info.changes > 0 })
+    }
   }
 
   if (requestUrl.pathname === '/api/addons/downloads' && request.method === 'GET') {

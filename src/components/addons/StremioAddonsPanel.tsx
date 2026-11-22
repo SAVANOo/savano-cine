@@ -114,6 +114,7 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
             {[
               { label: 'Cinemeta (Catálogo)', url: 'https://v3-cinemeta.strem.io/manifest.json' },
               { label: 'TMDB PT-BR (Catálogo)', url: 'https://94c8cb9f702d-tmdb-addon.baby-beamup.club/manifest.json' },
+              { label: 'Anime Kitsu (Animes)', url: 'https://anime-kitsu.strem.fun/manifest.json' },
               { label: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
               { label: 'Mico-Leão Dublado BR', url: 'https://27a5b2bfe3c0-stremio-brazilian-addon.baby-beamup.club/manifest.json' },
               { label: 'Torrentio', url: 'https://torrentio.strem.fun/manifest.json' },

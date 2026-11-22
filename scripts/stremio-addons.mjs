@@ -287,7 +287,7 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   }
   const payload = await response.json()
   const rawMetas = Array.isArray(payload?.metas) ? payload.metas : []
-  const promoMetaRe = /\b(?:livepix|apoie o canal|doa[cç][aã]o)\b/i
+  const promoMetaRe = /\b(?:livepix|apoie o canal|doa[cç][aã]o|no results? returned)\b/i
   const looseEpisodeRe = /\b(?:S\d{1,2}\s*E\d{1,2}|T\d{1,2}\s*E[P]?\d{1,2}|EP\.?\s*\d{1,3})\b/i
   const metas = rawMetas.filter((meta) => {
     const name = String(meta?.name || meta?.title || '')
@@ -410,15 +410,42 @@ export async function fetchAddonMeta(database, addonId, { type, metaId }) {
   assertSafeSegment(metaId, 'ID de mídia')
 
   const targetUrl = `${addon.baseUrl}/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`
-  const response = await fetch(targetUrl, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!response.ok) {
-    throw new Error(`Metadados do addon responderam HTTP ${response.status}.`)
+  let meta = null
+  try {
+    const response = await fetch(targetUrl, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      meta = payload?.meta || null
+    }
+  } catch {
+    meta = null
   }
-  const payload = await response.json().catch(() => ({}))
-  const meta = payload?.meta
+
+  // Enrich missing metadata or empty series episode lists via Cinemeta / Anime Kitsu.
+  if (!meta || (type === 'series' && (!Array.isArray(meta.videos) || meta.videos.length === 0))) {
+    let fallback = await fetchRawFallbackMeta(type, metaId)
+    if ((!fallback || !Array.isArray(fallback.videos) || fallback.videos.length === 0) && type === 'series' && meta?.name) {
+      const searchHits = await searchAddonFallback(meta.name).catch(() => [])
+      const hit = searchHits.find((h) => h.type === 'series' && h.id) ?? searchHits.find((h) => h.id)
+      if (hit?.id) {
+        fallback = await fetchRawFallbackMeta('series', hit.id)
+      }
+    }
+    if (!meta && fallback) {
+      meta = fallback
+    } else if (meta && fallback?.videos?.length) {
+      meta = {
+        ...meta,
+        videos: fallback.videos,
+        background: meta.background || fallback.background,
+        description: meta.description || fallback.description,
+      }
+    }
+  }
+
   if (!meta) return null
   return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
 }
@@ -632,17 +659,34 @@ export async function searchAddonFallback(query) {
     .slice(0, 24)
 }
 
+async function fetchRawFallbackMeta(type, metaId) {
+  const candidates = metaId.startsWith('kitsu:')
+    ? [
+        `https://anime-kitsu.strem.fun/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`,
+        `https://v3-cinemeta.strem.io/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`,
+      ]
+    : [`https://v3-cinemeta.strem.io/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`]
+
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!response.ok) continue
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.meta) return payload.meta
+    } catch {
+      // try next fallback
+    }
+  }
+  return null
+}
+
 export async function fetchFallbackMeta(type, metaId) {
   assertSafeSegment(type, 'Tipo')
   assertSafeSegment(metaId, 'ID de mídia')
-  const url = `https://v3-cinemeta.strem.io/meta/${encodeURIComponent(type)}/${encodeURIComponent(metaId)}.json`
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!response.ok) return null
-  const payload = await response.json().catch(() => ({}))
-  const meta = payload?.meta
+  const meta = await fetchRawFallbackMeta(type, metaId)
   if (!meta) return null
   return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
 }
