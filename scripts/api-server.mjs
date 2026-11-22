@@ -338,6 +338,27 @@ async function handleApiRequest(request, response) {
     return send(response, 200, readRecentErrorLogs())
   }
 
+let cachedHwEncoder
+function detectHwEncoder(ffmpegAvailable) {
+  if (!ffmpegAvailable) return null
+  if (cachedHwEncoder !== undefined) return cachedHwEncoder
+  try {
+    const res = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], {
+      encoding: 'utf8',
+      timeout: 3000,
+      windowsHide: true,
+    })
+    const out = String(res.stdout || '')
+    if (/\bh264_nvenc\b/.test(out)) cachedHwEncoder = 'h264_nvenc'
+    else if (/\bh264_qsv\b/.test(out)) cachedHwEncoder = 'h264_qsv'
+    else if (/\bh264_amf\b/.test(out)) cachedHwEncoder = 'h264_amf'
+    else cachedHwEncoder = null
+  } catch {
+    cachedHwEncoder = null
+  }
+  return cachedHwEncoder
+}
+
   if (requestUrl.pathname === '/api/player/capabilities') {
     const runtimes = {
       ffmpeg: detectRuntime('CINE_FFMPEG_PATH', 'ffmpeg.exe'),
@@ -348,6 +369,7 @@ async function handleApiRequest(request, response) {
       browser: true,
       ffmpeg: runtimes.ffmpeg.available,
       transcoding: runtimes.ffmpeg.available,
+      hwEncoder: detectHwEncoder(runtimes.ffmpeg.available),
       ffprobe: runtimes.ffprobe.available,
       vlc: runtimes.vlc.available,
       diagnostics: Object.fromEntries(Object.entries(runtimes).map(([name, runtime]) => [
@@ -1358,7 +1380,16 @@ async function handleApiRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/library') {
-    return send(response, 200, await buildLibrary(requestUrl.searchParams.get('profileId')))
+    const payload = await buildLibrary(requestUrl.searchParams.get('profileId'))
+    const json = JSON.stringify(payload)
+    const etag = `"${createHash('sha1').update(json).digest('hex').slice(0, 16)}"`
+    if (request.headers['if-none-match'] === etag) {
+      response.writeHead(304, { ETag: etag, 'Cache-Control': 'private, no-cache' })
+      return response.end()
+    }
+    response.setHeader('ETag', etag)
+    response.setHeader('Cache-Control', 'private, no-cache')
+    return send(response, 200, payload)
   }
 
   if (requestUrl.pathname === '/api/review' && request.method === 'GET') {
