@@ -13,6 +13,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { findMountedSource, getRootRelativePath, getVolumeInfoForPath } from './volume-info.mjs'
 import { getAdapterForSource } from './source-adapters.mjs'
+import {
+  assertSafeExternalUrl,
+  fetchSafeWithRedirects,
+  isPrivateHostname,
+  isTrustedOrigin,
+} from './security-url.mjs'
 import { handleAdminRoutes, trackClientConnection } from './routes/admin-routes.mjs'
 import { handleRealtimeRoutes } from './routes/realtime-routes.mjs'
 import { handleSocialRoutes } from './routes/social-routes.mjs'
@@ -147,29 +153,6 @@ function clearAuthFailures(request) {
   AUTH_FAILURES.delete(getClientIp(request))
 }
 
-function isPrivateHostname(hostname) {
-  const hostLower = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  if (
-    hostLower === 'localhost' ||
-    hostLower === '0.0.0.0' ||
-    hostLower === '::1' ||
-    hostLower.endsWith('.local')
-  ) {
-    return true
-  }
-  if (/^127\./.test(hostLower) || /^10\./.test(hostLower) || /^192\.168\./.test(hostLower) || /^169\.254\./.test(hostLower)) {
-    return true
-  }
-  const m172 = hostLower.match(/^172\.(\d+)\./)
-  if (m172 && Number(m172[1]) >= 16 && Number(m172[1]) <= 31) {
-    return true
-  }
-  if (/^(fc|fd|fe80)/i.test(hostLower)) {
-    return true
-  }
-  return false
-}
-
 function getSessionProfileId(request) {
   const cookieHeader = String(request.headers.cookie || '')
   const match = cookieHeader.match(/(?:^|;\s*)sc_profile_session=([^;]+)/)
@@ -280,7 +263,15 @@ async function handleApiRequest(request, response) {
     if (serveStaticDist(requestUrl.pathname, response)) return
   }
 
-  response.setHeader('Access-Control-Allow-Origin', '*')
+  const origin = String(request.headers.origin || '')
+  if (isTrustedOrigin(origin)) {
+    response.setHeader('Access-Control-Allow-Origin', origin)
+    response.setHeader('Access-Control-Allow-Credentials', 'true')
+    response.setHeader('Vary', 'Origin')
+  }
+  response.setHeader('X-Content-Type-Options', 'nosniff')
+  response.setHeader('Referrer-Policy', 'same-origin')
+  response.setHeader('X-Frame-Options', 'SAMEORIGIN')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
 
   if (requestUrl.pathname.startsWith('/api/admin/')) {
@@ -830,7 +821,7 @@ async function handleApiRequest(request, response) {
       return send(response, 400, { error: 'Host ou protocolo inválido para legenda.' })
     }
     try {
-      const upstream = await fetch(parsed.toString(), { signal: AbortSignal.timeout(8000) })
+      const upstream = await fetchSafeWithRedirects(parsed.toString(), { signal: AbortSignal.timeout(8000) })
       if (!upstream.ok) return send(response, 502, { error: 'Falha ao baixar legenda externa.' })
       const raw = await upstream.text()
       if (isDownload) {
@@ -884,7 +875,7 @@ async function handleApiRequest(request, response) {
     const ac = new AbortController()
     request.on('close', () => ac.abort())
     try {
-      const upstream = await fetch(parsed.toString(), { headers: reqHeaders, redirect: 'follow', signal: ac.signal })
+      const upstream = await fetchSafeWithRedirects(parsed.toString(), { headers: reqHeaders, signal: ac.signal })
       const ct = upstream.headers.get('content-type') || 'application/octet-stream'
       if (ct.includes('mpegurl') || parsed.pathname.toLowerCase().endsWith('.m3u8')) {
         const text = await upstream.text()
@@ -938,7 +929,9 @@ async function handleApiRequest(request, response) {
     } catch {
       return send(response, 400, { error: 'URL inválida para transcode.' })
     }
-    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isPrivateHostname(parsed.hostname)) {
+    try {
+      await assertSafeExternalUrl(parsed.toString())
+    } catch {
       return send(response, 400, { error: 'Host ou protocolo inválido para transcode.' })
     }
     const headerLines = []
