@@ -1341,7 +1341,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           return (
             <div
               aria-live="off"
-              className={`pointer-events-none absolute inset-x-4 z-20 flex flex-col items-center gap-1.5 text-center transition-all ${
+              className={`pointer-events-none absolute inset-x-4 z-30 flex transform-gpu flex-col items-center gap-1.5 text-center transition-[bottom] duration-200 ${
                 controlsVisible || isPaused ? 'bottom-28' : 'bottom-8'
               }`}
             >

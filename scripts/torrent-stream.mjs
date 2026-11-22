@@ -74,16 +74,26 @@ async function getClient() {
   if (!processGuardInstalled) {
     processGuardInstalled = true
     process.on('uncaughtException', (err) => {
-      const code = err && typeof err === 'object' ? err.code : ''
+      const code = err && typeof err === 'object' ? String(err.code || '') : ''
       const msg = err instanceof Error ? err.message : String(err || '')
       if (
         code === 'ERR_DATA_CHANNEL' ||
         code === 'PREMATURE_CLOSE' ||
-        msg.includes('User-Initiated Abort')
+        code === 'ERR_STREAM_PREMATURE_CLOSE' ||
+        code === 'ECONNRESET' ||
+        code === 'ECONNABORTED' ||
+        code === 'EPIPE' ||
+        code === 'ETIMEDOUT' ||
+        msg.includes('User-Initiated Abort') ||
+        msg.includes('DataChannel') ||
+        msg.includes('write after end')
       ) {
         return
       }
-      throw err
+      console.error('[torrent-stream uncaughtException]', err)
+    })
+    process.on('unhandledRejection', (reason) => {
+      console.error('[torrent-stream unhandledRejection]', reason)
     })
   }
   if (!clientPromise) {
