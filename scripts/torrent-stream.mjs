@@ -171,13 +171,52 @@ function pickTorrentFile(torrent, fileIdx) {
   return [...pool].sort((a, b) => b.length - a.length)[0]
 }
 
-/** Deselects all other files in multi-file torrents so bandwidth focuses exclusively on the active video. */
+/** Prioritizes pieces sequentially from byteOffset forward so playback buffers ahead and caches the full movie. */
+function prioritizeSequentialWindow(torrent, file, byteOffset = 0) {
+  if (!torrent?.pieceLength || !Array.isArray(torrent.pieces) || torrent.pieces.length === 0) {
+    file.select(1)
+    return
+  }
+  const fileStart = file.offset || 0
+  const fileEnd = fileStart + Math.max(0, file.length - 1)
+  const firstPiece = Math.max(0, Math.floor(fileStart / torrent.pieceLength))
+  const lastPiece = Math.min(torrent.pieces.length - 1, Math.floor(fileEnd / torrent.pieceLength))
+  const cursorPiece = Math.max(
+    firstPiece,
+    Math.min(lastPiece, Math.floor((fileStart + Math.max(0, byteOffset)) / torrent.pieceLength)),
+  )
+
+  const bands = [
+    [cursorPiece, Math.min(lastPiece, cursorPiece + 15), 20],
+    [cursorPiece + 16, Math.min(lastPiece, cursorPiece + 63), 12],
+    [cursorPiece + 64, Math.min(lastPiece, cursorPiece + 191), 6],
+    [cursorPiece + 192, lastPiece, 2],
+  ]
+  for (const [from, to, priority] of bands) {
+    if (from <= to) {
+      torrent.select(from, to, priority)
+    }
+  }
+  if (cursorPiece > firstPiece) {
+    torrent.select(firstPiece, cursorPiece - 1, 1)
+  }
+}
+
+/** Deselects all other files in multi-file torrents once and starts sequential full-file download. */
 function selectExclusiveTorrentFile(torrent, file) {
   try {
+    const key = torrent.infoHash?.toLowerCase()
+    const entry = key ? activeTorrents.get(key) : null
+    if (entry && entry.selectedFileName === file.name) {
+      return
+    }
+    if (entry) {
+      entry.selectedFileName = file.name
+    }
     if (Array.isArray(torrent.pieces) && torrent.pieces.length > 0) {
       torrent.deselect(0, torrent.pieces.length - 1, false)
     }
-    file.select(1)
+    prioritizeSequentialWindow(torrent, file, 0)
     // For MP4 files, prioritize the tail (~1MB) too so the moov atom loads without stalling seeks
     if (/\.mp4$/i.test(file.name) && file.length > 4 * 1024 * 1024) {
       const tailStream = file.createReadStream({ start: file.length - 1024 * 1024, end: file.length - 1 })
@@ -448,12 +487,8 @@ export async function serveTorrentStream(
       response.end()
       return
     }
-    if (start > 0 && torrent.pieceLength && torrent.pieces?.length) {
-      const fileStartOffset = file.offset || 0
-      const absStart = fileStartOffset + start
-      const seekPiece = Math.max(0, Math.floor(absStart / torrent.pieceLength))
-      const lastPiece = torrent.pieces.length - 1
-      torrent.select(seekPiece, Math.min(lastPiece, seekPiece + 24), true)
+    if (start > 0) {
+      prioritizeSequentialWindow(torrent, file, start)
     }
     response.writeHead(206, {
       'Content-Range': `bytes ${start}-${end}/${total}`,
