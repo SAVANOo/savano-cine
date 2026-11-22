@@ -68,7 +68,24 @@ export function isValidInfoHash(infoHash) {
   return typeof infoHash === 'string' && INFO_HASH_RE.test(infoHash.trim())
 }
 
+let processGuardInstalled = false
+
 async function getClient() {
+  if (!processGuardInstalled) {
+    processGuardInstalled = true
+    process.on('uncaughtException', (err) => {
+      const code = err && typeof err === 'object' ? err.code : ''
+      const msg = err instanceof Error ? err.message : String(err || '')
+      if (
+        code === 'ERR_DATA_CHANNEL' ||
+        code === 'PREMATURE_CLOSE' ||
+        msg.includes('User-Initiated Abort')
+      ) {
+        return
+      }
+      throw err
+    })
+  }
   if (!clientPromise) {
     clientPromise = import('webtorrent').then(({ default: WebTorrent }) => {
       mkdirSync(TORRENT_TMP_ROOT, { recursive: true })
