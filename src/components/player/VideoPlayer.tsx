@@ -276,7 +276,6 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     const match = playbackUrl.match(/[?&]infoHash=([a-fA-F0-9]{40}|[A-Z2-7]{32})/i)
     if (!match) {
       torrentStatsRef.current = null
-      setTorrentStats(null)
       return
     }
     const infoHash = match[1]
@@ -598,6 +597,8 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     transcodeOffsetRef.current = 0
     setTranscodeOffset(0)
     pendingPosition.current = effectivePos
+    torrentStatsRef.current = null
+    setTorrentStats(null)
     setPlaybackError('')
     setIsLoadingMedia(true)
     setPlaybackUrl(nextUrl)
@@ -1239,7 +1240,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 Reproduzindo
               </p>
               <h2 className="m-0 text-base font-bold text-white sm:text-lg">{media.title}</h2>
-              {torrentStats && (
+              {torrentStats && playbackUrl.includes('infoHash=') && (
                 <p className="mt-0.5 mb-0 text-[11px] font-medium text-emerald-300">
                   Torrent · {torrentStats.numPeers} peer(s) · {Math.round(torrentStats.downloadSpeed / 1024)} KB/s · {Math.round(torrentStats.progress * 100)}%
                 </p>

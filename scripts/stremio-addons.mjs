@@ -285,6 +285,7 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   if (!response.ok) {
     throw new Error(`Catálogo do addon respondeu HTTP ${response.status}.`)
   }
+  const payload = await response.json()
   const rawMetas = Array.isArray(payload?.metas) ? payload.metas : []
   const promoMetaRe = /\b(?:livepix|apoie o canal|doa[cç][aã]o)\b/i
   const looseEpisodeRe = /\b(?:S\d{1,2}\s*E\d{1,2}|T\d{1,2}\s*E[P]?\d{1,2}|EP\.?\s*\d{1,3})\b/i
