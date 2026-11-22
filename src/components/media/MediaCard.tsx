@@ -1,4 +1,4 @@
-import { Check, Info, Play, Plus, Star } from 'lucide-react'
+import { Check, Info, Play, Plus, Star, X } from 'lucide-react'
 import type { LibraryItem } from '../../domain/catalog'
 import { resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import { Badge } from '../ui/Badge'
@@ -9,6 +9,7 @@ type MediaCardProps = {
   onPlay: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
   onToggleWatchlist?: (item: LibraryItem) => void
+  onRemoveFromContinue?: (item: LibraryItem) => void
 }
 
 /**
@@ -16,7 +17,7 @@ type MediaCardProps = {
  * - Clicking the cover/play area starts playback directly.
  * - Clicking the info button (or title/meta footer) opens the detail view.
  */
-export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onToggleWatchlist }: MediaCardProps) {
+export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onToggleWatchlist, onRemoveFromContinue }: MediaCardProps) {
   const playable = Boolean(resolvePlayableMedia(item))
   const hasSubtitles =
     Boolean(item.subtitleUrl) ||
@@ -67,7 +68,31 @@ export function MediaCard({ item, variant = 'poster', onPlay, onOpenDetails, onT
           <div className="flex items-center gap-1">
             <Badge tone="dark">{item.kind}</Badge>
           </div>
-          {hasSubtitles && <Badge tone="dark">CC</Badge>}
+          <div className="flex items-center gap-1">
+            {hasSubtitles && <Badge tone="dark">CC</Badge>}
+            {onRemoveFromContinue && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`Remover ${item.title} de Continue assistindo`}
+                title="Remover de Continue assistindo"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRemoveFromContinue(item)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onRemoveFromContinue(item)
+                  }
+                }}
+                className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-black/80 text-white/85 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-600 hover:text-white cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Center Play Hover Overlay */}

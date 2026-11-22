@@ -11,6 +11,7 @@ type MediaCarouselProps = {
   onPlay: (item: LibraryItem) => void
   onOpenDetails: (item: LibraryItem) => void
   onToggleWatchlist?: (item: LibraryItem) => void
+  onRemoveFromContinue?: (item: LibraryItem) => void
 }
 
 /** Horizontal streaming carousel row with smooth scroll arrows. */
@@ -22,6 +23,7 @@ export function MediaCarousel({
   onPlay,
   onOpenDetails,
   onToggleWatchlist,
+  onRemoveFromContinue,
 }: MediaCarouselProps) {
   const trackRef = useRef<HTMLDivElement | null>(null)
   const [hasOverflow, setHasOverflow] = useState(false)
@@ -89,6 +91,7 @@ export function MediaCarousel({
                 onPlay={onPlay}
                 onOpenDetails={onOpenDetails}
                 onToggleWatchlist={onToggleWatchlist}
+                onRemoveFromContinue={onRemoveFromContinue}
               />
             </div>
           ))}

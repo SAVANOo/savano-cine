@@ -479,6 +479,22 @@ async function handleApiRequest(request, response) {
     return send(response, 200, progress || null)
   }
 
+  if (requestUrl.pathname === '/api/progress' && request.method === 'DELETE') {
+    const profileId = requestUrl.searchParams.get('profileId') || ''
+    const mediaId = requestUrl.searchParams.get('mediaId') || ''
+    if (!profileId || !mediaId) {
+      return send(response, 400, { error: 'profileId e mediaId obrigatórios.' })
+    }
+    const info = database
+      .prepare(`
+        DELETE FROM watch_progress
+        WHERE profile_id = ?
+          AND (media_item_id = ? OR media_item_id IN (SELECT id FROM media_items WHERE show_id = ?))
+      `)
+      .run(profileId, mediaId, mediaId)
+    return send(response, 200, { deleted: info.changes > 0 })
+  }
+
   if (requestUrl.pathname === '/api/progress' && request.method === 'POST') {
     let body
     try {

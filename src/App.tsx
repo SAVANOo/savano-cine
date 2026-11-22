@@ -149,6 +149,7 @@ export function App() {
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchHighlightIndex, setSearchHighlightIndex] = useState(-1)
   const [searchHistoryRefresh, setSearchHistoryRefresh] = useState(0)
   const [catalogNotice, setCatalogNotice] = useState('')
   const [onlineContinueItems, setOnlineContinueItems] = useState<
@@ -1113,16 +1114,47 @@ export function App() {
                 autoComplete="off"
                 name="savano-search-query"
                 value={query}
-                onFocus={() => setSearchFocused(true)}
+                onFocus={() => {
+                  setSearchFocused(true)
+                  setSearchHighlightIndex(-1)
+                }}
                 onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && query.trim().length >= 2) {
-                    saveSearchTerm(query)
+                  if (e.key === 'ArrowDown' && visibleSearchHistory.length > 0) {
+                    e.preventDefault()
+                    setSearchFocused(true)
+                    setSearchHighlightIndex((i) => (i + 1) % visibleSearchHistory.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp' && visibleSearchHistory.length > 0) {
+                    e.preventDefault()
+                    setSearchFocused(true)
+                    setSearchHighlightIndex((i) => (i <= 0 ? visibleSearchHistory.length - 1 : i - 1))
+                    return
+                  }
+                  if (e.key === 'Escape') {
                     setSearchFocused(false)
+                    setSearchHighlightIndex(-1)
+                    return
+                  }
+                  if (e.key === 'Enter') {
+                    if (searchFocused && searchHighlightIndex >= 0 && visibleSearchHistory[searchHighlightIndex]) {
+                      e.preventDefault()
+                      setQuery(visibleSearchHistory[searchHighlightIndex])
+                      setSelectedShow(null)
+                      setSearchFocused(false)
+                      setSearchHighlightIndex(-1)
+                      return
+                    }
+                    if (query.trim().length >= 2) {
+                      saveSearchTerm(query)
+                      setSearchFocused(false)
+                    }
                   }
                 }}
                 onChange={(event) => {
                   setQuery(event.target.value)
+                  setSearchHighlightIndex(-1)
                   setSelectedShow(null)
                 }}
                 placeholder="Buscar filmes, séries ou gêneros (/)"
@@ -1155,10 +1187,12 @@ export function App() {
                       Limpar
                     </button>
                   </div>
-                  {visibleSearchHistory.map((term) => (
+                  {visibleSearchHistory.map((term, idx) => (
                     <div
                       key={term}
-                      className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-[var(--sc-text-primary)] hover:bg-[var(--sc-bg-surface)]"
+                      className={`flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-[var(--sc-text-primary)] hover:bg-[var(--sc-bg-surface)] ${
+                        idx === searchHighlightIndex ? 'bg-[var(--sc-bg-surface)]' : ''
+                      }`}
                     >
                       <button
                         type="button"
@@ -1676,6 +1710,14 @@ export function App() {
               onPlay={playLibraryItem}
               onOpenDetails={(target) => setSelectedShow(target)}
               onToggleWatchlist={(target) => void toggleWatchlist(target)}
+              onRemoveFromContinue={(target) => {
+                void fetch(
+                  `/api/progress?profileId=${encodeURIComponent(activeProfileId)}&mediaId=${encodeURIComponent(target.mediaId || target.id)}`,
+                  { method: 'DELETE' },
+                )
+                  .then(() => refreshCatalogAndSources())
+                  .catch(() => undefined)
+              }}
             />
 
             {onlineContinueItems.length > 0 && (
