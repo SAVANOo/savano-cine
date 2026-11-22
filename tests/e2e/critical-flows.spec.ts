@@ -55,7 +55,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
 
   test('Admin Console exibe abas de Revisão, Arte, Histórico e Logs de Erro', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: /^Admin/i }).click()
+    await page.getByRole('navigation').getByRole('button', { name: /^Admin/i }).click()
     await expect(page.getByRole('heading', { name: 'Painel do Catálogo' })).toBeVisible()
     await page.getByRole('button', { name: /Arte & Metadados/i }).click()
     await expect(page.getByRole('button', { name: /Buscar capas faltantes/i })).toBeVisible()
