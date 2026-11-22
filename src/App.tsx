@@ -56,6 +56,7 @@ import {
   translateGenre,
   type PlayableMedia,
 } from './domain/uiHelpers'
+import { installGlobalTelemetry, setTelemetryProfile, trackNavigation } from './domain/telemetry'
 
 function readCachedCatalog(profileId: string): LibraryItem[] | null {
   try {
@@ -177,14 +178,14 @@ export function App() {
     if (typeof window === 'undefined') return false
     const tab = new URLSearchParams(window.location.search).get('tab')
     return Boolean(
-      tab && ['review', 'artwork', 'history', 'logs', 'addons', 'server'].includes(tab),
+      tab && ['review', 'artwork', 'history', 'logs', 'telemetry', 'addons', 'server'].includes(tab),
     )
   })
-  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'>(() => {
+  const [adminTab, setAdminTab] = useState<'review' | 'artwork' | 'history' | 'logs' | 'telemetry' | 'addons' | 'server'>(() => {
     if (typeof window === 'undefined') return 'review'
     const tab = new URLSearchParams(window.location.search).get('tab')
-    if (tab && ['review', 'artwork', 'history', 'logs', 'addons', 'server'].includes(tab)) {
-      return tab as 'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'
+    if (tab && ['review', 'artwork', 'history', 'logs', 'telemetry', 'addons', 'server'].includes(tab)) {
+      return tab as 'review' | 'artwork' | 'history' | 'logs' | 'telemetry' | 'addons' | 'server'
     }
     return 'review'
   })
@@ -315,6 +316,7 @@ export function App() {
   )
 
   useEffect(() => {
+    installGlobalTelemetry()
     fetch('/api/auth/pin')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { required?: boolean; authenticated?: boolean } | null) => {
@@ -324,6 +326,27 @@ export function App() {
       })
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    setTelemetryProfile(activeProfileId || null)
+  }, [activeProfileId])
+
+  useEffect(() => {
+    const viewName = selectedMedia
+      ? 'player'
+      : adminOpen
+        ? `admin:${adminTab}`
+        : activeAddonItem
+          ? `addon_detail:${activeAddonItem.type || 'item'}`
+          : selectedShowId
+            ? 'show_detail'
+            : `catalog:${activeKind || 'all'}`
+    trackNavigation(viewName, {
+      mediaTitle: selectedMedia?.title,
+      showId: selectedShowId,
+      addonId: activeAddonItem?.id,
+    })
+  }, [selectedMedia, adminOpen, adminTab, activeAddonItem, selectedShowId, activeKind])
 
   useEffect(() => {
     if (pinLocked || profileGateOpen || !activeProfileId) return

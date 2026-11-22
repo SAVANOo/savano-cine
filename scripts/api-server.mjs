@@ -20,6 +20,7 @@ import {
   isTrustedOrigin,
 } from './security-url.mjs'
 import { handleAdminRoutes, trackClientConnection } from './routes/admin-routes.mjs'
+import { handleTelemetryRoutes } from './routes/telemetry-routes.mjs'
 import { handleRealtimeRoutes } from './routes/realtime-routes.mjs'
 import { handleSocialRoutes } from './routes/social-routes.mjs'
 import {
@@ -1145,6 +1146,10 @@ function detectHwEncoder(ffmpegAvailable) {
   }
 
   if (await handleAdminRoutes({ request, response, requestUrl, root, port, database, send })) {
+    return
+  }
+
+  if (await handleTelemetryRoutes({ request, response, requestUrl, database, readBody: readJson, send })) {
     return
   }
 

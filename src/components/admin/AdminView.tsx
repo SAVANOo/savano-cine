@@ -1,4 +1,4 @@
-import { ArrowLeft, AlertTriangle, Copy, Download, Flag, Globe, History, Image, Puzzle, QrCode, RefreshCw, Server, Sparkles } from 'lucide-react'
+import { Activity, ArrowLeft, AlertTriangle, Copy, Download, Flag, Globe, History, Image, Puzzle, QrCode, RefreshCw, Server, Sparkles } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import type { ReviewItem } from '../../domain/catalog'
@@ -6,10 +6,11 @@ import type { PlayableMedia } from '../../domain/uiHelpers'
 import { StremioAddonsPanel } from '../addons/StremioAddonsPanel'
 import { DownloadsPanel } from '../addons/DownloadsPanel'
 import type { ArtworkCandidateGroup, CatalogHistory } from '../modals/CatalogModals'
+import { TelemetryDashboard } from './TelemetryDashboard'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
-type AdminTab = 'review' | 'artwork' | 'history' | 'logs' | 'addons' | 'server'
+type AdminTab = 'review' | 'artwork' | 'history' | 'logs' | 'telemetry' | 'addons' | 'server'
 
 type ErrorLogEntry = {
   timestamp?: string
@@ -295,6 +296,7 @@ export function AdminView({
             icon: History,
           },
           { key: 'logs' as const, label: 'Logs de Erro', icon: AlertTriangle },
+          { key: 'telemetry' as const, label: 'Telemetria & Fluxos', icon: Activity },
           { key: 'addons' as const, label: 'Addons (Stremio)', icon: Puzzle },
           { key: 'server' as const, label: 'Servidor & Conexões', icon: Server },
         ].map(({ key, label, icon: Icon }) => (
@@ -1033,6 +1035,8 @@ export function AdminView({
           </div>
         </div>
       )}
+
+      {tab === 'telemetry' && <TelemetryDashboard />}
 
       {tab === 'logs' && (
         <div className="flex flex-col gap-2">

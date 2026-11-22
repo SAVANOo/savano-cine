@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { findActiveCueText, parseWebVtt, type VttCue } from '../../domain/vttParser'
+import { endFlow, startFlow, trackPlayerEvent } from '../../domain/telemetry'
 import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
 import { PlayerEpisodesDrawer } from './PlayerEpisodesDrawer'
 import { PlayerTrackMenu } from './PlayerTrackMenu'
@@ -163,6 +164,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const lastKnownTimeRef = useRef(initialStart)
   const retriedTorrentInfoRef = useRef(false)
   const stallRecoveryTimerRef = useRef<number | null>(null)
+  const playerLoadFlowRef = useRef<string | null>(null)
+  const playbackOpenedAtRef = useRef<number>(0)
+  const firstFrameTrackedRef = useRef(false)
+  const bufferingStartedAtRef = useRef<number | null>(null)
+  const seekStartedAtRef = useRef<{ at: number; from: number; to: number } | null>(null)
+  const sourceSwitchCountRef = useRef(0)
   const prefsKey = `savano-cine-player-prefs:${profileId}`
   const [volume, setVolume] = useState<number>(() => {
     try {
@@ -591,8 +598,34 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setPlaybackUrl(buildTranscodeUrl(value, offset))
   }
 
+  useEffect(() => {
+    firstFrameTrackedRef.current = false
+    playbackOpenedAtRef.current = performance.now()
+    if (playerLoadFlowRef.current) {
+      endFlow(playerLoadFlowRef.current, 'abandoned', { reason: 'source_replaced' })
+    }
+    const isTorrent = playbackUrl.includes('/api/addons/torrent-stream')
+    const flowId = startFlow('player_load', {
+      title: media.title,
+      isTorrent,
+      sourceSwitchCount: sourceSwitchCountRef.current,
+    })
+    playerLoadFlowRef.current = flowId
+    trackPlayerEvent('player_open', {
+      targetId: media.title,
+      meta: { isTorrent, playbackUrlKind: isTorrent ? 'torrent' : playbackUrl.includes('/transcode') ? 'transcode' : 'direct' },
+    })
+    return () => {
+      if (!firstFrameTrackedRef.current && playerLoadFlowRef.current === flowId) {
+        endFlow(flowId, 'abandoned', { reason: 'player_closed_before_frame' })
+        playerLoadFlowRef.current = null
+      }
+    }
+  }, [playbackUrl, media.title])
+
   const seekTo = (targetSeconds: number) => {
     const clamped = Math.max(0, totalDurationRef.current ? Math.min(targetSeconds, totalDurationRef.current) : targetSeconds)
+    seekStartedAtRef.current = { at: performance.now(), from: currentTime, to: clamped }
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
@@ -631,6 +664,11 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const switchPlaybackSource = useCallback((nextUrl: string) => {
     const currentVideoPos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
     const effectivePos = currentVideoPos > 1 ? currentVideoPos : lastKnownTimeRef.current
+    sourceSwitchCountRef.current += 1
+    trackPlayerEvent('player_source_switch', {
+      targetId: media.title,
+      meta: { switchCount: sourceSwitchCountRef.current, positionSec: Math.round(effectivePos) },
+    })
     transcodeOffsetRef.current = 0
     setTranscodeOffset(0)
     pendingPosition.current = effectivePos
@@ -641,7 +679,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setIsLoadingMedia(true)
     setPlaybackUrl(nextUrl)
     setSourcesMenuOpen(false)
-  }, [])
+  }, [media.title])
 
   const tryNextAlternativeSource = useCallback((reason: string): boolean => {
     const list = media.alternativeSources ?? []
@@ -1044,12 +1082,23 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           }}
           onWaiting={() => {
             setIsLoadingMedia(true)
+            if (bufferingStartedAtRef.current === null) {
+              bufferingStartedAtRef.current = performance.now()
+              trackPlayerEvent('player_buffering_start', {
+                targetId: media.title,
+                meta: { positionSec: Math.round(lastKnownTimeRef.current) },
+              })
+            }
             if (stallRecoveryTimerRef.current) window.clearTimeout(stallRecoveryTimerRef.current)
             if (playbackUrl.includes('/api/addons/torrent-stream') && lastKnownTimeRef.current > 5) {
               stallRecoveryTimerRef.current = window.setTimeout(() => {
                 const video = videoRef.current
                 if (!video || video.paused) return
                 pendingPosition.current = lastKnownTimeRef.current
+                trackPlayerEvent('player_stall_recovery', {
+                  targetId: media.title,
+                  meta: { positionSec: Math.round(lastKnownTimeRef.current) },
+                })
                 setSeekToast('Reconectando stream...')
                 window.setTimeout(() => setSeekToast(''), 2000)
                 video.load()
@@ -1087,6 +1136,39 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             if (stallRecoveryTimerRef.current) {
               window.clearTimeout(stallRecoveryTimerRef.current)
               stallRecoveryTimerRef.current = null
+            }
+            if (!firstFrameTrackedRef.current) {
+              firstFrameTrackedRef.current = true
+              const ttffMs = Math.round(performance.now() - playbackOpenedAtRef.current)
+              trackPlayerEvent('player_first_frame', {
+                targetId: media.title,
+                durationMs: ttffMs,
+                meta: { isTorrent: playbackUrl.includes('/api/addons/torrent-stream') },
+              })
+              if (playerLoadFlowRef.current) {
+                endFlow(playerLoadFlowRef.current, 'ok', { ttffMs })
+                playerLoadFlowRef.current = null
+              }
+            }
+            if (bufferingStartedAtRef.current !== null) {
+              const bufferDurationMs = Math.round(performance.now() - bufferingStartedAtRef.current)
+              bufferingStartedAtRef.current = null
+              trackPlayerEvent('player_buffering_end', {
+                targetId: media.title,
+                durationMs: bufferDurationMs,
+              })
+            }
+          }}
+          onSeeked={() => {
+            if (seekStartedAtRef.current) {
+              const seekInfo = seekStartedAtRef.current
+              seekStartedAtRef.current = null
+              const seekDurationMs = Math.round(performance.now() - seekInfo.at)
+              trackPlayerEvent('player_seek', {
+                targetId: media.title,
+                durationMs: seekDurationMs,
+                meta: { fromSec: Math.round(seekInfo.from), toSec: Math.round(seekInfo.to) },
+              })
             }
           }}
           onPlay={() => {
@@ -1152,6 +1234,15 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             }
           }}
           onError={() => {
+            trackPlayerEvent('player_error', {
+              targetId: media.title,
+              status: 'error',
+              meta: { positionSec: Math.round(lastKnownTimeRef.current) },
+            })
+            if (playerLoadFlowRef.current) {
+              endFlow(playerLoadFlowRef.current, 'error', { reason: 'video_error' })
+              playerLoadFlowRef.current = null
+            }
             if (!playbackUrl.includes('/transcode') && media.mediaId && capabilities?.transcoding !== false) {
               const offset = Math.floor(transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0))
               transcodeOffsetRef.current = offset
