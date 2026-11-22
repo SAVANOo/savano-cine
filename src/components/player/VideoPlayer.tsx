@@ -132,6 +132,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [loadingAddonSubs, setLoadingAddonSubs] = useState(false)
   const [addonSubsNotice, setAddonSubsNotice] = useState('')
   const [torrentStats, setTorrentStats] = useState<{ numPeers: number; downloadSpeed: number; progress: number } | null>(null)
+  const torrentStatsRef = useRef<{ numPeers: number; downloadSpeed: number; progress: number } | null>(null)
+  const triedSourcesRef = useRef<Set<string>>(new Set())
+  const httpTranscodedRef = useRef<Set<string>>(new Set())
   const [seekToast, setSeekToast] = useState<string>('')
   const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -269,20 +272,36 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   }, [])
 
   useEffect(() => {
+    triedSourcesRef.current.add(playbackUrl)
     const match = playbackUrl.match(/[?&]infoHash=([a-fA-F0-9]{40}|[A-Z2-7]{32})/i)
-    if (!match) return
+    if (!match) {
+      torrentStatsRef.current = null
+      setTorrentStats(null)
+      return
+    }
     const infoHash = match[1]
+    const fileIdxMatch = playbackUrl.match(/[?&]fileIdx=(\d+)/)
     let active = true
+    void fetch('/api/addons/torrent-prepare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        infoHash,
+        fileIdx: fileIdxMatch ? Number(fileIdxMatch[1]) : null,
+      }),
+    }).catch(() => undefined)
     const poll = () => {
       fetch(`/api/addons/torrent-status?infoHash=${encodeURIComponent(infoHash)}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (active && data && typeof data.numPeers === 'number') {
-            setTorrentStats({
+            const nextStats = {
               numPeers: data.numPeers,
               downloadSpeed: Number(data.downloadSpeed || 0),
               progress: Number(data.progress || 0),
-            })
+            }
+            torrentStatsRef.current = nextStats
+            setTorrentStats(nextStats)
           }
         })
         .catch(() => undefined)
@@ -574,7 +593,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     scheduleHideControls()
   }
 
-  const switchPlaybackSource = (nextUrl: string) => {
+  const switchPlaybackSource = useCallback((nextUrl: string) => {
     const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
     transcodeOffsetRef.current = 0
     setTranscodeOffset(0)
@@ -583,7 +602,29 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setIsLoadingMedia(true)
     setPlaybackUrl(nextUrl)
     setSourcesMenuOpen(false)
-  }
+  }, [])
+
+  const tryNextAlternativeSource = useCallback((reason: string): boolean => {
+    const list = media.alternativeSources ?? []
+    const next = list.find((src) => src.url && !triedSourcesRef.current.has(src.url))
+    if (!next) return false
+    triedSourcesRef.current.add(next.url)
+    setSeekToast(reason)
+    window.setTimeout(() => setSeekToast(''), 3200)
+    switchPlaybackSource(next.url)
+    return true
+  }, [media.alternativeSources, switchPlaybackSource])
+
+  useEffect(() => {
+    if (!isLoadingMedia || playbackError || !playbackUrl.includes('/api/addons/torrent-')) return
+    const timer = window.setTimeout(() => {
+      const stats = torrentStatsRef.current
+      if (!stats || (stats.numPeers === 0 && stats.downloadSpeed === 0)) {
+        tryNextAlternativeSource('Fonte sem peers — tentando próxima...')
+      }
+    }, 8000)
+    return () => window.clearTimeout(timer)
+  }, [isLoadingMedia, playbackError, playbackUrl, tryNextAlternativeSource])
 
   const changeSubtitleStream = (value: string) => {
     setSubtitleStream(value)
@@ -999,8 +1040,37 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               setPlaybackUrl(buildTranscodeUrl(audioStream, offset))
               return
             }
+            if (
+              !media.mediaId &&
+              !playbackUrl.includes('/api/addons/torrent-') &&
+              !playbackUrl.includes('/api/addons/http-transcode') &&
+              !httpTranscodedRef.current.has(playbackUrl) &&
+              capabilities?.ffmpeg !== false
+            ) {
+              httpTranscodedRef.current.add(playbackUrl)
+              let rawUrl = playbackUrl
+              let rawHeaders = ''
+              if (playbackUrl.startsWith('/api/addons/http-proxy?')) {
+                try {
+                  const sp = new URLSearchParams(playbackUrl.split('?')[1] || '')
+                  rawUrl = sp.get('url') || playbackUrl
+                  rawHeaders = sp.get('headers') || ''
+                } catch {
+                  // keep playbackUrl
+                }
+              }
+              const params = new URLSearchParams({ url: rawUrl })
+              if (rawHeaders) params.set('headers', rawHeaders)
+              setSeekToast('Codec incompatível — tentando transcode...')
+              window.setTimeout(() => setSeekToast(''), 3200)
+              switchPlaybackSource(`/api/addons/http-transcode?${params.toString()}`)
+              return
+            }
+            if (tryNextAlternativeSource('Fonte falhou — tentando próxima...')) {
+              return
+            }
             setIsLoadingMedia(false)
-            setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou se o FFmpeg está disponível.')
+            setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou tente outra fonte.')
           }}
         >
           {selectedSubtitleUrl && !secondarySubtitleUrl && (
@@ -1078,8 +1148,35 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
         })()}
 
         {isLoadingMedia && !playbackError && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/55 backdrop-blur-xs">
-            <SavanoLoader label="Preparando reprodução..." />
+          <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/55 backdrop-blur-xs">
+            <SavanoLoader
+              label={
+                playbackUrl.includes('/api/addons/torrent-')
+                  ? !torrentStats
+                    ? 'Conectando aos peers do torrent...'
+                    : torrentStats.numPeers === 0
+                      ? 'Buscando peers disponíveis (0 peers)...'
+                      : `Baixando buffer · ${torrentStats.numPeers} peer(s) · ${Math.round(torrentStats.downloadSpeed / 1024)} KB/s`
+                  : playbackUrl.includes('/api/addons/http-transcode')
+                    ? 'Transcodificando vídeo para o navegador...'
+                    : playbackUrl.includes('/api/addons/http-proxy')
+                      ? 'Conectando via proxy seguro...'
+                      : 'Preparando reprodução...'
+              }
+            />
+            {media.alternativeSources && media.alternativeSources.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tryNextAlternativeSource('Trocando para próxima fonte...')) {
+                    setSourcesMenuOpen(true)
+                  }
+                }}
+                className="pointer-events-auto rounded-full border border-white/25 bg-black/70 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur-md transition hover:border-[var(--sc-accent)] hover:bg-black/90 cursor-pointer"
+              >
+                Trocar fonte agora ({media.alternativeSources.length} opções)
+              </button>
+            )}
           </div>
         )}
 
@@ -1094,13 +1191,30 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             <div className="max-w-md rounded-[var(--sc-radius-lg)] border border-red-500/40 bg-[#14151e] p-6 shadow-2xl">
               <p className="m-0 text-sm font-semibold text-white">Falha na reprodução</p>
               <p className="mt-2 mb-4 text-xs text-[var(--sc-text-secondary)]">{playbackError}</p>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full bg-white px-4 py-2 text-xs font-bold text-black hover:bg-white/90 cursor-pointer"
-              >
-                Voltar ao catálogo
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {media.alternativeSources && media.alternativeSources.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triedSourcesRef.current.clear()
+                      triedSourcesRef.current.add(playbackUrl)
+                      if (!tryNextAlternativeSource('Tentando outra fonte...')) {
+                        setSourcesMenuOpen(true)
+                      }
+                    }}
+                    className="rounded-full bg-[var(--sc-accent)] px-4 py-2 text-xs font-bold text-black hover:opacity-90 cursor-pointer"
+                  >
+                    Tentar outra fonte
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full bg-white px-4 py-2 text-xs font-bold text-black hover:bg-white/90 cursor-pointer"
+                >
+                  Voltar ao catálogo
+                </button>
+              </div>
             </div>
           </div>
         )}
