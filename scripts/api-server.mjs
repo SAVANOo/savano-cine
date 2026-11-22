@@ -31,6 +31,7 @@ import {
 import {
   getTorrentStatus,
   isValidInfoHash,
+  prepareTorrentStream,
   probeTorrentInfo,
   serveTorrentStream,
   stopTorrentStream,
@@ -902,6 +903,23 @@ async function handleApiRequest(request, response) {
     }
     const status = await getTorrentStatus(infoHash)
     return send(response, 200, status)
+  }
+
+  if (requestUrl.pathname === '/api/addons/torrent-prepare' && request.method === 'POST') {
+    const body = await readJson(request).catch(() => null)
+    const infoHash = String(body?.infoHash || '')
+    const fileIdx = Number.isInteger(body?.fileIdx) ? body.fileIdx : null
+    if (!isValidInfoHash(infoHash)) {
+      return send(response, 400, { error: 'infoHash inválido.' })
+    }
+    try {
+      const prepared = await prepareTorrentStream(infoHash, fileIdx)
+      return send(response, 200, prepared)
+    } catch (error) {
+      return send(response, 502, {
+        error: error instanceof Error ? error.message : 'Torrent sem peers disponíveis.',
+      })
+    }
   }
 
   const deleteTorrentMatch = requestUrl.pathname.match(/^\/api\/addons\/torrent-stream\/([^/]+)$/)

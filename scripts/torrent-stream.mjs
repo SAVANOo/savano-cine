@@ -7,13 +7,27 @@ const INFO_HASH_RE = /^(?:[a-f0-9]{40}|[a-z2-7]{32})$/i
 const VIDEO_EXT_RE = /\.(mp4|m4v|webm|mkv|avi|mov)$/i
 const TRANSCODE_EXT_RE = /\.(mkv|avi|mov|flv|wmv)$/i
 const TORRENT_TMP_ROOT = path.join(os.tmpdir(), 'savano-cine-torrents')
-const IDLE_CLEANUP_MS = 5 * 60 * 1000
+const IDLE_CLEANUP_MS = 10 * 60 * 1000
 
 const DEFAULT_TRACKERS = [
   'udp://tracker.opentrackr.org:1337/announce',
   'udp://open.stealth.si:80/announce',
   'udp://tracker.torrent.eu.org:451/announce',
+  'udp://exodus.desync.com:6969/announce',
+  'udp://open.demonii.com:1337/announce',
+  'udp://tracker.moeking.me:6969/announce',
+  'udp://explodie.org:6969/announce',
+  'udp://tracker.tiny-vps.com:6969/announce',
+  'udp://tracker.dump.cl:6969/announce',
+  'udp://tracker.theoks.net:6969/announce',
+  'udp://tracker-udp.gbitt.info:80/announce',
+  'udp://retracker01-msk-virt.corbina.net:80/announce',
+  'udp://p4p.arenabg.com:1337/announce',
+  'udp://movies.zsw.ca:6969/announce',
+  'http://tracker.opentrackr.org:1337/announce',
+  'http://tracker.gbitt.info:80/announce',
   'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz',
 ]
 
 let clientPromise = null
@@ -138,6 +152,41 @@ function pickTorrentFile(torrent, fileIdx) {
   const videoFiles = files.filter((file) => VIDEO_EXT_RE.test(file.name))
   const pool = videoFiles.length > 0 ? videoFiles : files
   return [...pool].sort((a, b) => b.length - a.length)[0]
+}
+
+/** Deselects all other files in multi-file torrents so bandwidth focuses exclusively on the active video. */
+function selectExclusiveTorrentFile(torrent, file) {
+  try {
+    if (Array.isArray(torrent.pieces) && torrent.pieces.length > 0) {
+      torrent.deselect(0, torrent.pieces.length - 1, false)
+    }
+    file.select(1)
+    // For MP4 files, prioritize the tail (~1MB) too so the moov atom loads without stalling seeks
+    if (/\.mp4$/i.test(file.name) && file.length > 4 * 1024 * 1024) {
+      const tailStream = file.createReadStream({ start: file.length - 1024 * 1024, end: file.length - 1 })
+      tailStream.on('data', () => undefined)
+      tailStream.on('error', () => undefined)
+      setTimeout(() => tailStream.destroy(), 4000).unref?.()
+    }
+  } catch {
+    file.select()
+  }
+}
+
+export async function prepareTorrentStream(infoHash, fileIdx = null) {
+  const torrent = await ensureTorrent(infoHash)
+  const file = pickTorrentFile(torrent, fileIdx)
+  if (!file) return { ok: false, peers: torrent.numPeers || 0, downloaded: 0 }
+  selectExclusiveTorrentFile(torrent, file)
+  touchTorrent(infoHash.trim().toLowerCase())
+  return {
+    ok: true,
+    name: file.name,
+    length: file.length,
+    peers: torrent.numPeers || 0,
+    downloaded: file.downloaded || 0,
+    downloadSpeed: torrent.downloadSpeed || 0,
+  }
 }
 
 function getMimeType(filename) {
@@ -294,7 +343,7 @@ export async function serveTorrentStream(
     return
   }
 
-  file.select()
+  selectExclusiveTorrentFile(torrent, file)
   touchTorrent(infoHash.trim().toLowerCase())
 
   const needsTranscode = !raw && TRANSCODE_EXT_RE.test(file.name)
@@ -309,7 +358,19 @@ export async function serveTorrentStream(
       'Cache-Control': 'no-store',
     })
     const input = file.createReadStream()
-    const ffArgs = ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0']
+    const ffArgs = [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-probesize',
+      '500000',
+      '-analyzeduration',
+      '1000000',
+      '-fflags',
+      '+genpts',
+      '-i',
+      'pipe:0',
+    ]
     if (startOffset > 0) {
       ffArgs.push('-ss', String(startOffset))
     }
@@ -325,7 +386,7 @@ export async function serveTorrentStream(
       '-ac',
       '2',
       '-movflags',
-      'frag_keyframe+empty_moov',
+      'frag_keyframe+empty_moov+default_base_moof',
       '-f',
       'mp4',
       'pipe:1',
