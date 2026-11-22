@@ -219,6 +219,7 @@ async function probeTorrentFileMetadata(file) {
 
     const maxBytes = Math.min(Math.max(file.length - 1, 0), 2 * 1024 * 1024)
     const probeStream = file.createReadStream({ start: 0, end: maxBytes })
+    probeStream.on('error', () => undefined)
     const ffprobeProc = spawn(
       'ffprobe',
       [
@@ -392,6 +393,9 @@ export async function serveTorrentStream(
       'pipe:1',
     )
     const ff = spawn('ffmpeg', ffArgs, { windowsHide: true })
+    input.on('error', () => undefined)
+    ff.stdin.on('error', () => undefined)
+    ff.stdout.on('error', () => undefined)
     input.pipe(ff.stdin)
     ff.stdout.pipe(response)
     const cleanup = () => {
@@ -434,6 +438,7 @@ export async function serveTorrentStream(
       'Content-Type': mime,
     })
     const stream = file.createReadStream({ start, end })
+    stream.on('error', () => undefined)
     stream.pipe(response)
     request.on('close', () => stream.destroy())
     return
@@ -445,6 +450,7 @@ export async function serveTorrentStream(
     'Content-Type': mime,
   })
   const stream = file.createReadStream()
+  stream.on('error', () => undefined)
   stream.pipe(response)
   request.on('close', () => stream.destroy())
 }
