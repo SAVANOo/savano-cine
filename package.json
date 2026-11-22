@@ -17,7 +17,8 @@
     "smoke": "node scripts/smoke.mjs",
     "verify": "node scripts/verify-features.mjs",
     "test:unit": "node --test tests/unit/*.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:isolated": "node scripts/test-e2e-isolated.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

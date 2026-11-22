@@ -192,7 +192,9 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
 
   if (requestUrl.pathname === '/api/admin/backup' && request.method === 'POST') {
     const dataDir = path.resolve(root, '..', 'data')
-    const dbPath = path.join(dataDir, 'catalog.db')
+    const dbPath = process.env.CINE_DB_PATH?.trim()
+      ? path.resolve(process.env.CINE_DB_PATH.trim())
+      : path.join(dataDir, 'catalog.db')
     const backupsDir = path.join(dataDir, 'backups')
     if (!existsSync(dbPath)) {
       send(response, 404, { error: 'Banco catalog.db não encontrado.' })

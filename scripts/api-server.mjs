@@ -54,7 +54,9 @@ const accessPin =
 const pinToken = accessPin ? createHash('sha256').update(`savano-cine:${accessPin}`).digest('hex') : ''
 const root = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(root, '..', 'dist')
-const databasePath = path.resolve(root, '..', 'data', 'catalog.db')
+const databasePath = process.env.CINE_DB_PATH?.trim()
+  ? path.resolve(process.env.CINE_DB_PATH.trim())
+  : path.resolve(root, '..', 'data', 'catalog.db')
 
 if (!existsSync(databasePath)) {
   console.error(`Catálogo não encontrado: ${databasePath}`)
