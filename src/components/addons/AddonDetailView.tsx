@@ -26,12 +26,27 @@ type AddonStreamItem = {
   name: string
   title: string
   url: string | null
+  externalUrl?: string | null
+  proxyHeaders?: Record<string, string> | null
+  notWebReady?: boolean
   isDirectHttp: boolean
   ytId: string | null
   infoHash: string | null
   fileIdx?: number | null
   seeders?: number | null
   sizeLabel?: string | null
+}
+
+function parseSizeGb(sizeLabel?: string | null): number | null {
+  if (!sizeLabel) return null
+  const match = sizeLabel.match(/([\d.,]+)\s*(gb|tb|mb)/i)
+  if (!match) return null
+  const value = Number.parseFloat(match[1].replace(',', '.'))
+  if (!Number.isFinite(value)) return null
+  const unit = match[2].toLowerCase()
+  if (unit === 'tb') return value * 1024
+  if (unit === 'mb') return value / 1024
+  return value
 }
 
 type AddonSubtitleItem = {
@@ -504,7 +519,23 @@ export function AddonDetailView({
             </p>
           ) : (() => {
             const buildPlaybackUrl = (s: AddonStreamItem): string | null => {
-              if (s.isDirectHttp && s.url) return s.url
+              if (s.isDirectHttp && s.url) {
+                if (s.notWebReady) {
+                  const params = new URLSearchParams({ url: s.url })
+                  if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
+                    params.set('headers', JSON.stringify(s.proxyHeaders))
+                  }
+                  return `/api/addons/http-transcode?${params.toString()}`
+                }
+                if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
+                  const params = new URLSearchParams({
+                    url: s.url,
+                    headers: JSON.stringify(s.proxyHeaders),
+                  })
+                  return `/api/addons/http-proxy?${params.toString()}`
+                }
+                return s.url
+              }
               if (s.infoHash) {
                 const params = new URLSearchParams({ infoHash: s.infoHash })
                 if (typeof s.fileIdx === 'number') params.set('fileIdx', String(s.fileIdx))
@@ -520,11 +551,36 @@ export function AddonDetailView({
                 return {} as Record<string, number>
               }
             })()
-            const sortedStreams = [...streams].sort((a, b) => {
-              const repDiff = (reputationMap[b.addonId] || 0) - (reputationMap[a.addonId] || 0)
-              if (repDiff !== 0) return repDiff
-              return (b.seeders ?? -1) - (a.seeders ?? -1)
-            })
+
+            const scoreStream = (s: AddonStreamItem): number => {
+              const repBonus = (reputationMap[s.addonId] || 0) * 25
+              if (s.isDirectHttp && s.url) {
+                return (s.notWebReady ? 350 : 500) + repBonus
+              }
+              if (s.infoHash) {
+                const seeds = s.seeders ?? 0
+                const sizeGb = parseSizeGb(s.sizeLabel)
+                const heavyPenalty = sizeGb !== null && sizeGb > 15 ? -150 : 0
+                if (seeds >= 10 && (sizeGb === null || sizeGb <= 4)) {
+                  return 450 + Math.min(seeds, 200) + repBonus
+                }
+                if (seeds >= 10) {
+                  return 300 + Math.min(seeds, 200) + heavyPenalty + repBonus
+                }
+                if (seeds > 0) {
+                  return 100 + seeds + heavyPenalty + repBonus
+                }
+                return -50 + heavyPenalty + repBonus
+              }
+              if (s.externalUrl || s.ytId) return -200
+              return -1000
+            }
+
+            // Hide dead entries that have no playable URL, infoHash, YouTube ID, or externalUrl.
+            const viableStreams = streams.filter(
+              (s) => Boolean((s.isDirectHttp && s.url) || s.infoHash || s.ytId || s.externalUrl),
+            )
+            const sortedStreams = [...viableStreams].sort((a, b) => scoreStream(b) - scoreStream(a))
 
             const alternativeSources: AlternativeSource[] = sortedStreams
               .map((s, idx) => {
@@ -542,6 +598,34 @@ export function AddonDetailView({
                 } as AlternativeSource
               })
               .filter((x): x is AlternativeSource => Boolean(x))
+
+            const bestPlayableStream = sortedStreams.find((s) => Boolean(buildPlaybackUrl(s))) ?? null
+
+            const playStreamItem = (stream: AddonStreamItem) => {
+              const targetUrl = buildPlaybackUrl(stream)
+              if (!targetUrl) return
+              try {
+                const stats = JSON.parse(localStorage.getItem('savano-cine-addon-reputation') || '{}')
+                stats[stream.addonId] = (Number(stats[stream.addonId]) || 0) + 1
+                localStorage.setItem('savano-cine-addon-reputation', JSON.stringify(stats))
+              } catch {
+                // ignore
+              }
+              onPlayStream({
+                mediaId: '',
+                title: `${streamTargetLabel} (${stream.addonName})`,
+                url: targetUrl,
+                duration: parseRuntimeToSeconds(detail.runtime),
+                poster: detail.poster || undefined,
+                overview: detail.description,
+                nextEpisode: detail.type === 'series' ? nextOnlineEpisode : undefined,
+                alternativeSources,
+                externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
+                  label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+                  url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+                })),
+              })
+            }
 
             const filteredStreams = sortedStreams.filter((s) => {
               const text = `${s.addonName} ${s.name} ${s.title}`.toLowerCase()
@@ -572,6 +656,14 @@ export function AddonDetailView({
               grouped.get(groupKey)!.push(s)
             }
 
+            if (sortedStreams.length === 0) {
+              return (
+                <p className="text-xs text-[var(--sc-text-secondary)]">
+                  Nenhuma fonte reproduzível encontrada nos addons ativos para este título.
+                </p>
+              )
+            }
+
             if (filteredStreams.length === 0) {
               return (
                 <p className="text-xs text-[var(--sc-text-secondary)]">
@@ -581,7 +673,31 @@ export function AddonDetailView({
             }
 
             return (
-              <div className="max-h-[520px] space-y-4 overflow-x-hidden overflow-y-auto pr-1">
+              <div className="space-y-3">
+                {bestPlayableStream ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--sc-radius-md)] border border-[var(--sc-accent)]/40 bg-[var(--sc-accent-soft)]/40 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="m-0 text-xs font-semibold text-[var(--sc-text-primary)]">
+                        Melhor fonte recomendada: {bestPlayableStream.addonName} · {bestPlayableStream.name}
+                      </p>
+                      <p className="m-0 truncate text-[11px] text-[var(--sc-text-secondary)]">
+                        {bestPlayableStream.isDirectHttp
+                          ? 'Stream HTTP direto (início rápido)'
+                          : `${bestPlayableStream.seeders ?? 0} seeds${bestPlayableStream.sizeLabel ? ` · ${bestPlayableStream.sizeLabel}` : ''}`}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="primary"
+                      onClick={() => playStreamItem(bestPlayableStream)}
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      Assistir Melhor Fonte
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="max-h-[520px] space-y-4 overflow-x-hidden overflow-y-auto pr-1">
                 {[...grouped.entries()].map(([groupTitle, groupItems]) => (
                   <div key={groupTitle} className="space-y-2">
                     <div className="sticky top-0 z-10 flex items-center justify-between bg-[var(--sc-bg-elevated)]/95 py-1 backdrop-blur-xs">
@@ -595,32 +711,10 @@ export function AddonDetailView({
                 const canPlayDirect = Boolean(stream.isDirectHttp && stream.url)
                 const canPlayTorrent = Boolean(stream.infoHash)
                 const isPlayable = canPlayDirect || canPlayTorrent
-                const runtimeSeconds = parseRuntimeToSeconds(detail.runtime)
-                const startPlay = () => {
-                  const targetUrl = buildPlaybackUrl(stream)
-                  if (!targetUrl) return
-                  try {
-                    const stats = JSON.parse(localStorage.getItem('savano-cine-addon-reputation') || '{}')
-                    stats[stream.addonId] = (Number(stats[stream.addonId]) || 0) + 1
-                    localStorage.setItem('savano-cine-addon-reputation', JSON.stringify(stats))
-                  } catch {
-                    // ignore
-                  }
-                  onPlayStream({
-                    mediaId: '',
-                    title: `${streamTargetLabel} (${stream.addonName})`,
-                    url: targetUrl,
-                    duration: runtimeSeconds,
-                    poster: detail.poster || undefined,
-                    overview: detail.description,
-                    nextEpisode: detail.type === 'series' ? nextOnlineEpisode : undefined,
-                    alternativeSources,
-                    externalSubtitles: subtitles.slice(0, 30).map((sub) => ({
-                      label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
-                      url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
-                    })),
-                  })
-                }
+                const sizeGb = parseSizeGb(stream.sizeLabel)
+                const isHeavyFile = sizeGb !== null && sizeGb > 15
+                const directDownloadHref = buildPlaybackUrl(stream)
+                const startPlay = () => playStreamItem(stream)
                 return (
                   <div
                     key={`${stream.addonId}-${index}`}
@@ -663,9 +757,19 @@ export function AddonDetailView({
                             {stream.seeders} seeds · {stream.seeders >= 20 ? 'Rápido' : stream.seeders >= 5 ? 'Médio' : 'Lento'}
                           </span>
                         ) : null}
+                        {canPlayDirect ? (
+                          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                            {stream.notWebReady ? 'HTTP · Transcode' : 'HTTP Direto'}
+                          </span>
+                        ) : null}
                         {stream.sizeLabel ? (
                           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--sc-text-secondary)]">
                             {stream.sizeLabel}
+                          </span>
+                        ) : null}
+                        {isHeavyFile ? (
+                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                            Arquivo pesado · Pode travar
                           </span>
                         ) : null}
                       </div>
@@ -689,9 +793,9 @@ export function AddonDetailView({
                           Acervo
                         </Button>
                       ) : null}
-                      {canPlayDirect && stream.url ? (
+                      {canPlayDirect && directDownloadHref ? (
                         <a
-                          href={stream.url}
+                          href={directDownloadHref}
                           download={`${streamTargetLabel || detail.name}.mp4`}
                           target="_blank"
                           rel="noreferrer"
@@ -727,6 +831,17 @@ export function AddonDetailView({
                           <Play className="h-3.5 w-3.5" />
                           {canPlayTorrent ? 'Reproduzir Torrent' : 'Reproduzir'}
                         </Button>
+                      ) : stream.externalUrl ? (
+                        <a
+                          href={stream.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--sc-text-primary)] hover:border-[var(--sc-accent)]"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Abrir no Navegador
+                        </a>
                       ) : stream.ytId ? (
                         <a
                           href={`https://www.youtube.com/watch?v=${encodeURIComponent(stream.ytId)}`}
@@ -747,6 +862,7 @@ export function AddonDetailView({
                     })}
                   </div>
                 ))}
+              </div>
               </div>
             )
           })()}
