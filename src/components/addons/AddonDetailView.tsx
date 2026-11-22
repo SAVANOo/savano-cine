@@ -49,6 +49,56 @@ function parseSizeGb(sizeLabel?: string | null): number | null {
   return value
 }
 
+function buildStreamPlaybackUrl(s: AddonStreamItem): string | null {
+  if (s.isDirectHttp && s.url) {
+    if (s.notWebReady) {
+      const params = new URLSearchParams({ url: s.url })
+      if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
+        params.set('headers', JSON.stringify(s.proxyHeaders))
+      }
+      return `/api/addons/http-transcode?${params.toString()}`
+    }
+    if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
+      const params = new URLSearchParams({
+        url: s.url,
+        headers: JSON.stringify(s.proxyHeaders),
+      })
+      return `/api/addons/http-proxy?${params.toString()}`
+    }
+    return s.url
+  }
+  if (s.infoHash) {
+    const params = new URLSearchParams({ infoHash: s.infoHash })
+    if (typeof s.fileIdx === 'number') params.set('fileIdx', String(s.fileIdx))
+    return `/api/addons/torrent-stream?${params.toString()}`
+  }
+  return null
+}
+
+function scoreAddonStream(s: AddonStreamItem, reputationMap: Record<string, number>): number {
+  const repBonus = (reputationMap[s.addonId] || 0) * 25
+  if (s.isDirectHttp && s.url) {
+    return (s.notWebReady ? 350 : 500) + repBonus
+  }
+  if (s.infoHash) {
+    const seeds = s.seeders ?? 0
+    const sizeGb = parseSizeGb(s.sizeLabel)
+    const heavyPenalty = sizeGb !== null && sizeGb > 15 ? -150 : 0
+    if (seeds >= 10 && (sizeGb === null || sizeGb <= 4)) {
+      return 450 + Math.min(seeds, 200) + repBonus
+    }
+    if (seeds >= 10) {
+      return 300 + Math.min(seeds, 200) + heavyPenalty + repBonus
+    }
+    if (seeds > 0) {
+      return 100 + seeds + heavyPenalty + repBonus
+    }
+    return -50 + heavyPenalty + repBonus
+  }
+  if (s.externalUrl || s.ytId) return -200
+  return -1000
+}
+
 type AddonSubtitleItem = {
   addonId: string
   addonName: string
@@ -94,7 +144,147 @@ export function AddonDetailView({
   const [streamGroupBy, setStreamGroupBy] = useState<'language' | 'addon'>('language')
   const [streamFilter, setStreamFilter] = useState<'all' | 'pt' | 'hd'>('all')
   const [nextOnlineEpisode, setNextOnlineEpisode] = useState<PlayableMedia | undefined>(undefined)
+  const [resumeTarget, setResumeTarget] = useState<{ season: number; episode: number; positionSec: number } | null>(null)
+  const [quickPlaying, setQuickPlaying] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const targetNorm = normalizeMatchTitle(detail.name || '')
+    if (!targetNorm) return
+    fetch(`/api/addons/progress?profileId=${encodeURIComponent(profileId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: Array<{ title?: string; season?: number | null; episode?: number | null; positionSec?: number }>) => {
+        if (!active || !Array.isArray(rows)) return
+        const match = rows.find((row) => {
+          const clean = String(row.title || '')
+            .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
+            .replace(/\s*\([^)]*\)\s*$/, '')
+            .trim()
+          return normalizeMatchTitle(clean) === targetNorm
+        })
+        if (match && typeof match.season === 'number' && typeof match.episode === 'number') {
+          setResumeTarget({
+            season: match.season,
+            episode: match.episode,
+            positionSec: Number(match.positionSec) || 0,
+          })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [detail.name, profileId])
+
+  const orderedVideos = useMemo(
+    () =>
+      [...(detail.videos ?? [])].sort(
+        (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0),
+      ),
+    [detail.videos],
+  )
+
+  const heroTargetEpisode = useMemo(() => {
+    if (orderedVideos.length === 0) return null
+    if (resumeTarget) {
+      const found = orderedVideos.find(
+        (v) => v.season === resumeTarget.season && v.episode === resumeTarget.episode,
+      )
+      if (found) return found
+    }
+    return orderedVideos[0]
+  }, [orderedVideos, resumeTarget])
+
+  async function handleQuickPlayHero() {
+    setQuickPlaying(true)
+    setError('')
+    try {
+      const isSeries = detail.type === 'series' && heroTargetEpisode
+      const targetType = isSeries ? 'series' : detail.type
+      const targetId = isSeries ? heroTargetEpisode.id : detail.id
+      const targetLabel = isSeries
+        ? `${detail.name} — T${heroTargetEpisode.season ?? '?'}:E${heroTargetEpisode.episode ?? '?'}`
+        : detail.name
+
+      if (isSeries) {
+        setSelectedSeason(heroTargetEpisode.season ?? 1)
+        setSelectedEpisodeId(heroTargetEpisode.id)
+      }
+      setStreamTargetLabel(targetLabel)
+
+      const params = new URLSearchParams({ type: targetType, id: targetId })
+      const [streamRes, subRes] = await Promise.all([
+        fetch(`/api/addons/streams?${params.toString()}`),
+        fetch(`/api/addons/subtitles?${params.toString()}`),
+      ])
+      const streamPayload = await streamRes.json().catch(() => null)
+      const subPayload = await subRes.json().catch(() => null)
+      const loadedStreams: AddonStreamItem[] = Array.isArray(streamPayload?.streams) ? streamPayload.streams : []
+      const loadedSubs: AddonSubtitleItem[] = Array.isArray(subPayload?.subtitles) ? subPayload.subtitles : []
+      setStreams(loadedStreams)
+      setSubtitles(loadedSubs)
+
+      const repMap = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('savano-cine-addon-reputation') || '{}') as Record<string, number>
+        } catch {
+          return {} as Record<string, number>
+        }
+      })()
+      const viable = loadedStreams.filter((s) => Boolean((s.isDirectHttp && s.url) || s.infoHash))
+      const sorted = [...viable].sort((a, b) => scoreAddonStream(b, repMap) - scoreAddonStream(a, repMap))
+      const best = sorted.find((s) => Boolean(buildStreamPlaybackUrl(s)))
+      const bestUrl = best ? buildStreamPlaybackUrl(best) : null
+      if (!best || !bestUrl) {
+        setError('Nenhuma fonte reproduzível encontrada para iniciar automaticamente.')
+        return
+      }
+      const altSources: AlternativeSource[] = sorted
+        .map((s, idx) => {
+          const url = buildStreamPlaybackUrl(s)
+          if (!url) return null
+          return {
+            id: `${s.addonId}-${idx}`,
+            label: `${s.addonName} · ${s.name}`,
+            detail: s.title,
+            url,
+            badges: extractStreamLanguages(`${s.name} ${s.title}`),
+            seeders: s.seeders ?? null,
+            sizeLabel: s.sizeLabel ?? null,
+            addonName: s.addonName,
+          } as AlternativeSource
+        })
+        .filter((x): x is AlternativeSource => Boolean(x))
+
+      const startPos =
+        isSeries &&
+        resumeTarget &&
+        resumeTarget.season === heroTargetEpisode.season &&
+        resumeTarget.episode === heroTargetEpisode.episode
+          ? resumeTarget.positionSec
+          : undefined
+
+      onPlayStream({
+        mediaId: '',
+        title: `${targetLabel} (${best.addonName})`,
+        url: bestUrl,
+        duration: parseRuntimeToSeconds(detail.runtime),
+        poster: detail.poster || undefined,
+        overview: detail.description,
+        startPosition: startPos,
+        alternativeSources: altSources,
+        externalSubtitles: loadedSubs.slice(0, 30).map((sub) => ({
+          label: `${sub.lang.toUpperCase()} (${sub.addonName})`,
+          url: `/api/addons/subtitle-proxy?url=${encodeURIComponent(sub.url)}`,
+        })),
+      })
+    } catch {
+      setError('Erro de rede ao iniciar reprodução rápida.')
+    } finally {
+      setQuickPlaying(false)
+    }
+  }
 
   const matchedLocalItem = useMemo(() => {
     if (!localCatalog?.length) return null
@@ -353,7 +543,27 @@ export function AddonDetailView({
                 {detail.description}
               </p>
             ) : null}
-            <div className="pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {(detail.type !== 'series' || heroTargetEpisode) && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={quickPlaying}
+                  onClick={() => void handleQuickPlayHero()}
+                >
+                  <Play className="h-4 w-4" />
+                  {quickPlaying
+                    ? 'Buscando melhor fonte...'
+                    : detail.type === 'series' && heroTargetEpisode
+                      ? resumeTarget &&
+                        resumeTarget.season === heroTargetEpisode.season &&
+                        resumeTarget.episode === heroTargetEpisode.episode
+                        ? `Continuar T${heroTargetEpisode.season ?? '?'}:E${heroTargetEpisode.episode ?? '?'} (Melhor Fonte)`
+                        : `Assistir T${heroTargetEpisode.season ?? '?'}:E${heroTargetEpisode.episode ?? '?'} (Melhor Fonte)`
+                      : 'Assistir (Melhor Fonte)'}
+                </Button>
+              )}
               <Button type="button" variant="secondary" size="sm" onClick={() => setSocialModalOpen(true)}>
                 <HeartHandshake className="h-4 w-4" />
                 Comentar / Indicar
@@ -565,31 +775,7 @@ export function AddonDetailView({
               Nenhum stream retornado pelos addons ativos para este título.
             </p>
           ) : (() => {
-            const buildPlaybackUrl = (s: AddonStreamItem): string | null => {
-              if (s.isDirectHttp && s.url) {
-                if (s.notWebReady) {
-                  const params = new URLSearchParams({ url: s.url })
-                  if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
-                    params.set('headers', JSON.stringify(s.proxyHeaders))
-                  }
-                  return `/api/addons/http-transcode?${params.toString()}`
-                }
-                if (s.proxyHeaders && Object.keys(s.proxyHeaders).length > 0) {
-                  const params = new URLSearchParams({
-                    url: s.url,
-                    headers: JSON.stringify(s.proxyHeaders),
-                  })
-                  return `/api/addons/http-proxy?${params.toString()}`
-                }
-                return s.url
-              }
-              if (s.infoHash) {
-                const params = new URLSearchParams({ infoHash: s.infoHash })
-                if (typeof s.fileIdx === 'number') params.set('fileIdx', String(s.fileIdx))
-                return `/api/addons/torrent-stream?${params.toString()}`
-              }
-              return null
-            }
+            const buildPlaybackUrl = buildStreamPlaybackUrl
 
             const reputationMap = (() => {
               try {
@@ -599,29 +785,7 @@ export function AddonDetailView({
               }
             })()
 
-            const scoreStream = (s: AddonStreamItem): number => {
-              const repBonus = (reputationMap[s.addonId] || 0) * 25
-              if (s.isDirectHttp && s.url) {
-                return (s.notWebReady ? 350 : 500) + repBonus
-              }
-              if (s.infoHash) {
-                const seeds = s.seeders ?? 0
-                const sizeGb = parseSizeGb(s.sizeLabel)
-                const heavyPenalty = sizeGb !== null && sizeGb > 15 ? -150 : 0
-                if (seeds >= 10 && (sizeGb === null || sizeGb <= 4)) {
-                  return 450 + Math.min(seeds, 200) + repBonus
-                }
-                if (seeds >= 10) {
-                  return 300 + Math.min(seeds, 200) + heavyPenalty + repBonus
-                }
-                if (seeds > 0) {
-                  return 100 + seeds + heavyPenalty + repBonus
-                }
-                return -50 + heavyPenalty + repBonus
-              }
-              if (s.externalUrl || s.ytId) return -200
-              return -1000
-            }
+            const scoreStream = (s: AddonStreamItem): number => scoreAddonStream(s, reputationMap)
 
             // Hide dead entries that have no playable URL, infoHash, YouTube ID, or externalUrl.
             const viableStreams = streams.filter(
