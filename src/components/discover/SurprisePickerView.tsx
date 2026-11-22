@@ -2,7 +2,7 @@ import { Flame, Ghost, Heart, Info, Laugh, Play, RefreshCw, Rocket, Shuffle, Spa
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import type { OnlineMetaDiscoveryItem } from '../../hooks/useOnlineCatalogDiscovery'
-import type { AddonMetaSummary } from '../addons/AddonStreamModal'
+import type { AddonMetaSummary } from '../../domain/addonTypes'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { SavanoLoader } from '../ui/SavanoLoader'

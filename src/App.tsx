@@ -1,6 +1,6 @@
 import { Search, X } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AddonMetaSummary } from './components/addons/AddonStreamModal'
+import type { AddonMetaSummary } from './domain/addonTypes'
 import { AddonCarouselRow } from './components/home/AddonCarouselRow'
 import { HeroCarousel } from './components/home/HeroCarousel'
 import { MediaCarousel } from './components/home/MediaCarousel'

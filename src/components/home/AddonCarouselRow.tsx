@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { AddonMetaSummary } from '../addons/AddonStreamModal'
+import type { AddonMetaSummary } from '../../domain/addonTypes'
 
 type AddonCarouselRowProps = {
   title: string

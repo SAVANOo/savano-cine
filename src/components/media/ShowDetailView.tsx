@@ -4,7 +4,7 @@ import type { FormEvent } from 'react'
 import type { Episode, LibraryItem, Profile, Season } from '../../domain/catalog'
 import { findNextEpisode, getRelatedItems, resolvePlayableMedia, translateGenre } from '../../domain/uiHelpers'
 import type { PlayableMedia } from '../../domain/uiHelpers'
-import { AddonStreamModal, type AddonMetaSummary } from '../addons/AddonStreamModal'
+import type { AddonMetaSummary } from '../../domain/addonTypes'
 import { MediaCarousel } from '../home/MediaCarousel'
 import { SocialRecommendModal } from '../social/SocialRecommendModal'
 import { Badge } from '../ui/Badge'
@@ -62,7 +62,6 @@ export function ShowDetailView({
   const [subResults, setSubResults] = useState<Array<{ fileId: number; language: string; release: string }>>([])
   const [subMessage, setSubMessage] = useState('')
   const [searchingSubs, setSearchingSubs] = useState(false)
-  const [addonModalItem, setAddonModalItem] = useState<AddonMetaSummary | null>(null)
   const [socialModalOpen, setSocialModalOpen] = useState(false)
   const [searchingAddons, setSearchingAddons] = useState(false)
 
@@ -89,11 +88,7 @@ export function ShowDetailView({
         description: match.description || show.overview || '',
         releaseInfo: match.releaseInfo || (show.year ? String(show.year) : null),
       }
-      if (onOpenAddonItem) {
-        onOpenAddonItem(payload)
-      } else {
-        setAddonModalItem(payload)
-      }
+      onOpenAddonItem?.(payload)
     } catch {
       setStatus('Falha ao consultar addons para este título.')
     } finally {
@@ -629,13 +624,6 @@ export function ShowDetailView({
         )}
       </div>
 
-      <AddonStreamModal
-        item={addonModalItem}
-        localCatalog={library}
-        onClose={() => setAddonModalItem(null)}
-        onPlayStream={onPlayMedia}
-        onPlayLocal={onPlayItem}
-      />
       <SocialRecommendModal
         open={socialModalOpen}
         onClose={() => setSocialModalOpen(false)}

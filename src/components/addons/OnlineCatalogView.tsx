@@ -4,7 +4,8 @@ import type { LibraryItem } from '../../domain/catalog'
 import type { PlayableMedia } from '../../domain/uiHelpers'
 import { Button } from '../ui/Button'
 import { SavanoLoader } from '../ui/SavanoLoader'
-import { AddonStreamModal, type AddonMetaSummary } from './AddonStreamModal'
+import type { AddonMetaSummary } from '../../domain/addonTypes'
+import { AddonDetailView } from './AddonDetailView'
 import { DownloadsPanel } from './DownloadsPanel'
 
 type AddonCatalogRef = {
@@ -407,13 +408,16 @@ export function OnlineCatalogView({
         </div>
       )}
 
-      <AddonStreamModal
-        item={activeItem}
-        localCatalog={localCatalog}
-        onClose={() => setActiveItem(null)}
-        onPlayStream={onPlayStream}
-        onPlayLocal={onPlayLocal}
-      />
+      {activeItem && (
+        <AddonDetailView
+          item={activeItem}
+          localCatalog={localCatalog}
+          profileId={profileId}
+          onBack={() => setActiveItem(null)}
+          onPlayStream={onPlayStream}
+          onPlayLocal={onPlayLocal}
+        />
+      )}
     </section>
   )
 }

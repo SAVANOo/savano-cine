@@ -9,7 +9,7 @@ import { Button } from '../ui/Button'
 import { LanguageFlagBadge } from '../ui/LanguageFlagBadge'
 import { Modal } from '../ui/Modal'
 import { SavanoLoader } from '../ui/SavanoLoader'
-import type { AddonMetaSummary } from './AddonStreamModal'
+import type { AddonMetaSummary } from '../../domain/addonTypes'
 
 function normalizeMatchTitle(value: string): string {
   return value
