@@ -45,9 +45,12 @@ export function useOnlineCatalogDiscovery(query: string, enabled = true) {
             }
             return
           }
-          const catalogAddons = enabledAddons.filter((a) => a.catalogs?.length > 0)
+          const catalogAddons = enabledAddons.filter((a) => a.catalogs?.some((c) => c.type !== 'tv'))
           const lookups = catalogAddons.slice(0, 5).flatMap((addon) =>
-            addon.catalogs.slice(0, 2).map((cat) =>
+            addon.catalogs
+              .filter((c) => c.type !== 'tv')
+              .slice(0, 2)
+              .map((cat) =>
               fetch(
                 `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}&search=${encodeURIComponent(trimmed)}`,
               )
@@ -118,8 +121,8 @@ export function useOnlineCatalogDiscovery(query: string, enabled = true) {
             addon.catalogs.find((c) => c.type === 'movie'),
             addon.catalogs.find((c) => c.type === 'series'),
           ].filter((c): c is { type: string; id: string } => Boolean(c))
-          const targets = picks.length > 0 ? picks : addon.catalogs.slice(0, 1)
-          return targets.map((cat) =>
+          if (picks.length === 0) return []
+          return picks.map((cat) =>
             fetch(
               `/api/addons/${encodeURIComponent(addon.id)}/catalog?type=${encodeURIComponent(cat.type)}&catalogId=${encodeURIComponent(cat.id)}`,
             )

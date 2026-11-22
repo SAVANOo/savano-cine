@@ -101,7 +101,7 @@ export function OnlineCatalogView({
   }, [])
 
   const catalogAddons = addons.filter((a) =>
-    a.catalogs?.some((c) => categoryTab === 'all' || c.type === categoryTab),
+    a.catalogs?.some((c) => (categoryTab === 'all' ? c.type !== 'tv' : c.type === categoryTab)),
   )
   const activeAddon = catalogAddons.find((a) => a.id === selectedAddonId) ?? catalogAddons[0] ?? null
 
@@ -212,7 +212,7 @@ export function OnlineCatalogView({
               if (nextAddon) {
                 setSelectedAddonId(nextAddon.id)
                 const nextCat =
-                  nextAddon.catalogs.find((c) => tab.key === 'all' || c.type === tab.key) ??
+                  nextAddon.catalogs.find((c) => (tab.key === 'all' ? c.type !== 'tv' : c.type === tab.key)) ??
                   nextAddon.catalogs[0]
                 if (nextCat) {
                   setSelectedCatalogKey(`${nextCat.type}::${nextCat.id}`)
@@ -237,7 +237,7 @@ export function OnlineCatalogView({
                 setSelectedAddonId(addon.id)
                 setPageSkip(0)
                 const matchingCat =
-                  addon.catalogs.find((c) => categoryTab === 'all' || c.type === categoryTab) ??
+                  addon.catalogs.find((c) => (categoryTab === 'all' ? c.type !== 'tv' : c.type === categoryTab)) ??
                   addon.catalogs[0]
                 if (matchingCat) {
                   setSelectedCatalogKey(`${matchingCat.type}::${matchingCat.id}`)
@@ -247,23 +247,29 @@ export function OnlineCatalogView({
               {addon.name}
             </Button>
           ))}
-          {activeAddon && activeAddon.catalogs.length > 1 && (
-            <select
-              value={selectedCatalogKey}
-              onChange={(e) => {
-                setSelectedCatalogKey(e.target.value)
-                setPageSkip(0)
-              }}
-              aria-label="Selecionar catálogo online"
-              className="h-8 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 text-xs text-[var(--sc-text-primary)]"
-            >
-              {activeAddon.catalogs.map((cat) => (
-                <option key={`${cat.type}::${cat.id}`} value={`${cat.type}::${cat.id}`}>
-                  {cat.name || cat.id} ({cat.type === 'series' ? 'Séries' : 'Filmes'})
-                </option>
-              ))}
-            </select>
-          )}
+          {(() => {
+            const visibleCatalogs = activeAddon
+              ? activeAddon.catalogs.filter((c) => (categoryTab === 'all' ? c.type !== 'tv' : c.type === categoryTab))
+              : []
+            if (visibleCatalogs.length <= 1) return null
+            return (
+              <select
+                value={selectedCatalogKey}
+                onChange={(e) => {
+                  setSelectedCatalogKey(e.target.value)
+                  setPageSkip(0)
+                }}
+                aria-label="Selecionar catálogo online"
+                className="h-8 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-2.5 text-xs text-[var(--sc-text-primary)]"
+              >
+                {visibleCatalogs.map((cat) => (
+                  <option key={`${cat.type}::${cat.id}`} value={`${cat.type}::${cat.id}`}>
+                    {cat.name || cat.id} ({cat.type === 'tv' ? 'TV / Ao Vivo' : cat.type === 'series' ? 'Séries' : 'Filmes'})
+                  </option>
+                ))}
+              </select>
+            )
+          })()}
         </div>
       )}
 

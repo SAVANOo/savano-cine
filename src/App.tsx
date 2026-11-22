@@ -312,7 +312,7 @@ export function App() {
               const r = await fetch(`/api/addons/${encodeURIComponent(pick.addonId)}/catalog?${params.toString()}`)
               if (!r.ok) return null
               const data = (await r.json()) as { metas?: AddonMetaSummary[] }
-              const items = (data.metas || []).slice(0, 18)
+              const items = (data.metas || []).filter((m) => Boolean(m.poster)).slice(0, 18)
               if (items.length === 0) return null
               return { key: `${pick.addonId}:${pick.catalogId}`, title: pick.title, items }
             } catch {
