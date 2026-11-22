@@ -606,6 +606,9 @@ export async function queryAddonSubtitles(database, { type, id }) {
 export async function searchAddonFallback(query) {
   const q = String(query || '').trim()
   if (!q) return []
+  const cacheKey = `search:${q.toLowerCase()}`
+  const cached = getCachedAddonResponse(cacheKey)
+  if (cached) return cached
 
   if (/^tt\d{5,10}$/i.test(q)) {
     const id = q.toLowerCase()
@@ -655,10 +658,12 @@ export async function searchAddonFallback(query) {
     }),
   )
 
-  return results
+  const finalMetas = results
     .filter((r) => r.status === 'fulfilled')
     .flatMap((r) => r.value)
     .slice(0, 24)
+  setCachedAddonResponse(cacheKey, finalMetas)
+  return finalMetas
 }
 
 async function fetchRawFallbackMeta(type, metaId) {

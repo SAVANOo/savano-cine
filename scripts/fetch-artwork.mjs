@@ -95,13 +95,13 @@ const movies = database.prepare(`
         SELECT 1 FROM artwork
         WHERE artwork.movie_id = media_items.id AND artwork.artwork_type = 'poster'
       )
-      OR (? = 1 AND NOT EXISTS (
+      OR NOT EXISTS (
         SELECT 1 FROM artwork
         WHERE artwork.movie_id = media_items.id AND artwork.artwork_type = 'banner'
-      ))
+      )
     )
   ORDER BY title
-`).all(tmdbApiKey ? 1 : 0)
+`).all()
 const updateMovie = database.prepare(`
   UPDATE media_items
   SET year = COALESCE(?, year),
@@ -147,6 +147,29 @@ for (const movie of movies) {
     if (tmdb?.backdropUrl && !hasLocalArtwork(movie.id, 'banner')) {
       await downloadMovieArtwork(movie, 'banner', tmdb.backdropUrl, 'tmdb', String(tmdb.id))
     }
+  }
+  if (!hasLocalArtwork(movie.id, 'banner')) {
+    const cinemeta = await fetchCinemetaBackdrop(movie.title, 'movie')
+    if (cinemeta?.backgroundUrl) {
+      await downloadMovieArtwork(movie, 'banner', cinemeta.backgroundUrl, 'cinemeta', cinemeta.id)
+    }
+  }
+}
+
+async function fetchCinemetaBackdrop(title, type) {
+  try {
+    const clean = String(title || '').replace(/\s*\(\d{4}\)\s*$/, '').trim()
+    if (!clean) return null
+    const url = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(clean)}.json`
+    const res = await fetch(url, { signal: AbortSignal.timeout(4500) })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null)
+    const metas = Array.isArray(data?.metas) ? data.metas : []
+    const hit = metas.find((m) => typeof m.background === 'string' && m.background.startsWith('http'))
+    if (!hit) return null
+    return { id: String(hit.id || clean), backgroundUrl: hit.background }
+  } catch {
+    return null
   }
 }
 

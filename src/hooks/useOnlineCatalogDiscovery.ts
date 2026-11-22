@@ -37,9 +37,57 @@ function matchesSearchQuery(title: string, query: string): boolean {
   return matched.length >= Math.ceil(tokens.length * 0.6)
 }
 
+const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000
+const SEARCH_CACHE_STORAGE_KEY = 'savano-cine-search-cache-v1'
+const memorySearchCache = new Map<string, { at: number; results: OnlineMetaDiscoveryItem[] }>()
+
+function readCachedSearch(normKey: string): OnlineMetaDiscoveryItem[] | null {
+  const now = Date.now()
+  const mem = memorySearchCache.get(normKey)
+  if (mem && now - mem.at < SEARCH_CACHE_TTL_MS) {
+    return mem.results
+  }
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(SEARCH_CACHE_STORAGE_KEY) || '{}') as Record<
+      string,
+      { at: number; results: OnlineMetaDiscoveryItem[] }
+    >
+    const hit = raw[normKey]
+    if (hit && now - hit.at < SEARCH_CACHE_TTL_MS && Array.isArray(hit.results)) {
+      memorySearchCache.set(normKey, hit)
+      return hit.results
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null
+}
+
+function writeCachedSearch(normKey: string, results: OnlineMetaDiscoveryItem[]) {
+  const entry = { at: Date.now(), results }
+  memorySearchCache.set(normKey, entry)
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(SEARCH_CACHE_STORAGE_KEY) || '{}') as Record<
+      string,
+      { at: number; results: OnlineMetaDiscoveryItem[] }
+    >
+    raw[normKey] = entry
+    const keys = Object.keys(raw)
+    if (keys.length > 40) {
+      keys
+        .sort((a, b) => (raw[a]?.at || 0) - (raw[b]?.at || 0))
+        .slice(0, keys.length - 40)
+        .forEach((k) => delete raw[k])
+    }
+    sessionStorage.setItem(SEARCH_CACHE_STORAGE_KEY, JSON.stringify(raw))
+  } catch {
+    // ignore storage errors
+  }
+}
+
 /**
  * Loads trending online items for the hybrid Home carousel and performs
- * debounced cross-addon catalog search when the user types in the search bar.
+ * debounced cross-addon catalog search with 15-min client cache.
  */
 export function useOnlineCatalogDiscovery(query: string, enabled = true) {
   const [addonSearchResults, setAddonSearchResults] = useState<OnlineMetaDiscoveryItem[]>([])
@@ -52,6 +100,19 @@ export function useOnlineCatalogDiscovery(query: string, enabled = true) {
       return
     }
     let active = true
+    const normKey = normalizeSearchText(trimmed)
+    const cached = normKey ? readCachedSearch(normKey) : null
+    if (cached) {
+      void Promise.resolve().then(() => {
+        if (active) {
+          setAddonSearchResults(cached)
+          setAddonSearching(false)
+        }
+      })
+      return () => {
+        active = false
+      }
+    }
     const timer = window.setTimeout(() => {
       if (active) setAddonSearching(true)
       fetch('/api/addons')
@@ -118,7 +179,9 @@ export function useOnlineCatalogDiscovery(query: string, enabled = true) {
               return bExact - aExact
             })
           if (active) {
-            setAddonSearchResults(merged.slice(0, 24))
+            const finalResults = merged.slice(0, 24)
+            if (normKey) writeCachedSearch(normKey, finalResults)
+            setAddonSearchResults(finalResults)
             setAddonSearching(false)
           }
         })
