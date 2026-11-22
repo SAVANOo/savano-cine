@@ -97,13 +97,29 @@ const KIND_TO_VIEW: Record<string, string> = {
 
 function getInitialKindFromUrl(): 'Todos' | 'Local' | 'Online' | 'Filme' | 'Série' | 'Continuar' | 'Descobrir' | 'Social' {
   if (typeof window === 'undefined') return 'Todos'
-  const view = new URLSearchParams(window.location.search).get('view')?.toLowerCase() || ''
-  return VIEW_TO_KIND[view as keyof typeof VIEW_TO_KIND] ?? 'Todos'
+  const pathSlug = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase()
+  const viewParam = new URLSearchParams(window.location.search).get('view')?.toLowerCase() || ''
+  const key = pathSlug === 'comunidade' ? 'social' : pathSlug || viewParam
+  return VIEW_TO_KIND[key as keyof typeof VIEW_TO_KIND] ?? 'Todos'
 }
 
 function getInitialAddonItemFromUrl(): AddonMetaSummary | null {
   if (typeof window === 'undefined') return null
   const sp = new URLSearchParams(window.location.search)
+  const pathMatch = window.location.pathname.match(/^\/online\/([^/]+)\/(.+)$/)
+  if (pathMatch) {
+    const type = decodeURIComponent(pathMatch[1])
+    const idOrTitle = decodeURIComponent(pathMatch[2])
+    return {
+      id: idOrTitle,
+      type,
+      name: sp.get('title') || idOrTitle,
+      poster: sp.get('poster') || null,
+      description: '',
+      releaseInfo: null,
+      addonId: sp.get('addon') || sp.get('addonId') || undefined,
+    }
+  }
   const raw = sp.get('online')
   if (!raw) return null
   const colonIdx = raw.indexOf(':')
@@ -550,17 +566,19 @@ export function App() {
         .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
         .replace(/\s*\([^)]*\)\s*$/, '')
         .trim()
-      const cleanUrlId =
-        activeAddonItem.id.startsWith('/api/') || activeAddonItem.id.startsWith('http')
-          ? 'search'
+      const slug =
+        activeAddonItem.id === 'search' ||
+        activeAddonItem.id.startsWith('/api/') ||
+        activeAddonItem.id.startsWith('http')
+          ? cleanName || activeAddonItem.name
           : activeAddonItem.id
-      sp.set('online', `${activeAddonItem.type}:${cleanUrlId}`)
-      sp.set('title', cleanName || activeAddonItem.name)
-      if (activeAddonItem.addonId) sp.set('addonId', activeAddonItem.addonId)
+      targetPath = `/online/${encodeURIComponent(activeAddonItem.type)}/${encodeURIComponent(slug)}`
+      if (activeAddonItem.addonId) sp.set('addon', activeAddonItem.addonId)
     } else if (adminOpen) {
       sp.set('tab', adminTab)
     } else if (activeKind !== 'Todos' && KIND_TO_VIEW[activeKind]) {
-      sp.set('view', KIND_TO_VIEW[activeKind])
+      const viewSlug = KIND_TO_VIEW[activeKind] === 'social' ? 'comunidade' : KIND_TO_VIEW[activeKind]
+      targetPath = `/${viewSlug}`
     }
     const qs = sp.toString()
     const targetUrl = qs ? `${targetPath}?${qs}` : targetPath

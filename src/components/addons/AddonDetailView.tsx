@@ -370,7 +370,11 @@ export function AddonDetailView({
 
   useEffect(() => {
     let active = true
-    const isStreamUrlId = item.id === 'search' || item.id.startsWith('/api/') || item.id.startsWith('http')
+    const isStreamUrlId =
+      item.id === 'search' ||
+      item.id.startsWith('/api/') ||
+      item.id.startsWith('http') ||
+      (!item.id.includes(':') && !/^tt\d+$/i.test(item.id) && !/^\d+$/.test(item.id))
     const epMatch = item.name.match(/T(\d+):E(\d+)/i)
     const cleanSearchTitle = item.name
       .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
