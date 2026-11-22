@@ -526,10 +526,16 @@ export function App() {
   useEffect(() => {
     if (selectedMedia) document.title = `${selectedMedia.title} · Savano Cine`
     else if (selectedShow) document.title = `${selectedShow.title} · Savano Cine`
-    else if (adminOpen) document.title = `${adminTab === 'addons' ? 'Addons' : 'Admin'} · Savano Cine`
+    else if (activeAddonItem) {
+      const cleanName = activeAddonItem.name
+        .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
+        .replace(/\s*\([^)]*\)\s*$/, '')
+        .trim()
+      document.title = `${cleanName || activeAddonItem.name} · Savano Cine`
+    } else if (adminOpen) document.title = `${adminTab === 'addons' ? 'Addons' : 'Admin'} · Savano Cine`
     else if (activeKind !== 'Todos') document.title = `${activeKind} · Savano Cine`
     else document.title = 'Savano Cine'
-  }, [activeKind, adminOpen, adminTab, selectedMedia, selectedShow])
+  }, [activeAddonItem, activeKind, adminOpen, adminTab, selectedMedia, selectedShow])
 
   const skipNextHistoryPushRef = useRef(false)
 
@@ -540,9 +546,16 @@ export function App() {
     if (selectedShow) {
       targetPath = `/series/${encodeURIComponent(selectedShow.id)}`
     } else if (activeAddonItem) {
-      sp.set('online', `${activeAddonItem.type}:${activeAddonItem.id}`)
-      sp.set('title', activeAddonItem.name)
-      if (activeAddonItem.poster) sp.set('poster', activeAddonItem.poster)
+      const cleanName = activeAddonItem.name
+        .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
+        .replace(/\s*\([^)]*\)\s*$/, '')
+        .trim()
+      const cleanUrlId =
+        activeAddonItem.id.startsWith('/api/') || activeAddonItem.id.startsWith('http')
+          ? 'search'
+          : activeAddonItem.id
+      sp.set('online', `${activeAddonItem.type}:${cleanUrlId}`)
+      sp.set('title', cleanName || activeAddonItem.name)
       if (activeAddonItem.addonId) sp.set('addonId', activeAddonItem.addonId)
     } else if (adminOpen) {
       sp.set('tab', adminTab)
