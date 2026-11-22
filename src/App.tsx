@@ -644,12 +644,10 @@ export function App() {
     profiles[0] ??
     mockProfiles[0]
   const isActiveAdmin =
-    Boolean(activeProfileId) &&
-    Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')
-  const isMariProfile =
-    Boolean(activeProfileId) &&
-    (activeProfile.id === 'profile-family' || activeProfile.name.toLowerCase().includes('mari'))
-  const effectiveTheme = theme === 'momolada' && !isMariProfile ? 'dark' : theme
+    Boolean(activeProfileId) && Boolean(activeProfile.isAdmin)
+  const isFamilyProfile =
+    Boolean(activeProfileId) && activeProfile.id === 'profile-family'
+  const effectiveTheme = theme === 'momolada' && !isFamilyProfile ? 'dark' : theme
 
   useEffect(() => {
     document.documentElement.dataset.theme = effectiveTheme
@@ -1357,7 +1355,7 @@ export function App() {
           <Suspense fallback={<CatalogSkeleton />}>
             <OnlineCatalogView
               profileId={activeProfile.id}
-              isAdmin={Boolean(activeProfile.isAdmin ?? activeProfile.id === 'profile-savio')}
+              isAdmin={Boolean(activeProfile.isAdmin)}
               localCatalog={catalog}
               onPlayStream={(media) => setSelectedMedia(media)}
               onPlayLocal={(localItem) => playLibraryItem(localItem)}
@@ -1970,7 +1968,7 @@ export function App() {
         onDeleted={(deletedId) => {
           refreshProfiles()
           if (deletedId === activeProfileId) {
-            const fallback = profiles.find((p) => p.id !== deletedId)?.id ?? 'profile-savio'
+            const fallback = profiles.find((p) => p.id !== deletedId)?.id ?? 'profile-admin'
             handleProfileChange(fallback)
           }
         }}

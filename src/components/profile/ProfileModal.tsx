@@ -51,7 +51,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
         setError(body?.error || 'Falha ao salvar perfil.')
         return
       }
-      onSaved(body?.id || profile?.id || 'profile-savio')
+      onSaved(body?.id || profile?.id || 'profile-admin')
       onClose()
     } catch {
       setError('API indisponível para salvar perfil.')
@@ -87,7 +87,7 @@ export function ProfileModal({ open, profile, canDelete = false, onClose, onSave
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Ex.: Savio, Família, Infantil"
+                placeholder="Ex.: Admin, Convidado, Infantil"
                 required
                 className="mt-1.5 h-10 w-full rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] px-3 text-sm text-[var(--sc-text-primary)] placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
               />

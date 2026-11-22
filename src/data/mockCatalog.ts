@@ -2,8 +2,8 @@ import type { Episode, LibraryItem, MediaSource, SubtitleTrack } from '../domain
 import type { Profile } from '../domain/catalog'
 
 export const profiles: Profile[] = [
-  { id: 'profile-savio', name: 'Savio', avatarKey: 'cartman' },
-  { id: 'profile-family', name: 'Mari', avatarKey: 'mabel' },
+  { id: 'profile-admin', name: 'Admin', avatarKey: 'cartman' },
+  { id: 'profile-family', name: 'Convidado', avatarKey: 'mabel' },
 ]
 
 export const mediaSources: MediaSource[] = [

@@ -122,7 +122,7 @@ type AddonDetailViewProps = {
 export function AddonDetailView({
   item,
   localCatalog,
-  profileId = 'profile-savio',
+  profileId = 'profile-admin',
   profiles = [],
   isAdmin = false,
   onBack,

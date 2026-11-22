@@ -19,7 +19,7 @@ Media center local + streaming via addons Stremio, com perfis isolados, player c
    powershell -ExecutionPolicy Bypass -File scripts/launch-cine-local.ps1
    ```
 3. **Perfis & Permissões**:
-   - Na inicialização do banco, o perfil administrador padrão (`Savio`, `is_admin = 1`) é criado automaticamente.
+   - Na inicialização do banco, o perfil administrador padrão (`Admin`, `is_admin = 1`) é criado automaticamente.
    - Perfis secundários (`is_admin = 0`) podem assistir, gerenciar **Minha Lista**, avaliar e buscar legendas/streams, mas **não** têm acesso ao painel Admin (`/?tab=server`, addons, fontes, logs ou edição de catálogo) e recebem `403` nas rotas protegidas da API.
    - Opcionalmente defina `CINE_ACCESS_PIN` no ambiente antes de iniciar a API para exigir PIN global na entrada.
 

@@ -33,12 +33,12 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `)
-const adminProfileId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-savio'
+const adminProfileId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-admin'
 database.prepare(`
   INSERT INTO profiles (id, name, avatar_key, is_admin)
   VALUES (?, ?, ?, 1)
   ON CONFLICT(id) DO UPDATE SET is_admin = 1
-`).run(adminProfileId, adminProfileId === 'profile-savio' ? 'Savio' : adminProfileId.replace(/^profile-/, ''), 'cartman')
+`).run(adminProfileId, adminProfileId === 'profile-admin' ? 'Admin' : adminProfileId.replace(/^profile-/, ''), 'cartman')
 ensureProfileRatingsTable()
 
 const volumeInfo = getVolumeInfoForPath(sourcePath)
@@ -258,7 +258,7 @@ function ensureProfileProgressTable() {
       PRIMARY KEY (profile_id, media_item_id)
     );
     INSERT INTO watch_progress (profile_id, media_item_id, position_seconds, duration_seconds, watched, updated_at)
-    SELECT 'profile-savio', media_item_id, position_seconds, duration_seconds, watched, updated_at
+    SELECT 'profile-admin', media_item_id, position_seconds, duration_seconds, watched, updated_at
     FROM watch_progress_legacy;
     DROP TABLE watch_progress_legacy;
   `)
@@ -283,7 +283,7 @@ function ensureProfileRatingsTable() {
       UNIQUE(profile_id, show_id)
     );
     INSERT INTO ratings (id, profile_id, media_item_id, show_id, score, review, updated_at)
-    SELECT id, 'profile-savio', media_item_id, show_id, score, review, updated_at
+    SELECT id, 'profile-admin', media_item_id, show_id, score, review, updated_at
     FROM ratings_legacy;
     DROP TABLE ratings_legacy;
   `)

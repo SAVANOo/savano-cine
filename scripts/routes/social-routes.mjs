@@ -24,7 +24,7 @@ export async function handleSocialRoutes({ request, response, requestUrl, databa
   ensureSocialTable(database)
 
   if (requestUrl.pathname === '/api/social/feed' && request.method === 'GET') {
-    const activeProfileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+    const activeProfileId = requestUrl.searchParams.get('profileId') || 'profile-admin'
     const profiles = database.prepare('SELECT id, name, avatar_key AS avatarKey FROM profiles').all()
     const profileMap = new Map(profiles.map((p) => [p.id, p]))
 

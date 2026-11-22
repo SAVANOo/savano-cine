@@ -299,7 +299,7 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
   }
 
   if (requestUrl.pathname === '/api/admin/export-history' && request.method === 'GET' && database) {
-    const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+    const profileId = requestUrl.searchParams.get('profileId') || 'profile-admin'
     const format = requestUrl.searchParams.get('format') || 'csv'
     const rows = database
       .prepare(`
@@ -344,7 +344,7 @@ export async function handleAdminRoutes({ request, response, requestUrl, root, p
         }
       })
     })
-    const profileId = String(body?.profileId || 'profile-savio').trim()
+    const profileId = String(body?.profileId || 'profile-admin').trim()
     const csv = String(body?.csv || '')
     const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0)
     if (lines.length < 2) {

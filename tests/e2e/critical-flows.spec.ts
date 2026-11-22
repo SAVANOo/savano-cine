@@ -4,7 +4,12 @@ import { expect, test } from '@playwright/test'
 const DEFAULT_PIN_TOKEN = createHash('sha256').update('savano-cine:4321').digest('hex')
 
 test.describe('Savano Cine - Fluxos Críticos E2E', () => {
-  test.beforeEach(async ({ context }) => {
+  let adminProfileId = 'profile-admin'
+
+  test.beforeEach(async ({ context, request }) => {
+    const res = await request.get('/api/profiles').catch(() => null)
+    const profiles = res && res.ok() ? ((await res.json().catch(() => [])) as Array<{ id: string; isAdmin?: boolean }>) : []
+    adminProfileId = profiles.find((p) => p.isAdmin)?.id || profiles[0]?.id || 'profile-admin'
     await context.addCookies([
       {
         name: 'sc_pin_ok',
@@ -13,7 +18,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
       },
       {
         name: 'sc_profile_session',
-        value: 'profile-savio',
+        value: adminProfileId,
         url: 'http://127.0.0.1:4173',
       },
     ])
@@ -112,8 +117,8 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await page.goto('/')
     const gate = page.getByRole('dialog', { name: 'Quem está assistindo?' })
     await expect(gate).toBeVisible()
-    await gate.getByRole('button', { name: /Savio/i }).first().click()
-    const unlockDialog = page.getByRole('dialog', { name: /Desbloquear perfil Savio/i })
+    await gate.locator('button').first().click()
+    const unlockDialog = page.getByRole('dialog', { name: /Desbloquear perfil/i })
     await expect(unlockDialog.or(page.getByRole('button', { name: /Savano Cine/i }))).toBeVisible({ timeout: 5000 })
   })
 
@@ -135,7 +140,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     await expect(page.getByRole('heading', { name: 'Séries', exact: true })).toBeVisible()
   })
 
-  test('Alternador de temas aplica Escuro, Claro e Momolada exclusivo da Mari', async ({ page, context }) => {
+  test('Alternador de temas aplica Escuro, Claro e Momolada exclusivo do perfil Convidado', async ({ page, context }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: 'Momolada', exact: true })).toBeHidden()
     await page.getByRole('button', { name: 'Claro', exact: true }).click()
@@ -220,7 +225,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
     try {
       const saveRes = await page.request.post('/api/addons/progress', {
         data: {
-          profileId: 'profile-savio',
+          profileId: adminProfileId,
           mediaKey: uniqueKey,
           title: 'Teste Online E2E — T1:E2',
           poster: 'https://image.tmdb.org/t/p/w500/example.jpg',
@@ -230,7 +235,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
       })
       expect(saveRes.ok()).toBeTruthy()
 
-      const listRes = await page.request.get('/api/addons/progress?profileId=profile-savio')
+      const listRes = await page.request.get(`/api/addons/progress?profileId=${encodeURIComponent(adminProfileId)}`)
       expect(listRes.ok()).toBeTruthy()
       const rows = (await listRes.json()) as Array<{ mediaKey: string; contentKey: string; type: string }>
       const found = rows.find((r) => r.mediaKey === uniqueKey)
@@ -242,7 +247,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
       await expect(page.getByText('Continuar assistindo (Online · Addons)')).toBeVisible({ timeout: 10000 })
       await expect(page.getByText('Teste Online E2E — T1:E2').first()).toBeVisible()
     } finally {
-      await page.request.delete(`/api/addons/progress?profileId=profile-savio&mediaKey=${encodeURIComponent(uniqueKey)}`)
+      await page.request.delete(`/api/addons/progress?profileId=${encodeURIComponent(adminProfileId)}&mediaKey=${encodeURIComponent(uniqueKey)}`)
     }
   })
 
@@ -268,7 +273,7 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
       await page.getByRole('button', { name: 'Publicar', exact: true }).click()
       await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5000 })
     } finally {
-      const feedRes = await page.request.get('/api/social/feed?profileId=profile-savio').catch(() => null)
+      const feedRes = await page.request.get(`/api/social/feed?profileId=${encodeURIComponent(adminProfileId)}`).catch(() => null)
       const feedData = feedRes && feedRes.ok() ? ((await feedRes.json().catch(() => null)) as { reviews?: Array<{ id: string; title: string }> } | null) : null
       const created = feedData?.reviews?.find((r) => r.title === uniqueTitle)
       if (created?.id) {

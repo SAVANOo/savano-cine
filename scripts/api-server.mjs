@@ -72,7 +72,7 @@ ensureColumn('profiles', 'is_admin', 'INTEGER NOT NULL DEFAULT 0')
 {
   const hasAdmin = database.prepare('SELECT 1 FROM profiles WHERE is_admin = 1 LIMIT 1').get()
   if (!hasAdmin) {
-    const adminId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-savio'
+    const adminId = process.env.CINE_ADMIN_PROFILE_ID?.trim() || 'profile-admin'
     const res = database.prepare('UPDATE profiles SET is_admin = 1 WHERE id = ?').run(adminId)
     if (res.changes === 0) {
       database.prepare('UPDATE profiles SET is_admin = 1 WHERE id = (SELECT id FROM profiles ORDER BY created_at LIMIT 1)').run()
@@ -747,15 +747,15 @@ function detectHwEncoder(ffmpegAvailable) {
   const deleteProfileMatch = requestUrl.pathname.match(/^\/api\/profiles\/([^/]+)$/)
   if (deleteProfileMatch && request.method === 'DELETE') {
     const profileId = decodeURIComponent(deleteProfileMatch[1])
-    if (profileId === 'profile-savio') {
+    const targetRow = database.prepare('SELECT id, is_admin FROM profiles WHERE id = ?').get(profileId)
+    if (!targetRow) return send(response, 404, { error: 'Perfil não encontrado.' })
+    if (targetRow.is_admin) {
       return send(response, 403, { error: 'O perfil administrador principal não pode ser excluído.' })
     }
     const total = database.prepare('SELECT COUNT(*) AS count FROM profiles').get()?.count ?? 0
     if (total <= 1) {
       return send(response, 400, { error: 'Não é possível excluir o único perfil restante.' })
     }
-    const existing = database.prepare('SELECT id FROM profiles WHERE id = ?').get(profileId)
-    if (!existing) return send(response, 404, { error: 'Perfil não encontrado.' })
     database.prepare('DELETE FROM watch_progress WHERE profile_id = ?').run(profileId)
     database.prepare('DELETE FROM ratings WHERE profile_id = ?').run(profileId)
     database.prepare('DELETE FROM watchlist WHERE profile_id = ?').run(profileId)
@@ -1158,7 +1158,7 @@ function detectHwEncoder(ffmpegAvailable) {
 
   if (requestUrl.pathname === '/api/addons/progress') {
     if (request.method === 'GET') {
-      const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+      const profileId = requestUrl.searchParams.get('profileId') || 'profile-admin'
       const rows = database
         .prepare('SELECT media_key AS mediaKey, title, poster, position_sec AS positionSec, duration_sec AS durationSec, updated_at AS updatedAt FROM stremio_progress WHERE profile_id = ? ORDER BY updated_at DESC LIMIT 30')
         .all(profileId)
@@ -1181,7 +1181,7 @@ function detectHwEncoder(ffmpegAvailable) {
       } catch {
         return send(response, 400, { error: 'JSON inválido.' })
       }
-      const profileId = typeof body.profileId === 'string' && body.profileId.trim() ? body.profileId.trim() : 'profile-savio'
+      const profileId = typeof body.profileId === 'string' && body.profileId.trim() ? body.profileId.trim() : 'profile-admin'
       const mediaKey =
         typeof body.mediaKey === 'string' && body.mediaKey.trim()
           ? body.mediaKey.trim()
@@ -1203,7 +1203,7 @@ function detectHwEncoder(ffmpegAvailable) {
       return send(response, 200, { saved: true })
     }
     if (request.method === 'DELETE') {
-      const profileId = requestUrl.searchParams.get('profileId') || 'profile-savio'
+      const profileId = requestUrl.searchParams.get('profileId') || 'profile-admin'
       const mediaKey = requestUrl.searchParams.get('mediaKey') || ''
       if (!mediaKey) return send(response, 400, { error: 'mediaKey obrigatório.' })
       const info = database
@@ -1699,7 +1699,7 @@ function detectHwEncoder(ffmpegAvailable) {
     } catch {
       return send(response, 400, { error: 'JSON inválido.' })
     }
-    const profileId = typeof body.profileId === 'string' && body.profileId ? body.profileId : 'profile-savio'
+    const profileId = typeof body.profileId === 'string' && body.profileId ? body.profileId : 'profile-admin'
     const targetType = body.targetType === 'show' ? 'show' : 'movie'
     const targetId = typeof body.targetId === 'string' ? body.targetId : ''
     if (!targetId) return send(response, 400, { error: 'targetId obrigatório.' })

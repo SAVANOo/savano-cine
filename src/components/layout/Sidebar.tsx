@@ -104,8 +104,7 @@ export function Sidebar({
   }
 
   const activeStyle = getAvatarStyle(activeProfile.avatarKey)
-  const canUseMomolada =
-    activeProfile.id === 'profile-family' || activeProfile.name.toLowerCase().includes('mari')
+  const canUseMomolada = activeProfile.id === 'profile-family'
   const onlineCount = sources.filter((source) => source.status === 'online').length
 
   async function submitSource(event: FormEvent) {
@@ -341,7 +340,7 @@ export function Sidebar({
                     </span>
                     {selected && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--sc-accent)]" />}
                   </button>
-                  {(profile.id === activeProfile.id || (!profile.hasPassword && profile.id !== 'profile-savio')) && (
+                  {(profile.id === activeProfile.id || (!profile.hasPassword && !profile.isAdmin)) && (
                     <button
                       type="button"
                       title={`Editar ${profile.name}`}
@@ -412,7 +411,7 @@ export function Sidebar({
           )
         })}
 
-        {(activeProfile.id === 'profile-savio' || activeProfile.isAdmin) && (
+        {Boolean(activeProfile.isAdmin) && (
           <>
             <button
               type="button"

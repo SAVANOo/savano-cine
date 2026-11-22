@@ -42,7 +42,7 @@ type OnlineProgressEntry = {
 
 /** Dedicated Online Archive view for browsing enabled Stremio addon catalogs and searching online streams. */
 export function OnlineCatalogView({
-  profileId = 'profile-savio',
+  profileId = 'profile-admin',
   isAdmin = false,
   localCatalog,
   onPlayStream,
