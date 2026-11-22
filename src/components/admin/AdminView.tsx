@@ -1036,9 +1036,12 @@ export function AdminView({
 
       {tab === 'logs' && (
         <div className="flex flex-col gap-2">
+          <p className="m-0 text-xs text-[var(--sc-text-muted)]">
+            Registros recentes de <code className="text-white/80">data/logs/api-errors.log</code> ({errorLogs.length})
+          </p>
           {errorLogs.length === 0 ? (
             <div className="rounded-[var(--sc-radius-lg)] border border-dashed border-white/15 p-10 text-center text-sm text-[var(--sc-text-muted)]">
-              Nenhum erro registrado em <code className="text-white/80">data/logs/api-errors.log</code>.
+              Nenhum erro registrado no arquivo de log.
             </div>
           ) : (
             errorLogs.map((entry, idx) => (
