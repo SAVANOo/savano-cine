@@ -267,11 +267,13 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
     setControlsVisible(true)
     hideTimer.current = window.setTimeout(() => {
-      if (!trackMenuOpen && videoRef.current && !videoRef.current.paused) {
+      const anyMenuOpen =
+        trackMenuOpen || moreMenuOpen || sourcesMenuOpen || episodesMenuOpen || partyOpen || remoteOpen
+      if (!anyMenuOpen && videoRef.current && !videoRef.current.paused) {
         setControlsVisible(false)
       }
     }, 2800)
-  }, [trackMenuOpen])
+  }, [episodesMenuOpen, moreMenuOpen, partyOpen, remoteOpen, sourcesMenuOpen, trackMenuOpen])
 
   useEffect(() => {
     if (videoRef.current) {
@@ -1526,6 +1528,10 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               <input
                 type="range"
                 aria-label="Progresso do vídeo"
+                aria-valuemin={0}
+                aria-valuemax={effectiveDuration || 100}
+                aria-valuenow={Math.floor(currentTime)}
+                aria-valuetext={`${formatClock(currentTime)} de ${effectiveDuration > 0 ? formatClock(effectiveDuration) : 'ao vivo'}`}
                 min={0}
                 max={effectiveDuration || Math.max(currentTime + 60, 100)}
                 step={1}

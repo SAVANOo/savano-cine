@@ -137,7 +137,7 @@ export function AddonCarouselRow({
                       e.stopPropagation()
                       onRemove(item)
                     }}
-                    className="absolute top-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/80 text-white/80 opacity-0 transition group-hover:opacity-100 hover:bg-red-600 hover:text-white cursor-pointer"
+                    className="absolute top-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/80 text-white/80 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-600 hover:text-white cursor-pointer"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

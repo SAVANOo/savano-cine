@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 type ModalProps = {
   open: boolean
@@ -11,7 +11,7 @@ type ModalProps = {
   children: ReactNode
 }
 
-/** Standardized accessible modal shell with blurred backdrop and clean close button. */
+/** Standardized accessible modal shell with focus trap, Escape handling, and focus restoration. */
 export function Modal({
   open,
   onClose,
@@ -21,13 +21,55 @@ export function Modal({
   maxWidthClass = 'max-w-3xl',
   children,
 }: ModalProps) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const container = dialogRef.current
+    const focusables = container
+      ? Array.from(
+          container.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        )
+      : []
+    focusables[0]?.focus()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab' || focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus()
+    }
+  }, [open, onClose])
+
   if (!open) return null
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={onClose}
     >
       <div
@@ -41,7 +83,7 @@ export function Modal({
                 {eyebrow}
               </p>
             )}
-            <h2 className="mt-0.5 mb-0 truncate text-lg font-bold text-[var(--sc-text-primary)]">{title}</h2>
+            <h2 id={titleId} className="mt-0.5 mb-0 truncate text-lg font-bold text-[var(--sc-text-primary)]">{title}</h2>
             {subtitle && (
               <p className="mt-1 mb-0 text-xs text-[var(--sc-text-secondary)]">{subtitle}</p>
             )}
