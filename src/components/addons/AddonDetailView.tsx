@@ -145,6 +145,8 @@ export function AddonDetailView({
   const [streamFilter, setStreamFilter] = useState<'all' | 'pt' | 'hd'>('all')
   const [nextOnlineEpisode, setNextOnlineEpisode] = useState<PlayableMedia | undefined>(undefined)
   const [resumeTarget, setResumeTarget] = useState<{ season: number; episode: number; positionSec: number } | null>(null)
+  const [episodeProgressMap, setEpisodeProgressMap] = useState<Record<string, number>>({})
+  const [visibleStreamLimit, setVisibleStreamLimit] = useState(30)
   const [quickPlaying, setQuickPlaying] = useState(false)
   const [error, setError] = useState('')
 
@@ -154,22 +156,29 @@ export function AddonDetailView({
     if (!targetNorm) return
     fetch(`/api/addons/progress?profileId=${encodeURIComponent(profileId)}`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows: Array<{ title?: string; season?: number | null; episode?: number | null; positionSec?: number }>) => {
+      .then((rows: Array<{ title?: string; season?: number | null; episode?: number | null; positionSec?: number; durationSec?: number }>) => {
         if (!active || !Array.isArray(rows)) return
-        const match = rows.find((row) => {
+        const nextMap: Record<string, number> = {}
+        let firstResume: { season: number; episode: number; positionSec: number } | null = null
+        for (const row of rows) {
           const clean = String(row.title || '')
             .replace(/\s*[—-]\s*T\d+:E\d+.*$/i, '')
             .replace(/\s*\([^)]*\)\s*$/, '')
             .trim()
-          return normalizeMatchTitle(clean) === targetNorm
-        })
-        if (match && typeof match.season === 'number' && typeof match.episode === 'number') {
-          setResumeTarget({
-            season: match.season,
-            episode: match.episode,
-            positionSec: Number(match.positionSec) || 0,
-          })
+          if (normalizeMatchTitle(clean) !== targetNorm) continue
+          if (typeof row.season === 'number' && typeof row.episode === 'number') {
+            const key = `${row.season}:${row.episode}`
+            const dur = Number(row.durationSec) || 0
+            const pos = Number(row.positionSec) || 0
+            const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0
+            if (!(key in nextMap)) nextMap[key] = pct
+            if (!firstResume) {
+              firstResume = { season: row.season, episode: row.episode, positionSec: pos }
+            }
+          }
         }
+        setEpisodeProgressMap(nextMap)
+        if (firstResume) setResumeTarget(firstResume)
       })
       .catch(() => undefined)
     return () => {
@@ -195,6 +204,13 @@ export function AddonDetailView({
     }
     return orderedVideos[0]
   }, [orderedVideos, resumeTarget])
+
+  // Prefetch streams in background for the 1-click Hero episode target
+  useEffect(() => {
+    if (detail.type !== 'series' || !heroTargetEpisode?.id) return
+    const params = new URLSearchParams({ type: 'series', id: heroTargetEpisode.id })
+    void fetch(`/api/addons/streams?${params.toString()}`).catch(() => undefined)
+  }, [detail.type, heroTargetEpisode?.id])
 
   async function handleQuickPlayHero() {
     setQuickPlaying(true)
@@ -319,6 +335,7 @@ export function AddonDetailView({
 
   async function fetchStreamsFor(type: string, targetId: string, label: string) {
     setLoadingStreams(true)
+    setVisibleStreamLimit(30)
     setStreamTargetLabel(label)
     setStreams([])
     setSubtitles([])
@@ -668,9 +685,27 @@ export function AddonDetailView({
                           </span>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="m-0 truncate font-semibold">
-                            T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="m-0 truncate font-semibold">
+                              T{video.season ?? '?'}:E{video.episode ?? '?'} · {video.title}
+                            </p>
+                            {(() => {
+                              const epPct =
+                                typeof video.season === 'number' && typeof video.episode === 'number'
+                                  ? episodeProgressMap[`${video.season}:${video.episode}`]
+                                  : undefined
+                              if (epPct === undefined) return null
+                              return epPct >= 85 ? (
+                                <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                                  Visto
+                                </span>
+                              ) : epPct > 0 ? (
+                                <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                                  {epPct}%
+                                </span>
+                              ) : null
+                            })()}
+                          </div>
                           {video.overview ? (
                             <p className="mt-0.5 mb-0 line-clamp-2 text-[11px] text-[var(--sc-text-secondary)]">
                               {video.overview}
@@ -853,8 +888,11 @@ export function AddonDetailView({
               return true
             })
 
+            const visibleFilteredStreams = filteredStreams.slice(0, visibleStreamLimit)
+            const remainingStreamCount = Math.max(0, filteredStreams.length - visibleFilteredStreams.length)
+
             const grouped = new Map<string, AddonStreamItem[]>()
-            for (const s of filteredStreams) {
+            for (const s of visibleFilteredStreams) {
               const badges = extractStreamLanguages(`${s.name} ${s.title}`)
               let groupKey = s.addonName
               if (streamGroupBy === 'language') {
@@ -1077,6 +1115,18 @@ export function AddonDetailView({
                     })}
                   </div>
                 ))}
+                {remainingStreamCount > 0 && (
+                  <div className="pt-1 text-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setVisibleStreamLimit((n) => n + 40)}
+                    >
+                      Mostrar mais fontes ({remainingStreamCount} restantes)
+                    </Button>
+                  </div>
+                )}
               </div>
               </div>
             )

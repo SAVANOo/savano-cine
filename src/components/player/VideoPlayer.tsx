@@ -182,6 +182,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [partyMessages, setPartyMessages] = useState<Array<{ id: string; sender: string; text: string }>>([])
   const [partyChatInput, setPartyChatInput] = useState('')
   const [remoteOpen, setRemoteOpen] = useState(false)
+  const [remoteActive, setRemoteActive] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [remoteSession] = useState(() => {
     try {
@@ -862,6 +863,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   useEffect(() => {
     const es = new EventSource(`/api/remote/${encodeURIComponent(remoteSession)}/events`)
     es.addEventListener('command', (ev) => {
+      setRemoteActive(true)
       try {
         const cmd = JSON.parse((ev as MessageEvent).data || '{}')
         const video = videoRef.current
@@ -893,6 +895,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   }, [applyVolume, media.nextEpisode, muted, onClose, onPlayNext, remoteSession, volume])
 
   useEffect(() => {
+    if (!remoteOpen && !remoteActive) return
     const timer = window.setInterval(() => {
       void fetch(`/api/remote/${encodeURIComponent(remoteSession)}/state`, {
         method: 'POST',
@@ -906,7 +909,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
       }).catch(() => undefined)
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [currentTime, effectiveDuration, isPaused, media.title, remoteSession])
+  }, [currentTime, effectiveDuration, isPaused, media.title, remoteActive, remoteOpen, remoteSession])
 
   // Watch Party SSE listener
   useEffect(() => {
