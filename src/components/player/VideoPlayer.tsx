@@ -626,6 +626,8 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const seekTo = (targetSeconds: number) => {
     const clamped = Math.max(0, totalDurationRef.current ? Math.min(targetSeconds, totalDurationRef.current) : targetSeconds)
     seekStartedAtRef.current = { at: performance.now(), from: currentTime, to: clamped }
+    lastKnownTimeRef.current = clamped
+    pendingPosition.current = null
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
@@ -1093,7 +1095,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             if (playbackUrl.includes('/api/addons/torrent-stream') && lastKnownTimeRef.current > 5) {
               stallRecoveryTimerRef.current = window.setTimeout(() => {
                 const video = videoRef.current
-                if (!video || video.paused) return
+                if (!video || video.paused || video.readyState >= 3) return
                 pendingPosition.current = lastKnownTimeRef.current
                 trackPlayerEvent('player_stall_recovery', {
                   targetId: media.title,
@@ -1102,7 +1104,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 setSeekToast('Reconectando stream...')
                 window.setTimeout(() => setSeekToast(''), 2000)
                 video.load()
-              }, 12000)
+              }, 25000)
             }
           }}
           onCanPlay={() => {
@@ -1194,7 +1196,11 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               syncMeasuredDuration(videoRef.current)
             }
             if (pendingPosition.current !== null && videoRef.current) {
-              if (!playbackUrl.includes('/transcode')) {
+              const isServerOffsetStream =
+                playbackUrl.includes('/transcode') ||
+                playbackUrl.includes('&t=') ||
+                playbackUrl.includes('?t=')
+              if (!isServerOffsetStream) {
                 videoRef.current.currentTime = pendingPosition.current
               }
               pendingPosition.current = null
