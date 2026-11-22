@@ -99,9 +99,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [secondaryCues, setSecondaryCues] = useState<VttCue[]>([])
 
   useEffect(() => {
-    if (!secondarySubtitleUrl || !selectedSubtitleUrl) {
-      return
-    }
+    if (!selectedSubtitleUrl) return
     let active = true
     fetch(selectedSubtitleUrl)
       .then((res) => (res.ok ? res.text() : ''))
@@ -114,7 +112,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     return () => {
       active = false
     }
-  }, [secondarySubtitleUrl, selectedSubtitleUrl])
+  }, [selectedSubtitleUrl])
 
   useEffect(() => {
     if (!secondarySubtitleUrl) return
@@ -162,6 +160,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const totalDurationRef = useRef(initialDuration)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
+  const lastKnownTimeRef = useRef(initialStart)
+  const retriedTorrentInfoRef = useRef(false)
+  const stallRecoveryTimerRef = useRef<number | null>(null)
   const prefsKey = `savano-cine-player-prefs:${profileId}`
   const [volume, setVolume] = useState<number>(() => {
     try {
@@ -237,7 +238,8 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const applyVolume = useCallback((nextVol: number, nextMuted: boolean) => {
     const video = videoRef.current
     if (!video) return
-    if (nextVol > 1 && !gainNodeRef.current && typeof AudioContext !== 'undefined') {
+    const isSameOrigin = !/^https?:\/\//i.test(playbackUrl) || playbackUrl.startsWith(window.location.origin)
+    if (nextVol > 1 && isSameOrigin && !gainNodeRef.current && typeof AudioContext !== 'undefined') {
       try {
         const ctx = new AudioContext()
         const source = ctx.createMediaElementSource(video)
@@ -269,7 +271,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
       video.volume = Math.max(0, Math.min(1, nextVol))
       video.muted = nextMuted
     }
-  }, [])
+  }, [playbackUrl])
 
   const scheduleHideControls = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current)
@@ -594,7 +596,16 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     setCurrentTime(clamped)
     const video = videoRef.current
     if (!video) return
-    const isTranscodedStream = playbackUrl.includes('/transcode') || playbackUrl.includes('/api/addons/torrent-stream')
+    const isTorrentTranscode =
+      playbackUrl.includes('/api/addons/torrent-stream') &&
+      (playbackUrl.includes('audioStream=') ||
+        playbackUrl.includes('&t=') ||
+        playbackUrl.includes('?t=') ||
+        Boolean(media.needsTranscode))
+    const isTranscodedStream =
+      playbackUrl.includes('/transcode') ||
+      playbackUrl.includes('/api/addons/http-transcode') ||
+      isTorrentTranscode
     if (!isTranscodedStream) {
       video.currentTime = clamped
       scheduleHideControls()
@@ -618,10 +629,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   }
 
   const switchPlaybackSource = useCallback((nextUrl: string) => {
-    const effectivePos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
+    const currentVideoPos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
+    const effectivePos = currentVideoPos > 1 ? currentVideoPos : lastKnownTimeRef.current
     transcodeOffsetRef.current = 0
     setTranscodeOffset(0)
     pendingPosition.current = effectivePos
+    retriedTorrentInfoRef.current = false
     torrentStatsRef.current = null
     setTorrentStats(null)
     setPlaybackError('')
@@ -1029,9 +1042,53 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               lastTouchTapRef.current = { at: now, x: touch.clientX }
             }
           }}
-          onWaiting={() => setIsLoadingMedia(true)}
-          onCanPlay={() => setIsLoadingMedia(false)}
-          onPlaying={() => setIsLoadingMedia(false)}
+          onWaiting={() => {
+            setIsLoadingMedia(true)
+            if (stallRecoveryTimerRef.current) window.clearTimeout(stallRecoveryTimerRef.current)
+            if (playbackUrl.includes('/api/addons/torrent-stream') && lastKnownTimeRef.current > 5) {
+              stallRecoveryTimerRef.current = window.setTimeout(() => {
+                const video = videoRef.current
+                if (!video || video.paused) return
+                pendingPosition.current = lastKnownTimeRef.current
+                setSeekToast('Reconectando stream...')
+                window.setTimeout(() => setSeekToast(''), 2000)
+                video.load()
+              }, 12000)
+            }
+          }}
+          onCanPlay={() => {
+            setIsLoadingMedia(false)
+            if (stallRecoveryTimerRef.current) {
+              window.clearTimeout(stallRecoveryTimerRef.current)
+              stallRecoveryTimerRef.current = null
+            }
+            if (
+              !retriedTorrentInfoRef.current &&
+              playbackUrl.includes('/api/addons/torrent-stream') &&
+              (!streamInfo || streamInfo.audio.length === 0)
+            ) {
+              retriedTorrentInfoRef.current = true
+              const match = playbackUrl.match(/[?&]infoHash=([a-fA-F0-9]{40}|[A-Z2-7]{32})/i)
+              if (match) {
+                const fileIdxMatch = playbackUrl.match(/[?&]fileIdx=(\d+)/)
+                const params = new URLSearchParams({ infoHash: match[1] })
+                if (fileIdxMatch) params.set('fileIdx', fileIdxMatch[1])
+                fetch(`/api/addons/torrent-info?${params.toString()}`)
+                  .then((res) => (res.ok ? res.json() : null))
+                  .then((info: StreamInfo | null) => {
+                    if (info && info.audio.length > 0) setStreamInfo(info)
+                  })
+                  .catch(() => undefined)
+              }
+            }
+          }}
+          onPlaying={() => {
+            setIsLoadingMedia(false)
+            if (stallRecoveryTimerRef.current) {
+              window.clearTimeout(stallRecoveryTimerRef.current)
+              stallRecoveryTimerRef.current = null
+            }
+          }}
           onPlay={() => {
             setIsLoadingMedia(false)
             setIsPaused(false)
@@ -1071,6 +1128,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             if (videoRef.current) {
               const eff = transcodeOffsetRef.current + videoRef.current.currentTime
               setCurrentTime(eff)
+              if (eff > 1) lastKnownTimeRef.current = eff
               syncMeasuredDuration(videoRef.current)
               if (
                 autoSkipIntro &&
@@ -1134,12 +1192,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             setPlaybackError('Não foi possível reproduzir este arquivo no navegador. Verifique se a fonte está online ou tente outra fonte.')
           }}
         >
-          {selectedSubtitleUrl && !secondarySubtitleUrl && (
-            <track kind="subtitles" label="Legenda" src={selectedSubtitleUrl} default />
-          )}
         </video>
 
-        {secondarySubtitleUrl && (() => {
+        {(selectedSubtitleUrl || secondarySubtitleUrl) && (() => {
           const syncTime = currentTime + subtitleOffsetSec
           const primaryText = selectedSubtitleUrl ? findActiveCueText(primaryCues, syncTime) : ''
           const studyText = findActiveCueText(secondaryCues, syncTime)
@@ -1322,14 +1377,13 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 }}
                 title="Opções do player"
                 aria-label="Opções do player"
-                className={`flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold text-white backdrop-blur-md cursor-pointer ${
+                className={`flex h-10 w-10 items-center justify-center rounded-full border text-white backdrop-blur-md cursor-pointer ${
                   moreMenuOpen || partyCode || nightMode
                     ? 'border-[var(--sc-accent)]/70 bg-black/75'
                     : 'border-white/15 bg-black/50 hover:bg-white/20'
                 }`}
               >
                 <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline">Opções</span>
               </button>
             )}
             <button
@@ -1345,6 +1399,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
               <div className="absolute top-12 right-12 z-40 flex w-60 flex-col gap-1 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#12141d]/95 p-2 text-xs text-white shadow-2xl backdrop-blur-xl">
                 <button
                   type="button"
+                  title="Assistir sincronizado com outra pessoa em outra tela"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     setRemoteOpen(false)
@@ -1354,11 +1409,12 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 >
                   <span className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-[var(--sc-accent)]" />
-                    <span>{partyCode ? `Watch Party (${partyCode})` : 'Watch Party'}</span>
+                    <span>{partyCode ? `Assistir Junto (${partyCode})` : 'Assistir Junto'}</span>
                   </span>
                 </button>
                 <button
                   type="button"
+                  title="Usar o celular como controle remoto via código"
                   onClick={() => {
                     setMoreMenuOpen(false)
                     setPartyOpen(false)
@@ -1373,6 +1429,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 </button>
                 <button
                   type="button"
+                  title="Comprime picos de som (explosões) e realça diálogos baixos"
                   onClick={() => {
                     const nextNight = !nightMode
                     setNightMode(nextNight)
@@ -1393,6 +1450,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 </button>
                 <button
                   type="button"
+                  title="Pula automaticamente introduções de séries quando disponíveis"
                   onClick={() => {
                     const next = !autoSkipIntro
                     setAutoSkipIntro(next)
@@ -1415,6 +1473,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 {/^https?:\/\//i.test(media.url) && (
                   <a
                     href={`vlc://${media.url}`}
+                    title="Abrir este stream diretamente no VLC Media Player"
                     onClick={() => setMoreMenuOpen(false)}
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-white hover:bg-white/10"
                   >
@@ -1425,6 +1484,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                   <button
                     type="button"
+                    title="Fixar vídeo em janela flutuante"
                     onClick={() => {
                       setMoreMenuOpen(false)
                       const video = videoRef.current
@@ -1445,6 +1505,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                   <a
                     href={media.url}
                     download={`${media.title || 'video'}.mp4`}
+                    title="Baixar o arquivo de vídeo para este dispositivo"
                     target={media.url.startsWith('http') ? '_blank' : undefined}
                     rel={media.url.startsWith('http') ? 'noreferrer' : undefined}
                     onClick={() => setMoreMenuOpen(false)}
@@ -1457,6 +1518,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 {isAdmin && isOnlineStream && (
                   <button
                     type="button"
+                    title="Salvar este título permanentemente no acervo do servidor"
                     onClick={async () => {
                       setMoreMenuOpen(false)
                       try {

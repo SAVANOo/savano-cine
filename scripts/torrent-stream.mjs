@@ -364,7 +364,7 @@ export async function serveTorrentStream(
   selectExclusiveTorrentFile(torrent, file)
   touchTorrent(infoHash.trim().toLowerCase())
 
-  const needsTranscode = !raw && TRANSCODE_EXT_RE.test(file.name)
+  const needsTranscode = !raw && (TRANSCODE_EXT_RE.test(file.name) || audioStream !== null)
   if (needsTranscode) {
     const requestedAudio =
       audioStream !== null && /^\d{1,2}$/.test(String(audioStream))
@@ -447,6 +447,13 @@ export async function serveTorrentStream(
       response.writeHead(416, { 'Content-Range': `bytes */${total}` })
       response.end()
       return
+    }
+    if (start > 0 && torrent.pieceLength && torrent.pieces?.length) {
+      const fileStartOffset = file.offset || 0
+      const absStart = fileStartOffset + start
+      const seekPiece = Math.max(0, Math.floor(absStart / torrent.pieceLength))
+      const lastPiece = torrent.pieces.length - 1
+      torrent.select(seekPiece, Math.min(lastPiece, seekPiece + 24), true)
     }
     response.writeHead(206, {
       'Content-Range': `bytes ${start}-${end}/${total}`,
