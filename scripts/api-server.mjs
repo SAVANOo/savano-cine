@@ -5,6 +5,7 @@ import { execFile, spawn, spawnSync } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
+import { gzipSync } from 'node:zlib'
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import path from 'node:path'
@@ -731,7 +732,7 @@ async function handleApiRequest(request, response) {
     const id = requestUrl.searchParams.get('id') || ''
     if (!id.trim()) return send(response, 400, { error: 'Parâmetro id é obrigatório.' })
     try {
-      const meta = await fetchFallbackMeta(type, id)
+      const meta = await fetchFallbackMeta(type, id, database)
       if (!meta) return send(response, 404, { error: 'Metadado não encontrado.' })
       return send(response, 200, { meta })
     } catch (error) {
@@ -2530,8 +2531,20 @@ async function buildLibrary(profileId) {
 }
 
 function send(response, status, body) {
+  const json = JSON.stringify(body)
+  const acceptEncoding = String(response.req?.headers?.['accept-encoding'] || '')
+  if (json.length >= 1024 && /\bgzip\b/i.test(acceptEncoding)) {
+    const compressed = gzipSync(json)
+    response.writeHead(status, {
+      'Content-Encoding': 'gzip',
+      Vary: 'Accept-Encoding',
+      'Content-Length': compressed.length,
+    })
+    response.end(compressed)
+    return
+  }
   response.writeHead(status)
-  response.end(JSON.stringify(body))
+  response.end(json)
 }
 
 function streamArtwork(ownerType, ownerId, artworkType, response) {

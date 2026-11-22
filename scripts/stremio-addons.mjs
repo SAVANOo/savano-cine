@@ -76,7 +76,12 @@ export function ensureStremioAddonsTable(database) {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
+    );
+    CREATE TABLE IF NOT EXISTS stremio_meta_cache (
+      cache_key TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `)
 }
 
@@ -331,10 +336,27 @@ async function translateTextChunk(text) {
   return data[0].map((part) => (Array.isArray(part) ? String(part[0] || '') : '')).join('') || clean
 }
 
-async function localizeMetaToPtBr(metaObj) {
+async function localizeMetaToPtBr(metaObj, database = null) {
   if (!metaObj || !metaObj.id) return metaObj
   const cacheKey = `${metaObj.type}:${metaObj.id}`
   if (ptBrMetaCache.has(cacheKey)) return ptBrMetaCache.get(cacheKey)
+
+  if (database) {
+    try {
+      const row = database
+        .prepare('SELECT payload_json, updated_at FROM stremio_meta_cache WHERE cache_key = ?')
+        .get(cacheKey)
+      if (row && Date.now() - Number(row.updated_at) < 7 * 24 * 60 * 60_000) {
+        const parsed = JSON.parse(row.payload_json)
+        if (parsed && parsed.id) {
+          ptBrMetaCache.set(cacheKey, parsed)
+          return parsed
+        }
+      }
+    } catch {
+      // ignore SQLite cache miss/parse error
+    }
+  }
 
   try {
     const videos = Array.isArray(metaObj.videos) ? metaObj.videos : []
@@ -373,6 +395,21 @@ async function localizeMetaToPtBr(metaObj) {
     if (ptBrMetaCache.size > 200) {
       const firstKey = ptBrMetaCache.keys().next().value
       if (firstKey) ptBrMetaCache.delete(firstKey)
+    }
+    if (database) {
+      try {
+        database
+          .prepare(`
+            INSERT INTO stremio_meta_cache (cache_key, payload_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+              payload_json = excluded.payload_json,
+              updated_at = excluded.updated_at
+          `)
+          .run(cacheKey, JSON.stringify(localized), Date.now())
+      } catch {
+        // ignore SQLite cache write error
+      }
     }
     return localized
   } catch {
@@ -449,7 +486,7 @@ export async function fetchAddonMeta(database, addonId, { type, metaId }) {
   }
 
   if (!meta) return null
-  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
+  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId), database)
 }
 
 function isSafeHttpUrl(candidate) {
@@ -690,10 +727,10 @@ async function fetchRawFallbackMeta(type, metaId) {
   return null
 }
 
-export async function fetchFallbackMeta(type, metaId) {
+export async function fetchFallbackMeta(type, metaId, database = null) {
   assertSafeSegment(type, 'Tipo')
   assertSafeSegment(metaId, 'ID de mídia')
   const meta = await fetchRawFallbackMeta(type, metaId)
   if (!meta) return null
-  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId))
+  return await localizeMetaToPtBr(normalizeMetaPayload(meta, type, metaId), database)
 }
