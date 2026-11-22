@@ -257,15 +257,24 @@ test.describe('Savano Cine - Fluxos Críticos E2E', () => {
   })
 
   test('Comunidade (Espaço Social) exibe feed e publica nova avaliação', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
-    await page.getByRole('navigation').getByRole('button', { name: 'Comunidade', exact: true }).click()
-    await expect(page.getByRole('heading', { name: /Espaço Social/i })).toBeVisible()
     const uniqueTitle = `Filme E2E ${Date.now()}`
-    await page.getByPlaceholder(/Nome do filme ou série/i).fill(uniqueTitle)
-    await page.getByPlaceholder(/O que você achou/i).fill('Excelente filme para testar!')
-    await page.getByRole('button', { name: 'Publicar', exact: true }).click()
-    await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5000 })
+    try {
+      await page.goto('/')
+      await expect(page.getByText(/Novo volume/i)).toBeVisible({ timeout: 10000 })
+      await page.getByRole('navigation').getByRole('button', { name: 'Comunidade', exact: true }).click()
+      await expect(page.getByRole('heading', { name: /Espaço Social/i })).toBeVisible()
+      await page.getByPlaceholder(/Nome do filme ou série/i).fill(uniqueTitle)
+      await page.getByPlaceholder(/O que você achou/i).fill('Excelente filme para testar!')
+      await page.getByRole('button', { name: 'Publicar', exact: true }).click()
+      await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5000 })
+    } finally {
+      const feedRes = await page.request.get('/api/social/feed?profileId=profile-savio').catch(() => null)
+      const feedData = feedRes && feedRes.ok() ? ((await feedRes.json().catch(() => null)) as { reviews?: Array<{ id: string; title: string }> } | null) : null
+      const created = feedData?.reviews?.find((r) => r.title === uniqueTitle)
+      if (created?.id) {
+        await page.request.delete(`/api/social/reviews/${encodeURIComponent(created.id)}`).catch(() => undefined)
+      }
+    }
   })
 
   test('Tutorial interativo abre pela barra lateral e avança passos', async ({ page }) => {

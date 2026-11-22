@@ -19,7 +19,8 @@ function parseVttTimestamp(raw: string): number {
 /** Parses WebVTT (or SRT-style) subtitle text into timed cue objects for dual-subtitle rendering. */
 export function parseWebVtt(vttText: string): VttCue[] {
   const cues: VttCue[] = []
-  const blocks = vttText.replace(/\r\n?/g, '\n').split(/\n{2,}/)
+  const cleaned = vttText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  const blocks = cleaned.split(/\n\s*\n+/)
   for (const block of blocks) {
     const lines = block
       .split('\n')

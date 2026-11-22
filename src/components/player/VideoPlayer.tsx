@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, Download, FastForward, Layers, ListVideo, Maximize2, Minimize2, Moon, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Send, SkipForward, Smartphone, Subtitles, Users, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowLeft, Copy, Download, FastForward, Layers, ListVideo, Maximize2, Minimize2, Moon, Pause, PictureInPicture2, Play, RotateCcw, RotateCw, Send, Settings, SkipForward, Smartphone, Subtitles, Users, Volume2, VolumeX, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayableMedia } from '../../domain/uiHelpers'
@@ -99,7 +99,9 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [secondaryCues, setSecondaryCues] = useState<VttCue[]>([])
 
   useEffect(() => {
-    if (!secondarySubtitleUrl || !selectedSubtitleUrl) return
+    if (!secondarySubtitleUrl || !selectedSubtitleUrl) {
+      return
+    }
     let active = true
     fetch(selectedSubtitleUrl)
       .then((res) => (res.ok ? res.text() : ''))
@@ -180,8 +182,20 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [partyMessages, setPartyMessages] = useState<Array<{ id: string; sender: string; text: string }>>([])
   const [partyChatInput, setPartyChatInput] = useState('')
   const [remoteOpen, setRemoteOpen] = useState(false)
-  const [remoteSession] = useState(() => Math.random().toString(36).slice(2, 8).toUpperCase())
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [remoteSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem('savano-cine-remote-session')
+      if (saved && /^[A-Z0-9]{6}$/.test(saved)) return saved
+      const created = Math.random().toString(36).slice(2, 8).toUpperCase().padEnd(6, 'X')
+      localStorage.setItem('savano-cine-remote-session', created)
+      return created
+    } catch {
+      return Math.random().toString(36).slice(2, 8).toUpperCase()
+    }
+  })
   const [remoteQrUrl, setRemoteQrUrl] = useState('')
+  const [remoteTargetUrl, setRemoteTargetUrl] = useState('')
   const [subtitleBg, setSubtitleBg] = useState<'none' | 'soft' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('sc_sub_bg')
@@ -819,10 +833,30 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   // Remote Control SSE listener + state push
   useEffect(() => {
     if (!remoteOpen) return
-    const url = `${window.location.origin}/?remote=${encodeURIComponent(remoteSession)}`
-    void QRCode.toDataURL(url, { width: 150, margin: 1 })
-      .then(setRemoteQrUrl)
-      .catch(() => undefined)
+    let active = true
+    const buildQr = async () => {
+      let baseOrigin = window.location.origin
+      if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
+        try {
+          const res = await fetch('/api/server/info')
+          if (res.ok) {
+            const info = (await res.json()) as { lanUrl?: string; tunnelUrl?: string }
+            if (info.lanUrl) baseOrigin = info.lanUrl
+            else if (info.tunnelUrl) baseOrigin = info.tunnelUrl
+          }
+        } catch {
+          // fallback to current origin
+        }
+      }
+      const url = `${baseOrigin}/?remote=${encodeURIComponent(remoteSession)}`
+      if (active) setRemoteTargetUrl(url)
+      const dataUrl = await QRCode.toDataURL(url, { width: 150, margin: 1 }).catch(() => '')
+      if (active && dataUrl) setRemoteQrUrl(dataUrl)
+    }
+    void buildQr()
+    return () => {
+      active = false
+    }
   }, [remoteOpen, remoteSession])
 
   useEffect(() => {
@@ -1105,7 +1139,7 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           return (
             <div
               aria-live="off"
-              className={`pointer-events-none absolute inset-x-4 z-15 flex flex-col items-center gap-1.5 text-center transition-all ${
+              className={`pointer-events-none absolute inset-x-4 z-20 flex flex-col items-center gap-1.5 text-center transition-all ${
                 controlsVisible || isPaused ? 'bottom-28' : 'bottom-8'
               }`}
             >
@@ -1251,38 +1285,26 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             </div>
           </div>
 
-          <div className="pointer-events-auto flex items-center gap-2">
+          <div className="pointer-events-auto relative flex items-center gap-2">
             {!isMinimized && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRemoteOpen(false)
-                    setPartyOpen((v) => !v)
-                  }}
-                  title="Watch Party (Assistir Junto)"
-                  className={`flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold text-white backdrop-blur-md cursor-pointer ${
-                    partyCode
-                      ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
-                      : 'border-white/15 bg-black/50 hover:bg-white/20'
-                  }`}
-                >
-                  <Users className="h-4 w-4" />
-                  <span className="hidden md:inline">{partyCode ? `Sala ${partyCode}` : 'Watch Party'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPartyOpen(false)
-                    setRemoteOpen((v) => !v)
-                  }}
-                  title="Controle Remoto pelo Celular (QR)"
-                  className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
-                >
-                  <Smartphone className="h-4 w-4" />
-                  <span className="hidden md:inline">Controle</span>
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => {
+                  setPartyOpen(false)
+                  setRemoteOpen(false)
+                  setMoreMenuOpen((v) => !v)
+                }}
+                title="Opções do player"
+                aria-label="Opções do player"
+                className={`flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold text-white backdrop-blur-md cursor-pointer ${
+                  moreMenuOpen || partyCode || nightMode
+                    ? 'border-[var(--sc-accent)]/70 bg-black/75'
+                    : 'border-white/15 bg-black/50 hover:bg-white/20'
+                }`}
+              >
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Opções</span>
+              </button>
             )}
             <button
               type="button"
@@ -1293,63 +1315,134 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             >
               {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
             </button>
-            {isOnlineStream && (
-              <a
-                href={media.url}
-                download={`${media.title || 'video'}.mp4`}
-                target={media.url.startsWith('http') ? '_blank' : undefined}
-                rel={media.url.startsWith('http') ? 'noreferrer' : undefined}
-                title="Baixar este vídeo neste dispositivo"
-                className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Baixar</span>
-              </a>
-            )}
-            {isAdmin && isOnlineStream && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const isTorrent = media.url.startsWith('/api/addons/torrent-stream')
-                    if (isTorrent) {
-                      const qs = media.url.split('?')[1] || ''
-                      const infoHash = new URLSearchParams(qs).get('infoHash') || ''
-                      if (!infoHash) return
-                      setDownloadToast('Enviando para downloads...')
-                      const res = await fetch('/api/addons/download-local', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ infoHash, title: media.title }),
-                      })
-                      const data = await res.json().catch(() => null)
-                      setDownloadToast(
-                        res.ok
-                          ? data?.status === 'qbittorrent'
-                            ? 'Enviado para o qBittorrent!'
-                            : 'Download salvo na fila!'
-                          : data?.error || 'Falha ao iniciar download.',
-                      )
-                    } else {
-                      setDownloadToast('Adicionando à fila de download...')
-                      const res = await fetch('/api/addons/download-local', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: media.url, title: media.title }),
-                      })
-                      const data = await res.json().catch(() => null)
-                      setDownloadToast(res.ok ? 'Download iniciado no servidor!' : data?.error || 'Falha ao baixar.')
+            {moreMenuOpen && !isMinimized && (
+              <div className="absolute top-12 right-12 z-40 flex w-60 flex-col gap-1 rounded-[var(--sc-radius-lg)] border border-white/15 bg-[#12141d]/95 p-2 text-xs text-white shadow-2xl backdrop-blur-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    setRemoteOpen(false)
+                    setPartyOpen((v) => !v)
+                  }}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>{partyCode ? `Watch Party (${partyCode})` : 'Watch Party'}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreMenuOpen(false)
+                    setPartyOpen(false)
+                    setRemoteOpen((v) => !v)
+                  }}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Controle no Celular ({remoteSession})</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextNight = !nightMode
+                    setNightMode(nextNight)
+                    if (compressorRef.current) {
+                      compressorRef.current.threshold.value = nextNight ? -32 : -18
+                      compressorRef.current.ratio.value = nextNight ? 10 : 4
                     }
-                  } catch {
-                    setDownloadToast('Falha ao conectar com a API de downloads.')
-                  }
-                }}
-                title="Baixar este título para assistir offline no Acervo Local"
-                className="flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/20 cursor-pointer"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Baixar pro Acervo</span>
-              </button>
+                  }}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Moon className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Modo Noite</span>
+                  </span>
+                  <span className={`text-[10px] font-bold ${nightMode ? 'text-emerald-400' : 'text-white/50'}`}>
+                    {nightMode ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreMenuOpen(false)
+                      const video = videoRef.current
+                      if (!video) return
+                      if (document.pictureInPictureElement) {
+                        void document.exitPictureInPicture().catch(() => undefined)
+                      } else {
+                        void video.requestPictureInPicture().catch(() => undefined)
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                  >
+                    <PictureInPicture2 className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Picture-in-Picture</span>
+                  </button>
+                )}
+                {isOnlineStream && (
+                  <a
+                    href={media.url}
+                    download={`${media.title || 'video'}.mp4`}
+                    target={media.url.startsWith('http') ? '_blank' : undefined}
+                    rel={media.url.startsWith('http') ? 'noreferrer' : undefined}
+                    onClick={() => setMoreMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-white hover:bg-white/10"
+                  >
+                    <Download className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Baixar arquivo</span>
+                  </a>
+                )}
+                {isAdmin && isOnlineStream && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setMoreMenuOpen(false)
+                      try {
+                        const isTorrent = media.url.startsWith('/api/addons/torrent-stream')
+                        if (isTorrent) {
+                          const qs = media.url.split('?')[1] || ''
+                          const infoHash = new URLSearchParams(qs).get('infoHash') || ''
+                          if (!infoHash) return
+                          setDownloadToast('Enviando para downloads...')
+                          const res = await fetch('/api/addons/download-local', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ infoHash, title: media.title }),
+                          })
+                          const data = await res.json().catch(() => null)
+                          setDownloadToast(
+                            res.ok
+                              ? data?.status === 'qbittorrent'
+                                ? 'Enviado para o qBittorrent!'
+                                : 'Download salvo na fila!'
+                              : data?.error || 'Falha ao iniciar download.',
+                          )
+                        } else {
+                          setDownloadToast('Adicionando à fila de download...')
+                          const res = await fetch('/api/addons/download-local', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: media.url, title: media.title }),
+                          })
+                          const data = await res.json().catch(() => null)
+                          setDownloadToast(res.ok ? 'Download iniciado no servidor!' : data?.error || 'Falha ao baixar.')
+                        }
+                      } catch {
+                        setDownloadToast('Falha ao conectar com a API de downloads.')
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                  >
+                    <Download className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Baixar pro Acervo</span>
+                  </button>
+                )}
+              </div>
             )}
             <button
               type="button"
@@ -1513,27 +1606,6 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const nextNight = !nightMode
-                  setNightMode(nextNight)
-                  if (compressorRef.current) {
-                    compressorRef.current.threshold.value = nextNight ? -32 : -18
-                    compressorRef.current.ratio.value = nextNight ? 10 : 4
-                  }
-                }}
-                title={nightMode ? 'Desativar Modo Noite' : 'Modo Noite (equilibra falas e explosões)'}
-                aria-label="Modo Noite"
-                className={`flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold text-white transition cursor-pointer ${
-                  nightMode
-                    ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)]/25 text-[var(--sc-accent)]'
-                    : 'border-white/15 bg-white/10 hover:bg-white/20'
-                }`}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Noite</span>
-              </button>
               {(media.showTitle || media.showSeasons) && currentTime < 240 && (
                 <button
                   type="button"
@@ -1620,25 +1692,6 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                 <Subtitles className="h-4 w-4" />
                 <span className="hidden sm:inline">Idioma e legendas</span>
               </button>
-              {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const video = videoRef.current
-                    if (!video) return
-                    if (document.pictureInPictureElement) {
-                      void document.exitPictureInPicture().catch(() => undefined)
-                    } else {
-                      void video.requestPictureInPicture().catch(() => undefined)
-                    }
-                  }}
-                  title="Modo Picture-in-Picture (janela flutuante)"
-                  aria-label="Modo Picture-in-Picture (janela flutuante)"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white hover:bg-white/20"
-                >
-                  <PictureInPicture2 className="h-4 w-4" />
-                </button>
-              )}
               <button
                 type="button"
                 onClick={toggleFullscreen}
@@ -1900,10 +1953,15 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
             </div>
             {remoteQrUrl && <img src={remoteQrUrl} alt="QR Controle Remoto" className="mx-auto h-36 w-36 rounded-lg bg-white p-1.5" />}
             <p className="m-0 text-[11px] text-white/70">
-              Escaneie com o celular para controlar Play, Pause, Volume e Avançar nesta tela.
+              Escaneie no mesmo Wi-Fi para controlar toda a sessão (Play, Pause, Volume e Próximo Ep).
             </p>
+            {remoteTargetUrl && (
+              <p className="m-0 break-all rounded bg-white/5 px-2 py-1 font-mono text-[10px] text-amber-300">
+                {remoteTargetUrl}
+              </p>
+            )}
             <a
-              href={`/?remote=${encodeURIComponent(remoteSession)}`}
+              href={remoteTargetUrl || `/?remote=${encodeURIComponent(remoteSession)}`}
               target="_blank"
               rel="noreferrer"
               className="inline-block rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/20"
