@@ -16,18 +16,11 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| P0 | **Segurança: Redirect-SSRF, DNS BlockList & CORS restrito** | `http-proxy`/`subtitle-proxy` validando cada hop (`redirect: 'manual'`), `net.BlockList` em IPs resolvidos e headers defensivos (`nosniff`, `Referrer-Policy`). |
-| P0 | **Banco isolado para E2E (`CINE_DB_PATH`)** | Testes Playwright rodando contra cópia temporária de `catalog.db`, sem risco de poluir dados reais. |
-| P1 | **Acessibilidade WCAG 2.2 (Modal Focus Trap + Seekbar + Smart TV)** | `Modal.tsx` com `aria-labelledby`, focus trap e restauração de foco; timeline `role="slider"` e cancelamento de auto-hide com `:focus-within`. |
-| P1 | **Unificação de Fluxo Online (remover `AddonStreamModal.tsx`)** | `OnlineCatalogView` e `ShowDetailView` usando `AddonDetailView`, eliminando 522 linhas legadas duplicadas. |
-| P2 | **UX: Remover do Continue Assistindo Local + Teclado em Dropdowns** | `DELETE /api/progress` + botão `×` no `MediaCarousel` local e navegação por setas no histórico de busca. |
-| P2 | **Performance: ETag/304 em `/api/catalog` & HWAccel FFmpeg** | `304 Not Modified` por versão do catálogo e detecção automática de NVENC/QSV/AMF para transcode H.265. |
-| P3 | **Features: Integração Debrid (Real-Debrid/TorBox) & Auto-Skip** | Token opcional no Admin para streaming instantâneo de torrents e preferência de áudio/legenda por perfil. |
-
-> Detalhamento técnico completo em `docs/backlog-exploratorio.md`.
+| — | Livre para novas ideias | Todos os itens de `docs/backlog-exploratorio.md` foram concluídos neste ciclo |
 
 ## Concluído
 
+- **Segurança, Banco Isolado E2E, WCAG 2.2, Unificação Online, ETag/HWAccel & Debrid (`security-url.mjs`, `test-e2e-isolated.mjs`, `Modal.tsx`, `AddonDetailView`, `VideoPlayer`, `api-server.mjs`)**: proteção redirect-SSRF + `net.BlockList`/DNS, CORS estrito + headers defensivos, `CINE_DB_PATH` + runner `test:e2e:isolated`, focus trap + `aria-labelledby` em modais, timeline `role="slider"`, remoção do legado `AddonStreamModal`, `DELETE /api/progress` no Continue assistindo local, setas no histórico de busca, `ETag/304` em `/api/library`, detecção de encoder GPU (`NVENC/QSV/AMF`), integração Debrid opcional e Auto-Skip/Abrir no VLC.
 - **Otimização de Streaming Addons/Torrent & Isolamento de TV/Séries (`torrent-stream.mjs`, `stremio-addons.mjs`, `api-server.mjs`, `OnlineCatalogView`, `AddonDetailView`, `VideoPlayer`)**: isolamento estrito de peças + prioridade do `moov` atom, 18 trackers, `POST /api/addons/torrent-prepare`, FFmpeg low-latency, proxy HTTP/HLS (`http-proxy`) e transcode (`http-transcode`) com `proxyHeaders`/`notWebReady`, circuit breaker em legendas, isolamento de catálogos `tv` na aba **TV / Ao Vivo**, remoção de episódios soltos/sem capa nas séries, ordenação inteligente + botão **Assistir Melhor Fonte**, telemetria de loading + **Trocar fonte agora** e auto-fallback em cascata (8s 0-peer e erro HTTP/codec).
 - **Avaliação/Indicação Direta nos Detalhes & Próximo Episódio Online (`SocialRecommendModal`, `AddonDetailView`)**: botão **Comentar / Indicar** dentro das páginas de detalhe local e online, selo **Preferido** por reputação de addon e avanço automático para o próximo episódio em séries dos addons.
 - **Personalização de Legendas, Persistência de Conexões, UI WebTorrent & Importação CSV**: fundo customizável de legendas (`Limpo`/`Suave`/`Escuro`), tabela `client_connections` no SQLite, formulário visual de limites WebTorrent e importação/exportação CSV Letterboxd/Trakt + 18 testes E2E Playwright.

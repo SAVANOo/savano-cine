@@ -184,6 +184,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
   const [remoteOpen, setRemoteOpen] = useState(false)
   const [remoteActive, setRemoteActive] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`savano-cine-auto-skip:${profileId}`) === '1'
+    } catch {
+      return false
+    }
+  })
+  const autoSkippedRef = useRef(false)
   const [remoteSession] = useState(() => {
     try {
       const saved = localStorage.getItem('savano-cine-remote-session')
@@ -1061,8 +1069,21 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           }}
           onTimeUpdate={() => {
             if (videoRef.current) {
-              setCurrentTime(transcodeOffsetRef.current + videoRef.current.currentTime)
+              const eff = transcodeOffsetRef.current + videoRef.current.currentTime
+              setCurrentTime(eff)
               syncMeasuredDuration(videoRef.current)
+              if (
+                autoSkipIntro &&
+                !autoSkippedRef.current &&
+                (media.showTitle || media.showSeasons || /T\d+:E\d+/i.test(media.title)) &&
+                eff >= 5 &&
+                eff < 20
+              ) {
+                autoSkippedRef.current = true
+                seekBy(85)
+                setSeekToast('Abertura pulada (+85s)')
+                window.setTimeout(() => setSeekToast(''), 2500)
+              }
             }
             saveProgress()
           }}
@@ -1370,6 +1391,37 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
                     {nightMode ? 'ON' : 'OFF'}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !autoSkipIntro
+                    setAutoSkipIntro(next)
+                    try {
+                      localStorage.setItem(`savano-cine-auto-skip:${profileId}`, next ? '1' : '0')
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/10 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <FastForward className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Auto-Pular Abertura</span>
+                  </span>
+                  <span className={`text-[10px] font-bold ${autoSkipIntro ? 'text-emerald-400' : 'text-white/50'}`}>
+                    {autoSkipIntro ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                {/^https?:\/\//i.test(media.url) && (
+                  <a
+                    href={`vlc://${media.url}`}
+                    onClick={() => setMoreMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-white hover:bg-white/10"
+                  >
+                    <Play className="h-4 w-4 text-[var(--sc-accent)]" />
+                    <span>Abrir no VLC</span>
+                  </a>
+                )}
                 {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
                   <button
                     type="button"

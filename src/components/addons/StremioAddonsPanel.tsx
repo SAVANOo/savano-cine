@@ -16,6 +16,10 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
   const [manifestUrl, setManifestUrl] = useState('')
   const [installing, setInstalling] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [debridProvider, setDebridProvider] = useState<'none' | 'realdebrid' | 'torbox' | 'alldebrid'>('none')
+  const [debridToken, setDebridToken] = useState('')
+  const [debridConfigured, setDebridConfigured] = useState(false)
+  const [debridStatusMsg, setDebridStatusMsg] = useState('')
 
   const loadAddons = useCallback(async () => {
     try {
@@ -34,6 +38,14 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
       .then((res) => (res.ok ? res.json() : []))
       .then((data: StremioAddonDescriptor[]) => {
         if (active) setAddons(data)
+      })
+      .catch(() => undefined)
+    fetch('/api/admin/debrid')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data) return
+        if (data.provider) setDebridProvider(data.provider)
+        setDebridConfigured(Boolean(data.configured))
       })
       .catch(() => undefined)
     return () => {
@@ -244,6 +256,69 @@ export function StremioAddonsPanel({ onPlayStream: _onPlayStream }: StremioAddon
               </div>
             </div>
           ))
+        )}
+      </div>
+
+      {/* Optional Debrid Integration */}
+      <div className="rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="m-0 text-sm font-bold text-[var(--sc-text-primary)]">
+              Integração Debrid (Opcional)
+            </h3>
+            <p className="mt-1 mb-0 text-xs text-[var(--sc-text-secondary)]">
+              Conecte Real-Debrid, TorBox ou AllDebrid para acelerar torrents raros e 4K via CDN HTTP.
+            </p>
+          </div>
+          {debridConfigured && (
+            <Badge tone="gold">Configurado ({debridProvider})</Badge>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Provedor Debrid"
+            value={debridProvider}
+            onChange={(e) => setDebridProvider(e.target.value as 'none' | 'realdebrid' | 'torbox' | 'alldebrid')}
+            className="h-9 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs text-[var(--sc-text-primary)]"
+          >
+            <option value="none">Desativado</option>
+            <option value="realdebrid">Real-Debrid</option>
+            <option value="torbox">TorBox</option>
+            <option value="alldebrid">AllDebrid</option>
+          </select>
+          <input
+            type="password"
+            value={debridToken}
+            onChange={(e) => setDebridToken(e.target.value)}
+            placeholder={debridConfigured ? 'Token salvo (digite novo para alterar)' : 'Cole sua API Key do Debrid'}
+            className="h-9 min-w-[220px] flex-1 rounded-[var(--sc-radius-sm)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 text-xs text-[var(--sc-text-primary)]"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={async () => {
+              setDebridStatusMsg('')
+              const res = await fetch('/api/admin/debrid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: debridProvider, token: debridToken }),
+              }).catch(() => null)
+              const data = res && res.ok ? await res.json().catch(() => null) : null
+              if (data?.ok) {
+                setDebridConfigured(Boolean(data.configured))
+                setDebridToken('')
+                setDebridStatusMsg('Configuração Debrid salva!')
+              } else {
+                setDebridStatusMsg('Falha ao salvar configuração Debrid.')
+              }
+            }}
+          >
+            Salvar Debrid
+          </Button>
+        </div>
+        {debridStatusMsg && (
+          <p className="mt-2 mb-0 text-xs text-emerald-400">{debridStatusMsg}</p>
         )}
       </div>
     </div>

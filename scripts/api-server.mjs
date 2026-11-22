@@ -83,6 +83,11 @@ ensureArtworkCandidatesTable()
 ensureWatchlistTable()
 ensureStremioAddonsTable(database)
 database.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS stremio_progress (
     profile_id TEXT NOT NULL,
     media_key TEXT NOT NULL,
@@ -286,6 +291,41 @@ async function handleApiRequest(request, response) {
       requestUrl.pathname.startsWith('/api/catalog/') ||
       requestUrl.pathname.startsWith('/api/artwork/'))
   if (isCatalogAdminWriteRoute && !requireAdmin(request, response)) return
+
+  if (requestUrl.pathname === '/api/admin/debrid' && request.method === 'GET') {
+    const provider = database.prepare("SELECT value FROM app_settings WHERE key = 'debrid_provider'").get()?.value || 'none'
+    const token = database.prepare("SELECT value FROM app_settings WHERE key = 'debrid_token'").get()?.value || ''
+    const maskedToken = token.length > 6 ? `${token.slice(0, 3)}***${token.slice(-3)}` : token ? '***' : ''
+    return send(response, 200, { provider, configured: Boolean(token && provider !== 'none'), maskedToken })
+  }
+
+  if (requestUrl.pathname === '/api/admin/debrid' && request.method === 'POST') {
+    let body
+    try {
+      body = await readJson(request)
+    } catch {
+      return send(response, 400, { error: 'JSON inválido.' })
+    }
+    const provider = ['none', 'realdebrid', 'torbox', 'alldebrid'].includes(body?.provider) ? body.provider : 'none'
+    const token = typeof body?.token === 'string' ? body.token.trim() : ''
+    database.prepare(`
+      INSERT INTO app_settings (key, value, updated_at) VALUES ('debrid_provider', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(provider)
+    if (token || provider === 'none') {
+      database.prepare(`
+        INSERT INTO app_settings (key, value, updated_at) VALUES ('debrid_token', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+      `).run(provider === 'none' ? '' : token)
+    }
+    return send(response, 200, { ok: true, provider, configured: Boolean((token || provider !== 'none')) })
+  }
+
+  if (requestUrl.pathname === '/api/addons/debrid-status' && request.method === 'GET') {
+    const provider = database.prepare("SELECT value FROM app_settings WHERE key = 'debrid_provider'").get()?.value || 'none'
+    const token = database.prepare("SELECT value FROM app_settings WHERE key = 'debrid_token'").get()?.value || ''
+    return send(response, 200, { provider, configured: Boolean(token && provider !== 'none') })
+  }
 
   if (requestUrl.pathname === '/api/health') {
     return send(response, 200, { status: 'ok', pinRequired: Boolean(accessPin) })
