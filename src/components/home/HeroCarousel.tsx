@@ -31,6 +31,7 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
 
   if (!active) return null
 
+  const hasRealBanner = Boolean(active.artwork.bannerUrl)
   const backdrop = active.artwork.bannerUrl || active.artwork.posterUrl
   const playable = Boolean(resolvePlayableMedia(active))
   const hasProgress = Boolean(active.resume) || (active.progress ?? 0) > 0
@@ -48,7 +49,9 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
           <img
             src={backdrop}
             alt={active.title}
-            className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500"
+            className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500 ${
+              hasRealBanner ? '' : 'scale-110 opacity-35 blur-2xl'
+            }`}
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-amber-950/45 via-neutral-900 to-black" />
@@ -57,7 +60,8 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
         <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-transparent to-black/30" />
 
         {/* Content */}
-        <div className="relative z-10 flex min-h-[340px] max-w-2xl flex-col justify-end p-6 sm:min-h-[410px] sm:p-10 lg:min-h-[450px]">
+        <div className="relative z-10 flex min-h-[340px] items-end justify-between gap-8 p-6 sm:min-h-[410px] sm:p-10 lg:min-h-[450px]">
+          <div className="flex max-w-2xl flex-col justify-end">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Badge tone="accent">{active.kind}</Badge>
             {active.year && <Badge tone="dark">{active.year}</Badge>}
@@ -101,6 +105,14 @@ export function HeroCarousel({ items, onPlay, onOpenDetails, onToggleWatchlist }
               </Button>
             )}
           </div>
+          </div>
+          {!hasRealBanner && active.artwork.posterUrl ? (
+            <img
+              src={active.artwork.posterUrl}
+              alt={active.title}
+              className="hidden aspect-[2/3] w-44 shrink-0 rounded-[var(--sc-radius-lg)] border border-white/15 object-cover shadow-2xl sm:block md:w-52"
+            />
+          ) : null}
         </div>
 
         {/* Carousel Navigation */}

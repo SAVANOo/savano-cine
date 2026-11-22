@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AddonMetaSummary } from './components/addons/AddonStreamModal'
 import { AddonCarouselRow } from './components/home/AddonCarouselRow'
@@ -148,6 +148,8 @@ export function App() {
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'year-desc'>('default')
   const [unwatchedOnly, setUnwatchedOnly] = useState(false)
   const [query, setQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const [searchHistoryRefresh, setSearchHistoryRefresh] = useState(0)
   const [catalogNotice, setCatalogNotice] = useState('')
   const [onlineContinueItems, setOnlineContinueItems] = useState<
     Array<{
@@ -852,7 +854,8 @@ export function App() {
   }, [catalog, dailySeed])
 
   const heroItems = useMemo(() => {
-    const withArt = catalog.filter((item) => item.artwork.bannerUrl || item.artwork.posterUrl)
+    const withBanner = catalog.filter((item) => Boolean(item.artwork.bannerUrl))
+    const withArt = withBanner.length > 0 ? withBanner : catalog.filter((item) => Boolean(item.artwork.posterUrl))
     const pool = withArt.length > 0 ? withArt : catalog
     if (pool.length <= 6) return pool
     const scoreHero = (id: string) => {
@@ -879,6 +882,62 @@ export function App() {
         }),
     [catalog],
   )
+
+  const searchHistoryKey = `savano-cine-search-history:${activeProfileId || 'default'}`
+  const searchHistoryList = useMemo(() => {
+    void searchHistoryRefresh
+    try {
+      const raw = JSON.parse(localStorage.getItem(searchHistoryKey) || '[]')
+      return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : []
+    } catch {
+      return [] as string[]
+    }
+  }, [searchHistoryKey, searchHistoryRefresh])
+
+  const saveSearchTerm = (term: string) => {
+    const clean = term.trim()
+    if (clean.length < 2) return
+    try {
+      const next = [clean, ...searchHistoryList.filter((item) => item.toLowerCase() !== clean.toLowerCase())].slice(0, 8)
+      localStorage.setItem(searchHistoryKey, JSON.stringify(next))
+      setSearchHistoryRefresh((n) => n + 1)
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const removeSearchTerm = (term: string) => {
+    try {
+      const next = searchHistoryList.filter((item) => item !== term)
+      localStorage.setItem(searchHistoryKey, JSON.stringify(next))
+      setSearchHistoryRefresh((n) => n + 1)
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    const clean = query.trim()
+    if (clean.length < 3) return
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(searchHistoryKey) || '[]')
+        const existing = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
+        const next = [clean, ...existing.filter((item) => item.toLowerCase() !== clean.toLowerCase())].slice(0, 8)
+        localStorage.setItem(searchHistoryKey, JSON.stringify(next))
+        setSearchHistoryRefresh((n) => n + 1)
+      } catch {
+        // ignore
+      }
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [query, searchHistoryKey])
+
+  const visibleSearchHistory = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return searchHistoryList
+    return searchHistoryList.filter((item) => item.toLowerCase().includes(q) && item.toLowerCase() !== q)
+  }, [query, searchHistoryList])
 
   const watchlistItems = useMemo(
     () => catalog.filter((item) => Boolean(item.inWatchlist)),
@@ -1050,15 +1109,83 @@ export function App() {
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--sc-text-muted)]" />
               <input
                 id="sc-search-input"
-                type="search"
+                type="text"
+                autoComplete="off"
+                name="savano-search-query"
                 value={query}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && query.trim().length >= 2) {
+                    saveSearchTerm(query)
+                    setSearchFocused(false)
+                  }
+                }}
                 onChange={(event) => {
                   setQuery(event.target.value)
                   setSelectedShow(null)
                 }}
                 placeholder="Buscar filmes, séries ou gêneros (/)"
-                className="h-10 w-full rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] pr-4 pl-10 text-sm text-white placeholder:text-[var(--sc-text-muted)] focus:border-white/35 focus:outline-none"
+                className="h-10 w-full rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] pr-9 pl-10 text-sm text-[var(--sc-text-primary)] placeholder:text-[var(--sc-text-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
               />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Limpar busca"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setQuery('')}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-[var(--sc-text-muted)] hover:text-[var(--sc-text-primary)] cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {searchFocused && visibleSearchHistory.length > 0 && (
+                <div className="absolute top-12 right-0 left-0 z-40 overflow-hidden rounded-[var(--sc-radius-lg)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] py-1.5 shadow-2xl backdrop-blur-xl">
+                  <div className="flex items-center justify-between px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--sc-text-muted)]">
+                    <span>Buscas de {activeProfile.name}</span>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        localStorage.removeItem(searchHistoryKey)
+                        setSearchHistoryRefresh((n) => n + 1)
+                      }}
+                      className="text-[var(--sc-accent)] hover:underline cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                  {visibleSearchHistory.map((term) => (
+                    <div
+                      key={term}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs text-[var(--sc-text-primary)] hover:bg-[var(--sc-bg-surface)]"
+                    >
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setQuery(term)
+                          setSelectedShow(null)
+                          setSearchFocused(false)
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+                      >
+                        <Search className="h-3.5 w-3.5 shrink-0 text-[var(--sc-text-muted)]" />
+                        <span className="truncate">{term}</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Remover ${term} do histórico`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => removeSearchTerm(term)}
+                        className="rounded p-1 text-[var(--sc-text-muted)] hover:bg-white/10 hover:text-[var(--sc-text-primary)] cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
