@@ -60,6 +60,7 @@ export function OnlineCatalogView({
   const [statusMessage, setStatusMessage] = useState('')
   const [pageSkip, setPageSkip] = useState(0)
   const [onlineProgress, setOnlineProgress] = useState<OnlineProgressEntry[]>([])
+  const [brokenPosters, setBrokenPosters] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     fetch(`/api/addons/progress?profileId=${encodeURIComponent(profileId)}`)
@@ -351,16 +352,21 @@ export function OnlineCatalogView({
               }}
               className="group overflow-hidden rounded-[var(--sc-radius-md)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-left transition hover:border-[var(--sc-accent)] cursor-pointer"
             >
-              <div className="aspect-[2/3] w-full bg-black/40">
-                {item.poster ? (
+              <div className="aspect-[2/3] w-full bg-gradient-to-br from-neutral-900 via-neutral-950 to-black">
+                {item.poster && !brokenPosters.has(item.poster) ? (
                   <img
                     src={item.poster}
                     alt={item.name}
+                    loading="lazy"
+                    onError={() =>
+                      setBrokenPosters((prev) => new Set(prev).add(item.poster!))
+                    }
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[var(--sc-text-muted)]">
-                    {item.type === 'series' ? <Tv className="h-8 w-8" /> : <Film className="h-8 w-8" />}
+                  <div className="flex h-full flex-col items-center justify-center p-3 text-center text-[var(--sc-text-muted)]">
+                    {item.type === 'series' ? <Tv className="mb-2 h-7 w-7 opacity-60" /> : <Film className="mb-2 h-7 w-7 opacity-60" />}
+                    <span className="line-clamp-3 text-xs font-bold text-white/85">{item.name}</span>
                   </div>
                 )}
               </div>

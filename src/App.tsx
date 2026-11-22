@@ -1699,6 +1699,21 @@ export function App() {
                   }
                 })}
                 onSelect={(item) => setActiveAddonItem(item)}
+                onRemove={(item) => {
+                  const match = onlineContinueItems.find((entry) => {
+                    const rawKey = String(entry.mediaKey || entry.contentKey || '')
+                    const cleanId = /^tt\d+:\d+:\d+$/.test(rawKey) ? rawKey.split(':')[0] : rawKey
+                    return cleanId === item.id && entry.title === item.name
+                  })
+                  const targetKey = String(match?.mediaKey || match?.contentKey || item.id)
+                  setOnlineContinueItems((prev) =>
+                    prev.filter((entry) => String(entry.mediaKey || entry.contentKey || '') !== targetKey),
+                  )
+                  void fetch(
+                    `/api/addons/progress?profileId=${encodeURIComponent(activeProfileId)}&mediaKey=${encodeURIComponent(targetKey)}`,
+                    { method: 'DELETE' },
+                  ).catch(() => undefined)
+                }}
               />
             )}
 
