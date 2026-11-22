@@ -854,6 +854,144 @@ async function handleApiRequest(request, response) {
     }
   }
 
+  if (requestUrl.pathname === '/api/addons/http-proxy' && request.method === 'GET') {
+    const target = requestUrl.searchParams.get('url') || ''
+    const headersParam = requestUrl.searchParams.get('headers') || ''
+    let parsed
+    try {
+      parsed = new URL(target)
+    } catch {
+      return send(response, 400, { error: 'URL inválida para proxy.' })
+    }
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isPrivateHostname(parsed.hostname)) {
+      return send(response, 400, { error: 'Host ou protocolo inválido para proxy.' })
+    }
+    const reqHeaders = {}
+    if (headersParam) {
+      try {
+        const extra = JSON.parse(headersParam)
+        for (const [k, v] of Object.entries(extra || {})) {
+          if (/^(referer|user-agent|origin|accept)$/i.test(k) && typeof v === 'string') {
+            reqHeaders[k] = v
+          }
+        }
+      } catch {
+        // ignore invalid headers json
+      }
+    }
+    if (request.headers.range) reqHeaders.Range = String(request.headers.range)
+    const ac = new AbortController()
+    request.on('close', () => ac.abort())
+    try {
+      const upstream = await fetch(parsed.toString(), { headers: reqHeaders, redirect: 'follow', signal: ac.signal })
+      const ct = upstream.headers.get('content-type') || 'application/octet-stream'
+      if (ct.includes('mpegurl') || parsed.pathname.toLowerCase().endsWith('.m3u8')) {
+        const text = await upstream.text()
+        const base = new URL(upstream.url || parsed.toString())
+        const rewritten = text
+          .split(/\r?\n/)
+          .map((line) => {
+            const trimmed = line.trim()
+            if (!trimmed || trimmed.startsWith('#')) return line
+            try {
+              const abs = new URL(trimmed, base).toString()
+              return `/api/addons/http-proxy?url=${encodeURIComponent(abs)}${headersParam ? `&headers=${encodeURIComponent(headersParam)}` : ''}`
+            } catch {
+              return line
+            }
+          })
+          .join('\n')
+        response.writeHead(upstream.status, {
+          'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8',
+          'Cache-Control': 'no-store',
+        })
+        return response.end(rewritten)
+      }
+      const outHeaders = {
+        'Content-Type': ct,
+        'Accept-Ranges': upstream.headers.get('accept-ranges') || 'bytes',
+        'Cache-Control': 'no-store',
+      }
+      const cl = upstream.headers.get('content-length')
+      const cr = upstream.headers.get('content-range')
+      if (cl) outHeaders['Content-Length'] = cl
+      if (cr) outHeaders['Content-Range'] = cr
+      response.writeHead(upstream.status, outHeaders)
+      if (!upstream.body) return response.end()
+      await pipeline(Readable.fromWeb(upstream.body), response).catch(() => undefined)
+      return
+    } catch {
+      if (!response.headersSent) {
+        return send(response, 502, { error: 'Falha ao carregar stream HTTP via proxy.' })
+      }
+      return
+    }
+  }
+
+  if (requestUrl.pathname === '/api/addons/http-transcode' && request.method === 'GET') {
+    const target = requestUrl.searchParams.get('url') || ''
+    const headersParam = requestUrl.searchParams.get('headers') || ''
+    let parsed
+    try {
+      parsed = new URL(target)
+    } catch {
+      return send(response, 400, { error: 'URL inválida para transcode.' })
+    }
+    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isPrivateHostname(parsed.hostname)) {
+      return send(response, 400, { error: 'Host ou protocolo inválido para transcode.' })
+    }
+    const headerLines = []
+    if (headersParam) {
+      try {
+        const extra = JSON.parse(headersParam)
+        for (const [k, v] of Object.entries(extra || {})) {
+          if (/^(referer|user-agent|origin|accept)$/i.test(k) && typeof v === 'string') {
+            headerLines.push(`${k}: ${v.replace(/[\r\n]/g, '')}`)
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    const ffArgs = ['-hide_banner', '-loglevel', 'error']
+    if (headerLines.length > 0) {
+      ffArgs.push('-headers', `${headerLines.join('\r\n')}\r\n`)
+    }
+    ffArgs.push(
+      '-probesize',
+      '500000',
+      '-analyzeduration',
+      '1000000',
+      '-i',
+      parsed.toString(),
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-crf',
+      '23',
+      '-c:a',
+      'aac',
+      '-ac',
+      '2',
+      '-movflags',
+      'frag_keyframe+empty_moov+default_base_moof',
+      '-f',
+      'mp4',
+      'pipe:1',
+    )
+    response.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store' })
+    const ff = spawn('ffmpeg', ffArgs, { windowsHide: true })
+    ff.stdout.pipe(response)
+    request.on('close', () => {
+      if (!ff.killed) ff.kill('SIGTERM')
+    })
+    ff.on('error', () => {
+      if (!response.headersSent) send(response, 500, { error: 'Falha ao transcodificar stream HTTP.' })
+    })
+    return
+  }
+
   if (requestUrl.pathname === '/api/addons/torrent-stream' && request.method === 'GET') {
     const infoHash = requestUrl.searchParams.get('infoHash') || ''
     const fileIdxRaw = requestUrl.searchParams.get('fileIdx')

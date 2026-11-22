@@ -465,6 +465,15 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
       return streams.map((stream) => {
         const titleStr = String(stream.title || stream.description || stream.name || 'Stream')
         const health = parseStreamHealth(`${stream.name || ''} ${titleStr}`)
+        const rawProxyHeaders = stream.behaviorHints?.proxyHeaders?.request
+        const proxyHeaders =
+          rawProxyHeaders && typeof rawProxyHeaders === 'object'
+            ? Object.fromEntries(
+                Object.entries(rawProxyHeaders).filter(
+                  ([k, v]) => /^(referer|user-agent|origin|accept)$/i.test(k) && typeof v === 'string',
+                ),
+              )
+            : null
         return {
           addonId: addon.id,
           addonName: addon.name,
@@ -472,6 +481,9 @@ export async function queryAddonStreams(database, { type, id, addonId }) {
           title: titleStr,
           url: isSafeHttpUrl(stream.url) ? stream.url : null,
           isDirectHttp: isSafeHttpUrl(stream.url),
+          externalUrl: isSafeHttpUrl(stream.externalUrl) ? stream.externalUrl : null,
+          proxyHeaders: proxyHeaders && Object.keys(proxyHeaders).length > 0 ? proxyHeaders : null,
+          notWebReady: Boolean(stream.behaviorHints?.notWebReady),
           ytId:
             typeof stream.ytId === 'string' && /^[a-zA-Z0-9_-]{6,20}$/.test(stream.ytId)
               ? stream.ytId
@@ -514,25 +526,37 @@ export async function queryAddonSubtitles(database, { type, id }) {
   )
 
   const settled = await Promise.allSettled(
-    targets.map(async (addon) => {
-      const url = `${addon.baseUrl}/subtitles/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
-      const response = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(7000),
-      })
-      if (!response.ok) return []
-      const payload = await response.json().catch(() => ({}))
-      const subs = Array.isArray(payload?.subtitles) ? payload.subtitles : []
-      return subs
-        .filter((sub) => isSafeHttpUrl(sub?.url))
-        .map((sub) => ({
-          addonId: addon.id,
-          addonName: addon.name,
-          id: String(sub.id || sub.url),
-          lang: String(sub.lang || 'und'),
-          url: sub.url,
-        }))
-    }),
+    targets
+      .filter((addon) => !isAddonInCooldown(addon.id))
+      .map(async (addon) => {
+        const started = Date.now()
+        const url = `${addon.baseUrl}/subtitles/${encodeURIComponent(type)}/${encodeURIComponent(id)}.json`
+        try {
+          const response = await fetch(url, {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(4500),
+          })
+          if (!response.ok) {
+            recordAddonOutcome(addon.id, false, Date.now() - started)
+            return []
+          }
+          recordAddonOutcome(addon.id, true, Date.now() - started)
+          const payload = await response.json().catch(() => ({}))
+          const subs = Array.isArray(payload?.subtitles) ? payload.subtitles : []
+          return subs
+            .filter((sub) => isSafeHttpUrl(sub?.url))
+            .map((sub) => ({
+              addonId: addon.id,
+              addonName: addon.name,
+              id: String(sub.id || sub.url),
+              lang: String(sub.lang || 'und'),
+              url: sub.url,
+            }))
+        } catch {
+          recordAddonOutcome(addon.id, false, Date.now() - started)
+          return []
+        }
+      }),
   )
 
   return settled
