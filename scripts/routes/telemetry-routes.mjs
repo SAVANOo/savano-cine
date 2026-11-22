@@ -71,50 +71,61 @@ export async function handleTelemetryRoutes({ request, response, requestUrl, dat
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertBatch = database.transaction((items) => {
+    const insertBatch = (items) => {
       let count = 0
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue
-        const sessionId = safeStr(item.sessionId, 80) || 'unknown'
-        const category = safeStr(item.category, 32) || 'interaction'
-        const name = safeStr(item.name, 80) || 'unknown'
-        const ts = safeStr(item.ts, 40) || new Date().toISOString()
-        const durationMs =
-          typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) && item.durationMs >= 0
-            ? Math.round(item.durationMs)
-            : null
-        const rapidCount =
-          typeof item.rapidCount === 'number' && Number.isFinite(item.rapidCount) && item.rapidCount >= 1
-            ? Math.min(99, Math.floor(item.rapidCount))
-            : 1
-        let metaJson = null
-        if (item.meta && typeof item.meta === 'object') {
-          try {
-            metaJson = JSON.stringify(item.meta).slice(0, 2000)
-          } catch {
-            metaJson = null
+      database.exec('BEGIN')
+      try {
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue
+          const sessionId = safeStr(item.sessionId, 80) || 'unknown'
+          const category = safeStr(item.category, 32) || 'interaction'
+          const name = safeStr(item.name, 80) || 'unknown'
+          const ts = safeStr(item.ts, 40) || new Date().toISOString()
+          const durationMs =
+            typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) && item.durationMs >= 0
+              ? Math.round(item.durationMs)
+              : null
+          const rapidCount =
+            typeof item.rapidCount === 'number' && Number.isFinite(item.rapidCount) && item.rapidCount >= 1
+              ? Math.min(99, Math.floor(item.rapidCount))
+              : 1
+          let metaJson = null
+          if (item.meta && typeof item.meta === 'object') {
+            try {
+              metaJson = JSON.stringify(item.meta).slice(0, 2000)
+            } catch {
+              metaJson = null
+            }
           }
+          insert.run(
+            safeStr(item.eventId, 80),
+            sessionId,
+            safeStr(item.profileId, 80),
+            ts,
+            category,
+            name,
+            safeStr(item.flowId, 80),
+            safeStr(item.flowName, 80),
+            safeStr(item.status, 32),
+            durationMs,
+            safeStr(item.targetId, 120),
+            safeStr(item.view, 120),
+            rapidCount,
+            metaJson,
+          )
+          count += 1
         }
-        insert.run(
-          safeStr(item.eventId, 80),
-          sessionId,
-          safeStr(item.profileId, 80),
-          ts,
-          category,
-          name,
-          safeStr(item.flowId, 80),
-          safeStr(item.flowName, 80),
-          safeStr(item.status, 32),
-          durationMs,
-          safeStr(item.targetId, 120),
-          safeStr(item.view, 120),
-          rapidCount,
-          metaJson,
-        )
-        count += 1
+        database.exec('COMMIT')
+        return count
+      } catch (err) {
+        try {
+          database.exec('ROLLBACK')
+        } catch {
+          // ignore rollback error
+        }
+        throw err
       }
-      return count
-    })
+    }
 
     const accepted = insertBatch(rawEvents)
     send(response, 202, { accepted })

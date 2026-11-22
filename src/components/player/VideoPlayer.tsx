@@ -676,13 +676,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
     const currentVideoPos = transcodeOffsetRef.current + (videoRef.current?.currentTime ?? 0)
     const effectivePos = currentVideoPos > 1 ? currentVideoPos : lastKnownTimeRef.current
     sourceSwitchCountRef.current += 1
+    lastKnownTimeRef.current = effectivePos
     trackPlayerEvent('player_source_switch', {
       targetId: media.title,
       meta: { switchCount: sourceSwitchCountRef.current, positionSec: Math.round(effectivePos) },
     })
     transcodeOffsetRef.current = 0
     setTranscodeOffset(0)
-    pendingPosition.current = effectivePos
+    pendingPosition.current = effectivePos > 1 ? effectivePos : null
     retriedTorrentInfoRef.current = false
     torrentStatsRef.current = null
     setTorrentStats(null)
@@ -705,12 +706,14 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
 
   useEffect(() => {
     if (!isLoadingMedia || playbackError || !playbackUrl.includes('/api/addons/torrent-')) return
+    // Only auto-fallback when the initial load has zero peers; never swap sources mid-movie during a seek/reconnect
+    if (lastKnownTimeRef.current > 5) return
     const timer = window.setTimeout(() => {
       const stats = torrentStatsRef.current
       if (!stats || (stats.numPeers === 0 && stats.downloadSpeed === 0)) {
         tryNextAlternativeSource('Fonte sem peers — tentando próxima...')
       }
-    }, 8000)
+    }, 18000)
     return () => window.clearTimeout(timer)
   }, [isLoadingMedia, playbackError, playbackUrl, tryNextAlternativeSource])
 
@@ -1198,6 +1201,16 @@ export function VideoPlayer({ media, profileId, isAdmin = false, capabilities, o
           }}
           onLoadedMetadata={() => {
             if (videoRef.current) {
+              if (videoRef.current.videoWidth === 0 && videoRef.current.videoHeight === 0) {
+                trackPlayerEvent('player_error', {
+                  targetId: media.title,
+                  status: 'error',
+                  meta: { reason: 'black_screen_no_video_track', positionSec: Math.round(lastKnownTimeRef.current) },
+                })
+                if (tryNextAlternativeSource('Vídeo sem imagem (codec incompatível) — tentando próxima...')) {
+                  return
+                }
+              }
               videoRef.current.playbackRate = playbackRate
               if (volume !== 1 || muted) {
                 applyVolume(volume, muted)
