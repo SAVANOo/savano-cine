@@ -79,7 +79,7 @@ export function AddonCarouselRow({
 
         <div
           ref={trackRef}
-          className="no-scrollbar flex gap-3.5 overflow-x-auto scroll-smooth pb-2"
+          className="sc-no-scrollbar flex gap-3.5 overflow-x-auto scroll-smooth pb-2"
         >
           {items.map((item) => (
             <button

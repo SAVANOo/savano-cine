@@ -287,11 +287,13 @@ export async function fetchAddonCatalog(database, addonId, { type, catalogId, se
   }
   const payload = await response.json()
   const rawMetas = Array.isArray(payload?.metas) ? payload.metas : []
-  const promoMetaRe = /\b(?:livepix|apoie o canal|doa[cç][aã]o|no results? returned)\b/i
+  const promoMetaRe = /\b(?:livepix|apoie o canal|doa[cç][aã]o|no results? returned|error loading content|no content)\b/i
   const looseEpisodeRe = /\b(?:S\d{1,2}\s*E\d{1,2}|T\d{1,2}\s*E[P]?\d{1,2}|EP\.?\s*\d{1,3})\b/i
   const metas = rawMetas.filter((meta) => {
-    const name = String(meta?.name || meta?.title || '')
-    if (promoMetaRe.test(name)) return false
+    const name = String(meta?.name || meta?.title || '').trim()
+    const release = String(meta?.releaseInfo || '')
+    if (!name || promoMetaRe.test(name)) return false
+    if (/\b(?:at|vs\.?)\b/i.test(name) && /\d{4}-\d{2}-\d{2}/.test(release)) return false
     if (type === 'series' && !meta?.poster) return false
     if (type === 'series' && looseEpisodeRe.test(name)) return false
     return true

@@ -1,4 +1,4 @@
-import { Flame, Ghost, Heart, Info, Laugh, Play, RefreshCw, Rocket, Shuffle, Sparkles } from 'lucide-react'
+import { Flame, Ghost, Heart, Info, Laugh, Play, RefreshCw, Rocket, Shuffle, Sparkles, ThumbsDown, ThumbsUp, Trophy } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { LibraryItem } from '../../domain/catalog'
 import type { OnlineMetaDiscoveryItem } from '../../hooks/useOnlineCatalogDiscovery'
@@ -93,6 +93,46 @@ function normalize(value: string): string {
     .toLowerCase()
 }
 
+const PT_TO_EN_THEMES: Array<{ match: RegExp; queries: string[] }> = [
+  { match: /\b(maconha|erva|cannabis|weed|stoner|baseado|fumar|brisa)\b/i, queries: ['weed', 'stoner', 'cannabis', 'pineapple express', 'harold kumar', 'cheech chong'] },
+  { match: /\b(zumbi|zumbis|morto vivo)\b/i, queries: ['zombie', 'dead'] },
+  { match: /\b(viagem no tempo|tempo|futuro)\b/i, queries: ['time travel', 'back to the future'] },
+  { match: /\b(cachorro|cao|pet|animal)\b/i, queries: ['dog', 'puppy'] },
+  { match: /\b(escola|faculdade|colegio|adolescente)\b/i, queries: ['high school', 'college', 'superbad'] },
+  { match: /\b(natal|papai noel)\b/i, queries: ['christmas'] },
+  { match: /\b(mafia|gangster|crime)\b/i, queries: ['mafia', 'gangster'] },
+  { match: /\b(pirata|navio)\b/i, queries: ['pirate'] },
+  { match: /\b(luta|artes marciais|kung fu|karate)\b/i, queries: ['kung fu', 'martial arts'] },
+  { match: /\b(espaco|alien|nave)\b/i, queries: ['space', 'alien'] },
+]
+
+const QUICK_CHIPS = [
+  { label: '🌿 Brisa & Comédia', query: 'maconha', mood: 'comedy' },
+  { label: '🧠 Plot Twist', query: 'mistério', mood: 'scifi' },
+  { label: '🚀 Viagem no Tempo', query: 'viagem no tempo', mood: 'scifi' },
+  { label: '🧟 Zumbis', query: 'zumbi', mood: 'horror' },
+  { label: '🥊 Artes Marciais', query: 'luta', mood: 'action' },
+]
+
+function openCandidateItem(
+  entry: PickCandidate,
+  onPlayLocal: (item: LibraryItem) => void,
+  onOpenOnlineItem: (item: AddonMetaSummary) => void,
+) {
+  if (entry.source === 'local') {
+    onPlayLocal(entry.item)
+    return
+  }
+  onOpenOnlineItem({
+    id: entry.item.id,
+    type: entry.item.type,
+    name: entry.item.name,
+    poster: entry.item.poster,
+    description: entry.item.description || '',
+    releaseInfo: entry.item.releaseInfo,
+  })
+}
+
 /** Interactive "Surprise Me" discovery page where users pick a mood or describe what to watch. */
 export function SurprisePickerView({
   localCatalog,
@@ -107,7 +147,13 @@ export function SurprisePickerView({
   const [kindFilter, setKindFilter] = useState<'all' | 'movie' | 'series'>('all')
   const [unwatchedOnly, setUnwatchedOnly] = useState(true)
   const [rolling, setRolling] = useState(false)
-  const [onlinePromptResults, setOnlinePromptResults] = useState<OnlineMetaDiscoveryItem[]>([])
+  const [discoveryMode, setDiscoveryMode] = useState<'roulette' | 'swipe' | 'battle'>('roulette')
+  const [swipeIndex, setSwipeIndex] = useState(0)
+  const [likedPicks, setLikedPicks] = useState<PickCandidate[]>([])
+  const [battleRound, setBattleRound] = useState<PickCandidate[]>([])
+  const [battleWinners, setBattleWinners] = useState<PickCandidate[]>([])
+  const [battleChampion, setBattleChampion] = useState<PickCandidate | null>(null)
+  const [onlinePromptResults, setOnlinePromptResults] = useState<Array<OnlineMetaDiscoveryItem & { genres?: string[] }>>([])
   const [currentPick, setCurrentPick] = useState<PickCandidate | null>(null)
   const [history, setHistory] = useState<PickCandidate[]>([])
 
@@ -118,12 +164,30 @@ export function SurprisePickerView({
     }
     let cancelled = false
     const timer = window.setTimeout(() => {
-      fetch(`/api/addons/search?q=${encodeURIComponent(q)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { results?: OnlineMetaDiscoveryItem[] } | null) => {
-          if (!cancelled && Array.isArray(data?.results)) {
-            setOnlinePromptResults(data.results)
-          }
+      const themeHit = PT_TO_EN_THEMES.find((t) => t.match.test(q))
+      const searchQueries = themeHit ? [q, ...themeHit.queries.slice(0, 3)] : [q]
+      Promise.all(
+        searchQueries.map((sq) =>
+          fetch(`/api/addons/search?q=${encodeURIComponent(sq)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: { metas?: Array<OnlineMetaDiscoveryItem & { genres?: string[] }> } | null) =>
+              Array.isArray(data?.metas)
+                ? data.metas.map((m) => ({ ...m, addonName: m.addonName || 'Cinemeta' }))
+                : [],
+            )
+            .catch(() => []),
+        ),
+      )
+        .then((chunks) => {
+          if (cancelled) return
+          const seen = new Set<string>()
+          const merged = chunks.flat().filter((item) => {
+            const key = `${item.type}:${item.id}`
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          setOnlinePromptResults(merged)
         })
         .catch(() => undefined)
     }, 250)
@@ -174,10 +238,9 @@ export function SurprisePickerView({
     }
 
     if (sourceScope !== 'local') {
-      const mergedOnline = new Map<string, OnlineMetaDiscoveryItem>()
-      const activeOnline = promptText.trim().length >= 2 && onlinePromptResults.length > 0
-        ? [...onlinePromptResults, ...onlineTrending]
-        : onlineTrending
+      const mergedOnline = new Map<string, OnlineMetaDiscoveryItem & { genres?: string[] }>()
+      const hasPromptSearch = promptText.trim().length >= 2 && onlinePromptResults.length > 0
+      const activeOnline = hasPromptSearch ? onlinePromptResults : onlineTrending
       for (const item of activeOnline) {
         const key = `${item.type}:${item.id}`
         if (!mergedOnline.has(key)) mergedOnline.set(key, item)
@@ -185,13 +248,19 @@ export function SurprisePickerView({
       for (const item of mergedOnline.values()) {
         if (kindFilter === 'movie' && item.type !== 'movie') continue
         if (kindFilter === 'series' && item.type === 'movie') continue
-        const textBlob = normalize(`${item.name} ${item.description || ''} ${item.addonName}`)
-        let score = 2
+        const itemGenres = (item.genres ?? []).map((g) => g.toLowerCase())
+        const textBlob = normalize(`${item.name} ${item.description || ''} ${(item.genres ?? []).join(' ')} ${item.addonName}`)
+        let score = hasPromptSearch ? 8 : 2
+        if (targetGenres.size > 0 && itemGenres.some((g) => targetGenres.has(g))) {
+          score += 6
+        }
         for (const word of queryWords) {
           if (textBlob.includes(word)) score += 6
         }
         if (item.poster) score += 2
-        pool.push({ candidate: { source: 'online', key: `online:${item.type}:${item.id}`, item }, score })
+        if (hasPromptSearch || targetGenres.size === 0 || score > 4 || queryWords.length === 0) {
+          pool.push({ candidate: { source: 'online', key: `online:${item.type}:${item.id}`, item }, score })
+        }
       }
     }
 
@@ -234,9 +303,58 @@ export function SurprisePickerView({
             Escolha um clima ou descreva o que quer assistir para sortear uma recomendação visual do acervo local ou online.
           </p>
         </div>
-        <span className="rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1 text-xs font-semibold text-[var(--sc-text-secondary)]">
-          {candidates.length} sugestão(ões) encontrada(s)
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              { id: 'roulette', label: '🎰 Roleta', icon: Shuffle },
+              { id: 'swipe', label: '🔥 Swipe (Curti/Pular)', icon: ThumbsUp },
+              { id: 'battle', label: '🏆 Batalha 1v1', icon: Trophy },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => {
+                setDiscoveryMode(mode.id)
+                if (mode.id === 'swipe') setSwipeIndex(0)
+                if (mode.id === 'battle') {
+                  const bracket = [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
+                  setBattleRound(bracket)
+                  setBattleWinners([])
+                  setBattleChampion(bracket.length === 1 ? bracket[0] : null)
+                }
+              }}
+              className={`rounded-full border px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                discoveryMode === mode.id
+                  ? 'border-[var(--sc-accent)] bg-[var(--sc-accent)] text-black'
+                  : 'border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] text-[var(--sc-text-secondary)] hover:text-white'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+          <span className="rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1 text-xs font-semibold text-[var(--sc-text-secondary)]">
+            {candidates.length} sugestão(ões) encontrada(s)
+          </span>
+        </div>
+      </div>
+
+      {/* Quick Theme Chips */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold text-[var(--sc-text-muted)]">Ideias rápidas:</span>
+        {QUICK_CHIPS.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => {
+              setSelectedMoodId(chip.mood)
+              setPromptText(chip.query)
+            }}
+            className="rounded-full border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-surface)] px-3 py-1 text-xs font-semibold text-[var(--sc-text-primary)] transition hover:border-[var(--sc-accent)] cursor-pointer"
+          >
+            {chip.label}
+          </button>
+        ))}
       </div>
 
       {/* Mood Cards Grid */}
@@ -316,8 +434,178 @@ export function SurprisePickerView({
         </div>
       </div>
 
-      {/* Picked Suggestion Showcase */}
-      {rolling ? (
+      {/* Picked Suggestion Showcase / Interactive Modes */}
+      {discoveryMode === 'swipe' ? (
+        <div className="space-y-4">
+          {candidates.length === 0 ? (
+            <div className="rounded-[var(--sc-radius-xl)] border border-dashed border-[var(--sc-border-subtle)] p-10 text-center text-sm text-[var(--sc-text-secondary)]">
+              Nenhum título encontrado para esse filtro. Tente outro clima ou palavra-chave.
+            </div>
+          ) : (() => {
+            const card = candidates[swipeIndex % candidates.length]
+            const isLocal = card.source === 'local'
+            const title = isLocal ? card.item.title : card.item.name
+            const poster = isLocal ? card.item.artwork.posterUrl : card.item.poster
+            const overview = isLocal ? card.item.overview : card.item.description
+            const year = isLocal ? card.item.year : card.item.releaseInfo
+            return (
+              <div className="mx-auto max-w-md rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-5 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between text-xs text-[var(--sc-text-muted)]">
+                  <span>Carta {(swipeIndex % candidates.length) + 1} de {candidates.length}</span>
+                  <span>{likedPicks.length} curtido(s)</span>
+                </div>
+                <div className="overflow-hidden rounded-[var(--sc-radius-lg)] border border-white/10 bg-black/50">
+                  {poster ? (
+                    <img src={poster} alt={title} className="aspect-[2/3] w-full object-cover" />
+                  ) : (
+                    <div className="flex aspect-[2/3] items-center justify-center p-4 text-center text-sm text-white/60">{title}</div>
+                  )}
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="m-0 truncate text-lg font-black text-[var(--sc-text-primary)]">{title}</h2>
+                    {year ? <Badge tone="neutral">{year}</Badge> : null}
+                  </div>
+                  <p className="m-0 line-clamp-3 text-xs text-[var(--sc-text-secondary)]">
+                    {overview || 'Clique em Quero Ver para guardar ou assistir agora.'}
+                  </p>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setSwipeIndex((i) => i + 1)}>
+                    <ThumbsDown className="h-4 w-4 text-red-400" />
+                    Pular
+                  </Button>
+                  <Button type="button" variant="primary" onClick={() => openCandidateItem(card, onPlayLocal, onOpenOnlineItem)}>
+                    <Play className="h-4 w-4 fill-current" />
+                    Assistir
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="light"
+                    onClick={() => {
+                      setLikedPicks((prev) => [card, ...prev.filter((p) => p.key !== card.key)].slice(0, 8))
+                      setSwipeIndex((i) => i + 1)
+                    }}
+                  >
+                    <ThumbsUp className="h-4 w-4 text-emerald-600" />
+                    Curti!
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+          {likedPicks.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="m-0 text-xs font-bold uppercase tracking-wider text-[var(--sc-accent)]">
+                Seus Matches ({likedPicks.length})
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {likedPicks.map((p) => {
+                  const title = p.source === 'local' ? p.item.title : p.item.name
+                  return (
+                    <Button
+                      key={`liked-${p.key}`}
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openCandidateItem(p, onPlayLocal, onOpenOnlineItem)}
+                    >
+                      <Play className="h-3 w-3" />
+                      {title}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : discoveryMode === 'battle' ? (
+        <div className="space-y-4">
+          {battleChampion ? (
+            <div className="mx-auto max-w-lg rounded-[var(--sc-radius-xl)] border border-[var(--sc-accent)]/60 bg-[var(--sc-bg-elevated)] p-6 text-center shadow-2xl">
+              <Trophy className="mx-auto mb-2 h-8 w-8 text-[var(--sc-accent)]" />
+              <p className="m-0 text-xs font-bold uppercase tracking-widest text-[var(--sc-accent)]">Campeão da Batalha</p>
+              <h2 className="mt-1 mb-3 text-2xl font-black text-white">
+                {battleChampion.source === 'local' ? battleChampion.item.title : battleChampion.item.name}
+              </h2>
+              <div className="flex justify-center gap-3">
+                <Button type="button" variant="primary" onClick={() => openCandidateItem(battleChampion, onPlayLocal, onOpenOnlineItem)}>
+                  <Play className="h-4 w-4 fill-current" />
+                  Assistir Campeão
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const bracket = [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
+                    setBattleRound(bracket)
+                    setBattleWinners([])
+                    setBattleChampion(bracket.length === 1 ? bracket[0] : null)
+                  }}
+                >
+                  Nova Batalha
+                </Button>
+              </div>
+            </div>
+          ) : battleRound.length >= 2 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-[var(--sc-text-muted)]">
+                <span>Batalha 1v1 · {battleRound.length} na disputa</span>
+                <span>Escolha o melhor!</span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {battleRound.slice(0, 2).map((contender) => {
+                  const isLocal = contender.source === 'local'
+                  const title = isLocal ? contender.item.title : contender.item.name
+                  const poster = isLocal ? contender.item.artwork.posterUrl : contender.item.poster
+                  const year = isLocal ? contender.item.year : contender.item.releaseInfo
+                  return (
+                    <button
+                      key={`battle-${contender.key}`}
+                      type="button"
+                      onClick={() => {
+                        const nextWinners = [...battleWinners, contender]
+                        const remaining = battleRound.slice(2)
+                        if (remaining.length >= 2) {
+                          setBattleRound(remaining)
+                          setBattleWinners(nextWinners)
+                        } else {
+                          const promoted = [...nextWinners, ...remaining]
+                          if (promoted.length <= 1) {
+                            setBattleChampion(promoted[0] ?? contender)
+                            setBattleRound([])
+                            setBattleWinners([])
+                          } else {
+                            setBattleRound(promoted)
+                            setBattleWinners([])
+                          }
+                        }
+                      }}
+                      className="group flex flex-col overflow-hidden rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] text-left transition hover:border-[var(--sc-accent)] hover:scale-[1.01] cursor-pointer"
+                    >
+                      <div className="aspect-[16/10] w-full overflow-hidden bg-black/60">
+                        {poster ? (
+                          <img src={poster} alt={title} className="h-full w-full object-cover transition group-hover:scale-105" />
+                        ) : null}
+                      </div>
+                      <div className="p-4">
+                        <p className="m-0 text-base font-black text-[var(--sc-text-primary)]">{title}</p>
+                        <p className="mt-1 mb-0 text-xs font-semibold text-[var(--sc-accent)]">
+                          {year ? `${year} · ` : ''}Votar neste →
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[var(--sc-radius-xl)] border border-dashed border-[var(--sc-border-subtle)] p-10 text-center text-sm text-[var(--sc-text-secondary)]">
+              Poucos títulos disponíveis para batalha neste filtro. Tente ampliar para "Surpreenda-me".
+            </div>
+          )}
+        </div>
+      ) : rolling ? (
         <div className="rounded-[var(--sc-radius-xl)] border border-[var(--sc-border-subtle)] bg-[var(--sc-bg-elevated)] p-10">
           <SavanoLoader label="Escolhendo algo especial para você..." />
         </div>
