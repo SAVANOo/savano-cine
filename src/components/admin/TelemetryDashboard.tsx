@@ -104,8 +104,26 @@ export function TelemetryDashboard() {
   }, [hours, categoryFilter])
 
   useEffect(() => {
-    void loadData()
-  }, [loadData])
+    let active = true
+    Promise.all([
+      fetch(`/api/telemetry/summary?hours=${hours}`),
+      fetch(`/api/telemetry/events?category=${encodeURIComponent(categoryFilter)}&limit=80`),
+    ])
+      .then(async ([sumRes, evRes]) => {
+        if (!active) return
+        if (sumRes.ok) {
+          setSummary((await sumRes.json()) as TelemetrySummary)
+        }
+        if (evRes.ok) {
+          const rows = (await evRes.json()) as TelemetryEventRow[]
+          setEvents(Array.isArray(rows) ? rows : [])
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [hours, categoryFilter])
 
   const clearLogs = async () => {
     await fetch('/api/telemetry/events', { method: 'DELETE' }).catch(() => undefined)
