@@ -16,7 +16,15 @@ com atualização do insight atual, riscos encontrados e próximo plano.
 
 | Prioridade | Cartão | Resultado esperado |
 | --- | --- | --- |
-| — | Livre para novas ideias | Novos cartões serão adicionados conforme feedback de uso real |
+| P0 | **Segurança: Redirect-SSRF, DNS BlockList & CORS restrito** | `http-proxy`/`subtitle-proxy` validando cada hop (`redirect: 'manual'`), `net.BlockList` em IPs resolvidos e headers defensivos (`nosniff`, `Referrer-Policy`). |
+| P0 | **Banco isolado para E2E (`CINE_DB_PATH`)** | Testes Playwright rodando contra cópia temporária de `catalog.db`, sem risco de poluir dados reais. |
+| P1 | **Acessibilidade WCAG 2.2 (Modal Focus Trap + Seekbar + Smart TV)** | `Modal.tsx` com `aria-labelledby`, focus trap e restauração de foco; timeline `role="slider"` e cancelamento de auto-hide com `:focus-within`. |
+| P1 | **Unificação de Fluxo Online (remover `AddonStreamModal.tsx`)** | `OnlineCatalogView` e `ShowDetailView` usando `AddonDetailView`, eliminando 522 linhas legadas duplicadas. |
+| P2 | **UX: Remover do Continue Assistindo Local + Teclado em Dropdowns** | `DELETE /api/progress` + botão `×` no `MediaCarousel` local e navegação por setas no histórico de busca. |
+| P2 | **Performance: ETag/304 em `/api/catalog` & HWAccel FFmpeg** | `304 Not Modified` por versão do catálogo e detecção automática de NVENC/QSV/AMF para transcode H.265. |
+| P3 | **Features: Integração Debrid (Real-Debrid/TorBox) & Auto-Skip** | Token opcional no Admin para streaming instantâneo de torrents e preferência de áudio/legenda por perfil. |
+
+> Detalhamento técnico completo em `docs/backlog-exploratorio.md`.
 
 ## Concluído
 
