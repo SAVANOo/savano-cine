@@ -1,6 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+val keystoreProps = Properties()
+val keystorePropsFile = rootProject.file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.inputStream().use { keystoreProps.load(it) }
+}
+
+fun resolveSigningValue(propKey: String, envKey: String): String? {
+    val fromProp = keystoreProps.getProperty(propKey)?.trim()
+    if (!fromProp.isNullOrEmpty()) return fromProp
+    val fromEnv = System.getenv(envKey)?.trim()
+    return if (!fromEnv.isNullOrEmpty()) fromEnv else null
 }
 
 android {
@@ -11,8 +26,12 @@ android {
         applicationId = "com.savanocine.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 10000
+        versionName = "1.0.0"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildFeatures {
@@ -21,19 +40,30 @@ android {
 
     signingConfigs {
         create("release") {
-            val ksFile = file("C:/Android/savano-cine-release.jks")
-            if (ksFile.exists()) {
-                storeFile = ksFile
-                storePassword = "savanocine-local-key"
-                keyAlias = "savanocine"
-                keyPassword = "savanocine-local-key"
+            val storePath = resolveSigningValue("storeFile", "SAVANO_CINE_KEYSTORE_PATH")
+            val storePass = resolveSigningValue("storePassword", "SAVANO_CINE_KEYSTORE_PASSWORD")
+            val alias = resolveSigningValue("keyAlias", "SAVANO_CINE_KEY_ALIAS")
+            val keyPass = resolveSigningValue("keyPassword", "SAVANO_CINE_KEY_PASSWORD")
+            if (storePath != null && storePass != null && alias != null && keyPass != null) {
+                val ksFile = file(storePath)
+                if (ksFile.exists()) {
+                    storeFile = ksFile
+                    storePassword = storePass
+                    keyAlias = alias
+                    keyPassword = keyPass
+                }
             }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             val releaseCfg = signingConfigs.getByName("release")
             if (releaseCfg.storeFile?.exists() == true) {
                 signingConfig = releaseCfg

@@ -23,7 +23,12 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
+android/keystore.properties
+android/release/*.apk
 *.apk
+*.keystore
+*.jks
+keystore.properties
 
 # Editor directories and files
 .vscode/*
