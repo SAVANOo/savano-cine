@@ -7,12 +7,12 @@
     "apkFileName":  "savano-cine-1.0.0-arm64-v8a.apk",
     "sizeBytes":  1651471,
     "sha256":  "77680a62c71622166f3da919561e7208644650012c19ddebd160d559c1dc1ac2",
-    "releasedAt":  "2026-11-25T21:55:00Z",
+    "iconUrl":  "https://raw.githubusercontent.com/SAVANOo/savano-cine/main/public/icon-512.png",
+    "releasedAt":  "2026-11-26T01:26:30Z",
     "changelog":  [
-                      "Release inicial v1.0.0 pronta para distribuicao na loja propria",
-                      "Streaming local e addons Stremio com suporte a Dual-Audio e legendas em camada GPU",
+                      "Release v1.0.0 (arm64-v8a) assinada com keystore externa e R8/ProGuard",
+                      "Streaming local e addons Stremio com Dual-Audio e legendas em camada GPU",
                       "Download sequencial por bandas em torrents, recuperacao de peer e seek estavel",
-                      "Telemetria end-to-end de fluxos, player e APIs no painel Admin",
-                      "Assinatura de release com keystore externa e R8/ProGuard habilitados"
+                      "Telemetria end-to-end de fluxos, player e APIs no painel Admin"
                   ]
 }
