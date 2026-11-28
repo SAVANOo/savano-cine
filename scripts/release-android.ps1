@@ -72,12 +72,20 @@ Write-Host "APK: $DestApk ($SizeBytes bytes | SHA-256: $Sha256)" -ForegroundColo
 
 if ($PublishGitHub) {
   $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh -and (Test-Path "C:\Program Files\GitHub CLI\gh.exe")) {
+    $env:Path += ";C:\Program Files\GitHub CLI"
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+  }
   if (-not $gh) {
     throw "GitHub CLI (gh) não encontrado. Instale com: winget install --id GitHub.cli -e"
   }
   $releaseExists = $false
-  & gh release view $Tag --repo SAVANOo/savano-cine *> $null
-  if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  & gh release view $Tag --repo SAVANOo/savano-cine 2>$null 1>$null
+  $viewExit = $LASTEXITCODE
+  $ErrorActionPreference = $prevEap
+  if ($viewExit -eq 0) { $releaseExists = $true }
 
   if ($releaseExists) {
     Write-Host "Atualizando APK na release $Tag via gh release upload --clobber..." -ForegroundColor Cyan

@@ -8,7 +8,7 @@
     "sizeBytes":  1651527,
     "sha256":  "0f6f3a962942da0117e93d3e43a13cf2b59bc32c9529eeb7e2a747a8a381800d",
     "iconUrl":  "https://raw.githubusercontent.com/SAVANOo/savano-cine/main/public/icon-512.png",
-    "releasedAt":  "2026-11-28T03:14:31Z",
+    "releasedAt":  "2026-11-28T03:18:56Z",
     "changelog":  [
                       "Release v1.0.1 (arm64-v8a) assinada com keystore externa e R8/ProGuard",
                       "Streaming local e addons Stremio com Dual-Audio e legendas em camada GPU",
