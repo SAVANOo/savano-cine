@@ -12,16 +12,17 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $AndroidDir = Join-Path $RepoRoot "android"
 $ReleaseDir = Join-Path $AndroidDir "release"
-$ApkName = "savano-cine-$VersionName-$Abi.apk"
+$Tag = "v$VersionName"
+$ApkName = "savano-cine-$Tag-$Abi.apk"
 $DestApk = Join-Path $ReleaseDir $ApkName
 $ManifestPath = Join-Path $ReleaseDir "release-manifest.json"
-$Tag = "v$VersionName"
 
 if (-not $SkipBuild) {
   if (-not (Test-Path $GradleBin)) {
     throw "Gradle não encontrado em: $GradleBin"
   }
   Write-Host "Compilando APK Release ($VersionName / code $VersionCode)..." -ForegroundColor Cyan
+  $env:JAVA_TOOL_OPTIONS = "-Dfile.encoding=UTF-8"
   Push-Location $AndroidDir
   try {
     & $GradleBin :app:assembleRelease --no-daemon
@@ -41,14 +42,32 @@ Copy-Item $SignedApk $DestApk -Force
 
 $Sha256 = (Get-FileHash $DestApk -Algorithm SHA256).Hash.ToLower()
 $SizeBytes = (Get-Item $DestApk).Length
+$SignerSha256 = ""
+
+$apksignerCmd = Get-Command apksigner -ErrorAction SilentlyContinue
+if (-not $apksignerCmd -and $env:ANDROID_HOME) {
+  $foundSigner = Get-ChildItem (Join-Path $env:ANDROID_HOME "build-tools") -Recurse -Filter "apksigner.bat" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+  if ($foundSigner) { $apksignerCmd = $foundSigner.FullName }
+}
+if ($apksignerCmd) {
+  $verifyOut = & $apksignerCmd verify --verbose --print-certs $DestApk 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) { throw "Falha na verificação criptográfica (apksigner): $verifyOut" }
+  if ($verifyOut -match 'Signer #1 certificate SHA-256 digest:\s*([a-fA-F0-9]{64})') {
+    $SignerSha256 = $Matches[1].ToLower()
+  }
+}
+
+$ReleaseBaseUrl = "https://github.com/SAVANOo/savano-cine/releases/download/$Tag"
 
 $Manifest = [ordered]@{
   packageId   = "com.savanocine.app"
   name        = "Savano Cine"
+  tagline     = "Streaming local e catálogo pessoal"
   versionName = $VersionName
   versionCode = $VersionCode
   abi         = $Abi
   apkFileName = $ApkName
+  apkUrl      = "$ReleaseBaseUrl/$ApkName"
   sizeBytes   = $SizeBytes
   sha256      = $Sha256
   iconUrl     = "https://raw.githubusercontent.com/SAVANOo/savano-cine/main/public/icon-512.png"
@@ -60,6 +79,7 @@ $Manifest = [ordered]@{
     "Telemetria end-to-end de fluxos, player e APIs no painel Admin"
   )
 }
+if ($SignerSha256) { $Manifest.signerSha256 = $SignerSha256 }
 
 [System.IO.File]::WriteAllText(
   $ManifestPath,
@@ -88,11 +108,11 @@ if ($PublishGitHub) {
   if ($viewExit -eq 0) { $releaseExists = $true }
 
   if ($releaseExists) {
-    Write-Host "Atualizando APK na release $Tag via gh release upload --clobber..." -ForegroundColor Cyan
-    & gh release upload $Tag $DestApk --repo SAVANOo/savano-cine --clobber
+    Write-Host "Atualizando APK e manifesto na release $Tag via gh release upload --clobber..." -ForegroundColor Cyan
+    & gh release upload $Tag $DestApk $ManifestPath --repo SAVANOo/savano-cine --clobber
   } else {
-    Write-Host "Criando release $Tag no GitHub com APK..." -ForegroundColor Cyan
-    & gh release create $Tag $DestApk --repo SAVANOo/savano-cine --title "Savano Cine $Tag" --notes "Release $Tag ($Abi) - SHA-256: $Sha256"
+    Write-Host "Criando release $Tag no GitHub com APK e manifesto..." -ForegroundColor Cyan
+    & gh release create $Tag $DestApk $ManifestPath --repo SAVANOo/savano-cine --title "Savano Cine $Tag" --notes "Release $Tag ($Abi) - SHA-256: $Sha256"
   }
   if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar release no GitHub via gh" }
 }
