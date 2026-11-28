@@ -858,8 +858,8 @@ function detectHwEncoder(ffmpegAvailable) {
 
   if (requestUrl.pathname === '/api/android/version' && request.method === 'GET') {
     return send(response, 200, {
-      versionCode: 10000,
-      versionName: '1.0.0',
+      versionCode: 10001,
+      versionName: '1.0.1',
       apkUrl: '/api/android/apk',
     })
   }
@@ -867,6 +867,7 @@ function detectHwEncoder(ffmpegAvailable) {
   if ((requestUrl.pathname === '/SavanoCine.apk' || requestUrl.pathname === '/api/android/apk') && (request.method === 'GET' || request.method === 'HEAD')) {
     const apkCandidates = [
       path.resolve(root, '..', '..', 'SavanoCine.apk'),
+      path.resolve(root, '..', 'android', 'release', 'savano-cine-1.0.1-arm64-v8a.apk'),
       path.resolve(root, '..', 'android', 'release', 'savano-cine-1.0.0-arm64-v8a.apk'),
       path.resolve(root, '..', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
       path.resolve(root, '..', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
